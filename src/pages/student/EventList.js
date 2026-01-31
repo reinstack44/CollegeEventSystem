@@ -1,92 +1,117 @@
 import React, { useEffect, useState } from 'react';
-import { supabase } from '../../sbclient/supabaseClient'; 
+import { auth } from '../../firebaseConfig';
+import { supabase } from '../../sbclient/supabaseClient';
 
 const EventList = () => {
   const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  const fetchEvents = async () => {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('events') 
-        .select('*')
-        .order('date', { ascending: true });
-
-      if (error) throw error;
-      setEvents(data);
-    } catch (error) {
-      console.error("Error fetching events:", error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 1. New Booking Logic
-  const handleBooking = async (eventId, eventTitle) => {
-    // For ₹0 budget, we use a simple prompt to identify the student.
-    // In a final build, this would come from your AuthContext.
-    const studentUrn = prompt("Please enter your URN to confirm booking:");
-
-    if (!studentUrn) return;
-
-    try {
-      const { error } = await supabase
-        .from('bookings')
-        .insert([{ student_urn: studentUrn, event_id: eventId }]);
-
-      if (error) {
-        // Handle duplicate booking (Unique Constraint in SQL)
-        if (error.code === '23505') {
-          alert("You have already booked a ticket for this event!");
-        } else {
-          throw error;
-        }
-      } else {
-        alert(`Successfully booked: ${eventTitle}! Check 'My Tickets' to see your QR code.`);
-      }
-    } catch (error) {
-      alert("Booking failed: " + error.message);
-    }
-  };
+  const [user, setUser] = useState(null);
+  const [showLoginPopup, setShowLoginPopup] = useState(false);
 
   useEffect(() => {
+    // 1. Fetch Events from Supabase
+    const fetchEvents = async () => {
+      const { data } = await supabase.from('events').select('*');
+      setEvents(data);
+    };
+    
+    // 2. Monitor Firebase Auth State
+    const unsubscribe = auth.onAuthStateChanged((currentUser) => {
+      setUser(currentUser);
+    });
+
     fetchEvents();
+    return () => unsubscribe();
   }, []);
 
-  if (loading) return <div className="text-center p-10 font-semibold">Loading campus events...</div>;
+  const handleBookTicket = async (eventId) => {
+    // Check if user is logged in via Firebase
+    if (!user) {
+      setShowLoginPopup(true); // Trigger professional popup
+      return;
+    }
+
+    // Process booking automatically using verified email
+    try {
+      const { error } = await supabase.from('bookings').insert([
+        { 
+          event_id: eventId, 
+          student_email: user.email, 
+          status: 'confirmed'
+        }
+      ]);
+
+      if (error) throw error;
+      alert("Ticket Booked Successfully!");
+    } catch (err) {
+      alert("Booking Error: " + err.message);
+    }
+  };
 
   return (
     <div className="container mx-auto p-6">
-      <h2 className="text-3xl font-bold mb-8 text-gray-800 text-center uppercase tracking-wider">Campus Events</h2>
+      <h2 className="text-3xl font-black mb-8 text-gray-800 text-center">Upcoming Events</h2>
       
-      {events.length === 0 ? (
-        <div className="bg-blue-50 p-10 rounded-xl text-center border-2 border-dashed border-blue-200">
-          <p className="text-blue-600 font-medium">No events currently listed. Admins will update soon!</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {events.map(event => (
-            <div key={event.id} className="bg-white p-6 rounded-2xl shadow-lg hover:shadow-xl transition-shadow border-l-8 border-blue-600">
-              <span className="bg-blue-100 text-blue-700 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-tighter">
-                {event.school_target || "General"}
-              </span>
-              <h3 className="text-2xl font-bold mt-3 text-gray-900">{event.title}</h3>
-              <div className="mt-4 space-y-1 text-gray-600">
-                <p className="flex items-center">📅 <span className="ml-2">{event.date}</span></p>
-                <p className="flex items-center">📍 <span className="ml-2 font-medium">{event.venue}</span></p>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 justify-items-center">
+        {events.map(event => (
+          /* PRESERVING YOUR UI STYLE FROM image_bc117c.png */
+          <div key={event.id} className="relative bg-white w-full max-w-[350px] p-6 rounded-[2rem] shadow-xl border-l-[6px] border-blue-600 transition-transform hover:scale-[1.02]">
+            <span className="bg-blue-100 text-blue-700 px-4 py-1 rounded-full text-xs font-bold uppercase tracking-wide">
+              {event.school || "General"}
+            </span>
+            
+            <h3 className="text-2xl font-black mt-4 mb-4 text-gray-800 leading-tight">
+              {event.title}
+            </h3>
+            
+            <div className="space-y-3 mb-6">
+              <div className="flex items-center gap-3 text-gray-600 font-medium">
+                <span className="text-xl">📅</span>
+                <span>{new Date(event.date).toLocaleDateString()}</span>
               </div>
-              <p className="text-sm text-gray-500 mt-4 leading-relaxed line-clamp-3 italic">
-                {event.description}
-              </p>
+              <div className="flex items-center gap-3 text-gray-600 font-medium">
+                <span className="text-xl text-pink-500">📍</span>
+                <span>{event.location || "ADYPU Campus"}</span>
+              </div>
+            </div>
+
+            <p className="text-gray-500 italic text-sm mb-8 leading-relaxed">
+              {event.description || "Everyone registered students has to come 30 minutes before the time!!"}
+            </p>
+
+            <button 
+              onClick={() => handleBookTicket(event.id)}
+              className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg shadow-lg hover:bg-blue-700 active:scale-95 transition-all"
+            >
+              Book Ticket
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* MODAL: ONLY SHOWS IF NOT LOGGED IN */}
+      {showLoginPopup && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50 p-6">
+          <div className="bg-white p-10 rounded-[2.5rem] max-w-sm w-full text-center shadow-[0_20px_50px_rgba(0,0,0,0.2)]">
+            <div className="text-6xl mb-6">🔒</div>
+            <h3 className="text-2xl font-black text-gray-800 mb-3">Login Required</h3>
+            <p className="text-gray-500 font-medium leading-relaxed mb-8">
+              To secure your spot, please log in with your verified student account.
+            </p>
+            <div className="space-y-4">
               <button 
-                onClick={() => handleBooking(event.id, event.title)}
-                className="w-full mt-4 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 font-semibold"
+                onClick={() => window.location.href = '/login'}
+                className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg hover:bg-blue-700 shadow-lg"
               >
-                Book Ticket
+                Go to Login
+              </button>
+              <button 
+                onClick={() => setShowLoginPopup(false)}
+                className="w-full text-gray-400 font-bold hover:text-gray-600 transition"
+              >
+                Maybe Later
               </button>
             </div>
-          ))}
+          </div>
         </div>
       )}
     </div>
