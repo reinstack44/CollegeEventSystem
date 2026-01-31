@@ -1,52 +1,56 @@
 import React, { useState } from 'react';
-import { supabase } from '../../sbclient/supabaseClient';
+import { auth } from '../../firebaseConfig';
+import { sendSignInLinkToEmail } from "firebase/auth";
 
 const Signup = () => {
-  const [formData, setFormData] = useState({ 
-    name: '', 
-    surname: '', 
-    email: '', 
-    phone: '', 
-    urn: '', 
-    school: '' 
-  });
+  const [email, setEmail] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const schools = ["School of Engineering", "School of Law", "School of Management"];
-
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
-
-  const handleSubmit = async (e) => {
+  const handleSendLink = async (e) => {
     e.preventDefault();
-    try {
-      const { error } = await supabase.from('students').insert([formData]);
-      if (error) throw error;
+    if (!email.endsWith('@adypu.edu.in')) {
+      alert("Please use your official @adypu.edu.in email.");
+      return;
+    }
 
-      alert("Registration Successful!");
-      window.location.href = "/events"; 
-    } catch (err) {
-      alert("Registration Error: " + err.message);
+    setLoading(true);
+    const actionCodeSettings = {
+      url: 'http://localhost:3000/complete-registration', // Redirect URL
+      handleCodeInApp: true,
+    };
+
+    try {
+      await sendSignInLinkToEmail(auth, email, actionCodeSettings);
+      window.localStorage.setItem('emailForSignIn', email);
+      alert("Verification link sent! Check your university email inbox.");
+    } catch (error) {
+      alert("Error: " + error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="flex justify-center items-center py-10 px-4">
-      <form onSubmit={handleSubmit} className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md border border-gray-200">
-        <h2 className="text-2xl font-bold mb-6 text-blue-700">Student Registration</h2>
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <input name="name" placeholder="Name" value={formData.name} onChange={handleChange} className="p-2 border rounded" required />
-          <input name="surname" placeholder="Surname" value={formData.surname} onChange={handleChange} className="p-2 border rounded" required />
-        </div>
-        <input name="email" type="email" placeholder="Email ID" value={formData.email} onChange={handleChange} className="w-full p-2 border rounded mb-4" required />
-        <input name="phone" placeholder="Phone Number" value={formData.phone} onChange={handleChange} className="w-full p-2 border rounded mb-4" required />
-        <input name="urn" placeholder="URN (Univ. Reg. No)" value={formData.urn} onChange={handleChange} className="w-full p-2 border rounded mb-4" required />
-        <select name="school" value={formData.school} onChange={handleChange} className="w-full p-2 border rounded mb-6 bg-white" required>
-          <option value="">Select School</option>
-          {schools.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition">
-          Create Profile
+    <div className="flex justify-center items-center py-20 px-4">
+      <form onSubmit={handleSendLink} className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-gray-100">
+        <h2 className="text-3xl font-bold mb-2 text-blue-700 text-center">Step 1: Verify Email</h2>
+        <p className="text-gray-500 text-center mb-8 text-sm">Use your ADYPU ID to start registration.</p>
+        
+        <input 
+          type="email" 
+          placeholder="yourname@adypu.edu.in" 
+          value={email} 
+          onChange={(e) => setEmail(e.target.value)}
+          className="w-full p-4 border-2 border-gray-100 rounded-xl mb-6 outline-none focus:border-blue-500"
+          required 
+        />
+        
+        <button 
+          type="submit" 
+          disabled={loading}
+          className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 transition shadow-lg shadow-blue-100"
+        >
+          {loading ? "Sending..." : "Send Verification Link"}
         </button>
       </form>
     </div>
