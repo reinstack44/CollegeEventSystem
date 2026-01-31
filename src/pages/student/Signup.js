@@ -15,7 +15,7 @@ const Signup = () => {
 
     setLoading(true);
     const actionCodeSettings = {
-      url: 'http://localhost:3000/complete-registration', // Redirect URL
+      url: 'https://https://activearch.vercel.app/', // Redirect URL
       handleCodeInApp: true,
     };
 
