@@ -16,11 +16,18 @@ const Navbar = () => {
   }, []);
 
   const handleLogout = async () => {
+    const isAdmin = window.location.pathname.startsWith('/admin');
     await signOut(auth);
     setIsOpen(false);
-    navigate('/login');
+    
+    // If they were on an admin page, send to admin login, else student login
+    if (isAdmin) {
+      navigate('/adminlogin');
+    } else {
+      navigate('/login');
+    }
   };
-
+  
   return (
     <nav className="bg-blue-700 text-white p-4 shadow-lg sticky top-0 z-50">
       <div className="container mx-auto flex justify-between items-center">
