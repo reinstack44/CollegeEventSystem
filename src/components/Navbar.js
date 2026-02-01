@@ -5,10 +5,10 @@ import { onAuthStateChanged, signOut } from "firebase/auth";
 
 const Navbar = () => {
   const [user, setUser] = useState(null);
+  const [isOpen, setIsOpen] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Listens for changes (login/logout) across the whole app
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
     });
@@ -17,7 +17,7 @@ const Navbar = () => {
 
   const handleLogout = async () => {
     await signOut(auth);
-    alert("Logged out successfully");
+    setIsOpen(false);
     navigate('/login');
   };
 
@@ -25,21 +25,37 @@ const Navbar = () => {
     <nav className="bg-blue-700 text-white p-4 shadow-lg sticky top-0 z-50">
       <div className="container mx-auto flex justify-between items-center">
         <Link to="/" className="text-xl font-black">ActiveArch</Link>
-        
-        <div className="flex gap-6 items-center font-bold">
-          <Link to="/events" className="hover:text-blue-200">Events</Link>
-          
-          {user ? (
-            <>
-              <Link to="/profile" className="hover:text-blue-200">Profile</Link>
-              <button onClick={handleLogout} className="bg-red-500 px-4 py-2 rounded-xl text-sm hover:bg-red-600 transition">
-                Logout
-              </button>
-            </>
-          ) : (
-            <Link to="/login" className="bg-white text-blue-700 px-4 py-2 rounded-xl text-sm hover:bg-gray-100 transition">
-              Login
-            </Link>
+
+        {/* Menu Button */}
+        <div className="relative">
+          <button 
+            onClick={() => setIsOpen(!isOpen)}
+            className="bg-blue-800 p-2 rounded-lg hover:bg-blue-600 transition flex items-center gap-2"
+          >
+            <span className="font-bold">Menu</span>
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={isOpen ? "M6 18L18 6M6 6l12 12" : "M4 6h16M4 12h16m-7 6h7"} />
+            </svg>
+          </button>
+
+          {/* Dropdown Menu */}
+          {isOpen && (
+            <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-2xl py-2 z-50 text-gray-800 border">
+              <Link to="/events" onClick={() => setIsOpen(false)} className="block px-4 py-3 hover:bg-gray-100 font-bold">Events</Link>
+              
+              {user ? (
+                <>
+                  <Link to="/my-tickets" onClick={() => setIsOpen(false)} className="block px-4 py-3 hover:bg-gray-100 font-bold">My Tickets</Link>
+                  <Link to="/profile" onClick={() => setIsOpen(false)} className="block px-4 py-3 hover:bg-gray-100 font-bold">Profile</Link>
+                  <hr className="my-1 border-gray-100" />
+                  <button onClick={handleLogout} className="w-full text-left px-4 py-3 text-red-600 hover:bg-red-50 font-bold">
+                    Logout
+                  </button>
+                </>
+              ) : (
+                <Link to="/login" onClick={() => setIsOpen(false)} className="block px-4 py-3 text-blue-700 hover:bg-blue-50 font-bold">Login</Link>
+              )}
+            </div>
           )}
         </div>
       </div>
