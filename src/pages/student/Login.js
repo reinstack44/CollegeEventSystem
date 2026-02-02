@@ -101,6 +101,13 @@ const Login = () => {
           <p className="text-[11px] text-slate-500 font-medium">
             New here? <Link to="/" className="text-blue-600 font-bold hover:underline">Create Account</Link>
           </p>
+
+          {/* Bottom of Login/Signup Card */}
+        <div className="mt-8 text-center">
+        <p className="text-[9px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-widest">
+         © ActiveArch {new Date().getFullYear()}
+        </p>
+        </div>
         </div>
       </div>
     </div>

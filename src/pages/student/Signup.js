@@ -60,6 +60,13 @@ const Signup = () => {
           >
             {loading ? "SENDING..." : "VERIFY EMAIL"} <ArrowRight size={20} />
           </button>
+
+          {/* Bottom of Login/Signup Card */}
+          <div className="mt-8 text-center">
+          <p className="text-[9px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-widest">
+           © ActiveArch {new Date().getFullYear()}
+          </p>
+          </div>
         </form>
       </div>
     </div>
