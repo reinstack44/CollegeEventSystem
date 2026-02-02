@@ -1,0 +1,10 @@
+@import "tailwindcss";
+
+/* Using standard CSS to avoid the @apply warnings */
+@layer base {
+  body {
+    transition-property: background-color, color;
+    transition-duration: 300ms;
+    transition-timing-function: ease;
+  }
+}

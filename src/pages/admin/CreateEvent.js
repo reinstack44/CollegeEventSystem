@@ -1,117 +1,73 @@
 import React, { useState } from 'react';
-import { supabase } from '../../sbclient/supabaseClient'; 
+import { supabase } from '../../sbclient/supabaseClient';
+import toast from 'react-hot-toast';
+import { CalendarPlus, Type, MapPin, AlignLeft, Send } from 'lucide-react';
 
 const CreateEvent = () => {
-  const [event, setEvent] = useState({ 
-    title: '', 
-    date: '', 
-    venue: '', 
-    description: '',
-    school: '' 
-  });
+  const [formData, setFormData] = useState({ title: '', date: '', venue: '', description: '', school: '' });
+  const [loading, setLoading] = useState(false);
 
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const schools = ["School of Engineering", "School of Law", "School of Management"];
-
-  const handleChange = (e) => {
-    setEvent({ ...event, [e.target.name]: e.target.value });
-  };
-
-  const handlePublish = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setIsSubmitting(true);
-    
+    setLoading(true);
+    const loadToast = toast.loading("Deploying event...");
+
     try {
-      // Destructuring only 'error' to fix the ESLint warning
-      const { error } = await supabase
-        .from('events')
-        .insert([
-          { 
-            title: event.title, 
-            date: event.date, 
-            venue: event.venue, 
-            description: event.description,
-            school_target: event.school 
-          }
-        ]);
-
+      const { error } = await supabase.from('events').insert([formData]);
       if (error) throw error;
-
-      alert(`Success! "${event.title}" has been published.`);
-      setEvent({ title: '', date: '', venue: '', description: '', school: '' });
-      window.location.href = "/admin"; 
-
-    } catch (error) {
-      alert("Database Error: " + error.message);
+      toast.success("Event is now live!", { id: loadToast });
+      setFormData({ title: '', date: '', venue: '', description: '', school: '' });
+    } catch (err) {
+      toast.error(err.message, { id: loadToast });
     } finally {
-      setIsSubmitting(false);
+      setLoading(false);
     }
   };
 
   return (
-    <div className="max-w-2xl mx-auto py-10 px-4">
-      <div className="bg-white p-8 rounded-2xl shadow-xl border border-gray-100">
-        <h2 className="text-3xl font-bold mb-6 text-gray-800">Post New Event</h2>
-        
-        <form onSubmit={handlePublish} className="space-y-4">
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">Event Title</label>
-            <input 
-              name="title" 
-              value={event.title} 
-              onChange={handleChange} 
-              placeholder="e.g. Annual Tech Symposium" 
-              className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
-              required 
-            />
+    <div className="container mx-auto p-8 max-w-3xl py-12 transition-colors duration-500">
+      <div className="bg-white dark:bg-slate-900 p-10 md:p-14 rounded-[4rem] shadow-2xl border border-slate-100 dark:border-slate-800">
+        <div className="flex items-center gap-4 mb-10">
+          <div className="p-3 bg-green-500 text-white rounded-2xl shadow-lg">
+            <CalendarPlus size={28}/>
+          </div>
+          <h2 className="text-3xl font-black text-slate-900 dark:text-white">New Event</h2>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label className="text-xs font-black text-slate-400 uppercase ml-2">Event Title</label>
+              <div className="relative group">
+                <Type className="absolute left-4 top-4 text-slate-400" size={20} />
+                <input required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="w-full pl-12 p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/10 dark:text-white border-none transition-all" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-black text-slate-400 uppercase ml-2">Event Date</label>
+              <input required type="date" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} className="w-full p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/10 dark:text-white border-none transition-all" />
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <input 
-              name="date" 
-              type="date" 
-              value={event.date} 
-              onChange={handleChange} 
-              className="w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" 
-              required 
-            />
-            <input 
-              name="venue" 
-              value={event.venue} 
-              onChange={handleChange} 
-              placeholder="College Auditorium" 
-              className="w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" 
-              required 
-            />
+          <div className="space-y-2">
+            <label className="text-xs font-black text-slate-400 uppercase ml-2">Venue / Location</label>
+            <div className="relative group">
+              <MapPin className="absolute left-4 top-4 text-slate-400" size={20} />
+              <input required value={formData.venue} onChange={e => setFormData({...formData, venue: e.target.value})} className="w-full pl-12 p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/10 dark:text-white border-none transition-all" />
+            </div>
           </div>
 
-          <select 
-            name="school" 
-            value={event.school} 
-            onChange={handleChange} 
-            className="w-full p-3 border rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-500" 
-            required
-          >
-            <option value="">Select Target School</option>
-            {schools.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
+          <div className="space-y-2">
+            <label className="text-xs font-black text-slate-400 uppercase ml-2">Event Description</label>
+            <div className="relative group">
+              <AlignLeft className="absolute left-4 top-4 text-slate-400" size={20} />
+              <textarea rows="4" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full pl-12 p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/10 dark:text-white border-none transition-all" />
+            </div>
+          </div>
 
-          <textarea 
-            name="description" 
-            value={event.description} 
-            onChange={handleChange} 
-            placeholder="Enter event details..." 
-            className="w-full p-3 border rounded-lg h-32 outline-none focus:ring-2 focus:ring-blue-500"
-          ></textarea>
-
-          <button 
-            type="submit" 
-            disabled={isSubmitting}
-            className={`w-full text-white py-3 rounded-lg font-bold transition-all ${
-              isSubmitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'
-            }`}
-          >
-            {isSubmitting ? 'Publishing...' : 'Publish Event'}
+          <button type="submit" disabled={loading} className="w-full bg-slate-900 dark:bg-blue-600 text-white py-5 rounded-[2rem] font-black text-xl flex items-center justify-center gap-3 hover:opacity-90 transition-all shadow-xl">
+            {loading ? "PROCESSING..." : "PUBLISH EVENT"}
+            <Send size={20} />
           </button>
         </form>
       </div>

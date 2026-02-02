@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../sbclient/supabaseClient';
+import toast from 'react-hot-toast';
+import { MapPin, Calendar, ShieldCheck, ArrowRight } from 'lucide-react';
 
 const EventList = () => {
   const [events, setEvents] = useState([]);
@@ -7,107 +9,72 @@ const EventList = () => {
   const [showLoginPopup, setShowLoginPopup] = useState(false);
 
   useEffect(() => {
-  const fetchEvents = async () => {
-    const { data } = await supabase.from('events').select('*');
-    setEvents(data);
-  };
-  
-  // Replace Firebase auth with Supabase auth
-  const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-    setUser(session?.user ?? null);
-  });
+    supabase.from('events').select('*').then(({ data }) => setEvents(data || []));
+    supabase.auth.onAuthStateChange((_event, session) => setUser(session?.user ?? null));
+  }, []);
 
-  fetchEvents();
-  return () => subscription.unsubscribe();
-}, []);
-
-  const handleBookTicket = async (eventId) => {
-    // Check if user is logged in via Firebase
-    if (!user) {
-      setShowLoginPopup(true); // Trigger professional popup
-      return;
-    }
-
-    // Process booking automatically using verified email
+  const handleBookTicket = async (eventId, title) => {
+    if (!user) { setShowLoginPopup(true); return; }
+    const loadToast = toast.loading(`Booking ${title}...`);
     try {
-      const { error } = await supabase.from('bookings').insert([
-        { 
-          event_id: eventId, 
-          student_email: user.email, 
-          status: 'confirmed'
-        }
-      ]);
-
+      const { error } = await supabase.from('bookings').insert([{ event_id: eventId, student_email: user.email, status: 'confirmed' }]);
       if (error) throw error;
-      alert("Ticket Booked Successfully!");
+      toast.success("Ticket ready in My Tickets!", { id: loadToast });
     } catch (err) {
-      alert("Booking Error: " + err.message);
+      toast.error(err.message, { id: loadToast });
     }
   };
 
   return (
-    <div className="container mx-auto p-6">
-      <h2 className="text-3xl font-black mb-8 text-gray-800 text-center">Upcoming Events</h2>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 justify-items-center">
-        {events.map(event => (
-          /* PRESERVING YOUR UI STYLE FROM image_bc117c.png */
-          <div key={event.id} className="relative bg-white w-full max-w-[350px] p-6 rounded-[2rem] shadow-xl border-l-[6px] border-blue-600 transition-transform hover:scale-[1.02]">
-            <span className="bg-blue-100 text-blue-700 px-4 py-1 rounded-full text-xs font-bold uppercase tracking-wide">
-              {event.school || "General"}
-            </span>
-            
-            <h3 className="text-2xl font-black mt-4 mb-4 text-gray-800 leading-tight">
-              {event.title}
-            </h3>
-            
-            <div className="space-y-3 mb-6">
-              <div className="flex items-center gap-3 text-gray-600 font-medium">
-                <span className="text-xl">📅</span>
-                <span>{new Date(event.date).toLocaleDateString()}</span>
-              </div>
-              <div className="flex items-center gap-3 text-gray-600 font-medium">
-                <span className="text-xl text-pink-500">📍</span>
-                <span>{event.location || "ADYPU Campus"}</span>
-              </div>
-            </div>
-
-            <p className="text-gray-500 italic text-sm mb-8 leading-relaxed">
-              {event.description || "Everyone registered students has to come 30 minutes before the time!!"}
-            </p>
-
-            <button 
-              onClick={() => handleBookTicket(event.id)}
-              className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg shadow-lg hover:bg-blue-700 active:scale-95 transition-all"
-            >
-              Book Ticket
-            </button>
+    <div className="py-12 px-6 transition-colors duration-500">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex flex-col md:flex-row justify-between items-center mb-16 gap-6 text-center md:text-left">
+          <div>
+            <h2 className="text-5xl font-black text-slate-900 dark:text-white tracking-tight">Active Events</h2>
+            <p className="text-slate-500 dark:text-slate-400 mt-2 font-medium">Verified university events and workshops.</p>
           </div>
-        ))}
+          <div className="px-5 py-2.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-2xl font-black flex items-center gap-2 border border-blue-100 dark:border-blue-800/50">
+            <ShieldCheck size={20} /> ADYPU OFFICIAL
+          </div>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
+          {events.map(event => (
+            <div key={event.id} className="group relative bg-white dark:bg-slate-900 p-8 rounded-[3rem] shadow-[0_20px_50px_-12px_rgba(0,0,0,0.05)] dark:shadow-none border border-slate-100 dark:border-slate-800 transition-all hover:-translate-y-3 hover:shadow-2xl hover:shadow-blue-500/10">
+              <span className="inline-block px-4 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-full text-[10px] font-black uppercase tracking-widest mb-6 border border-slate-200 dark:border-slate-700">
+                {event.school_target || "All ADYPU Schools"}
+              </span>
+              <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-6 leading-tight group-hover:text-blue-600 transition-colors">
+                {event.title}
+              </h3>
+              
+              <div className="space-y-4 mb-10">
+                <IconInfo icon={<Calendar className="text-blue-600" size={18}/>} text={new Date(event.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })} />
+                <IconInfo icon={<MapPin className="text-rose-500" size={18}/>} text={event.venue || "ADYPU Campus"} />
+              </div>
+
+              <button 
+                onClick={() => handleBookTicket(event.id, event.title)}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3.5 rounded-2xl font-bold text-base flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-blue-500/10 dark:shadow-none"
+              >
+                Book Ticket <ArrowRight size={18} />
+              </button>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* MODAL: ONLY SHOWS IF NOT LOGGED IN */}
       {showLoginPopup && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50 p-6">
-          <div className="bg-white p-10 rounded-[2.5rem] max-w-sm w-full text-center shadow-[0_20px_50px_rgba(0,0,0,0.2)]">
-            <div className="text-6xl mb-6">🔒</div>
-            <h3 className="text-2xl font-black text-gray-800 mb-3">Login Required</h3>
-            <p className="text-gray-500 font-medium leading-relaxed mb-8">
-              To secure your spot, please log in with your verified student account.
-            </p>
-            <div className="space-y-4">
-              <button 
-                onClick={() => window.location.href = '/login'}
-                className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg hover:bg-blue-700 shadow-lg"
-              >
-                Go to Login
-              </button>
-              <button 
-                onClick={() => setShowLoginPopup(false)}
-                className="w-full text-gray-400 font-bold hover:text-gray-600 transition"
-              >
-                Maybe Later
-              </button>
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-[100] p-6 animate-in fade-in duration-300">
+          <div className="bg-white dark:bg-slate-900 p-12 rounded-[3.5rem] max-w-sm w-full text-center shadow-3xl border border-slate-100 dark:border-slate-800 animate-in zoom-in duration-300">
+            <div className="w-24 h-24 bg-blue-50 dark:bg-blue-900/30 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-8 shadow-inner">
+              <ShieldCheck size={48} />
+            </div>
+            <h3 className="text-3xl font-black text-slate-900 dark:text-white mb-4">Auth Required</h3>
+            <p className="text-slate-500 dark:text-slate-400 font-medium mb-10 leading-relaxed">Please sign in with your official student account to access tickets.</p>
+            <div className="flex flex-col gap-4">
+              <button onClick={() => window.location.href = '/login'} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg hover:bg-blue-700 transition-all shadow-xl shadow-blue-100 dark:shadow-none">Go to Login</button>
+              <button onClick={() => setShowLoginPopup(false)} className="w-full text-slate-400 dark:text-slate-500 font-bold hover:text-slate-600 transition">Maybe Later</button>
             </div>
           </div>
         </div>
@@ -115,5 +82,12 @@ const EventList = () => {
     </div>
   );
 };
+
+const IconInfo = ({ icon, text }) => (
+  <div className="flex items-center gap-4 text-slate-600 dark:text-slate-400 font-bold">
+    <div className="p-2.5 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700">{icon}</div>
+    <span className="text-sm">{text}</span>
+  </div>
+);
 
 export default EventList;
