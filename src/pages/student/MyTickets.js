@@ -1,44 +1,34 @@
 import React, { useEffect, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { auth } from '../../firebaseConfig';
 import { supabase } from '../../sbclient/supabaseClient';
 
 const MyTickets = () => {
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [userEmail, setUserEmail] = useState("");
 
   useEffect(() => {
     const fetchTickets = async () => {
-      const user = auth.currentUser;
-      if (!user) {
-        setLoading(false);
-        return;
-      }
-
       try {
-        // 1. Get the URN from students table using email
-        const { data: profile } = await supabase
-          .from('students')
-          .select('urn')
-          .eq('email', user.email)
-          .single();
-
-        const registeredUrn = profile?.urn;
-
-        // 2. Search bookings by BOTH email and URN to catch all data
-        // This handles the NULL values seen in your screenshots
-        let query = supabase.from('bookings').select(`
-          id, student_urn, student_email,
-          events ( title, date, venue )
-        `);
-
-        if (registeredUrn) {
-          query = query.or(`student_email.eq."${user.email}",student_urn.eq."${registeredUrn}"`);
-        } else {
-          query = query.eq('student_email', user.email);
+        // Corrected: Get user from Supabase
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        if (!user) {
+          setLoading(false);
+          return;
         }
+        
+        setUserEmail(user.email);
 
-        const { data, error } = await query;
+        // Fetching tickets based on email
+        const { data, error } = await supabase
+          .from('bookings')
+          .select(`
+            id, 
+            events ( title, date, venue )
+          `)
+          .eq('student_email', user.email);
+
         if (error) throw error;
         setTickets(data || []);
       } catch (err) {
@@ -62,7 +52,9 @@ const MyTickets = () => {
             <div key={t.id} className="bg-white rounded-3xl shadow-xl flex border overflow-hidden">
               <div className="p-8 flex-grow">
                 <h3 className="text-2xl font-black">{t.events?.title || "Event"}</h3>
-                <p className="text-gray-600 font-bold mt-2">📅 {t.events?.date} | 📍 {t.events?.venue}</p>
+                <p className="text-gray-600 font-bold mt-2">
+                  📅 {t.events?.date ? new Date(t.events.date).toLocaleDateString() : "N/A"} | 📍 {t.events?.venue}
+                </p>
                 <p className="text-xs text-gray-400 mt-4 font-mono">ID: {t.id}</p>
               </div>
               <div className="p-8 bg-gray-50 flex items-center justify-center border-l border-dashed">
@@ -72,7 +64,7 @@ const MyTickets = () => {
           ))
         ) : (
           <div className="text-center py-20 bg-gray-50 rounded-3xl border-2 border-dashed">
-            <p className="text-gray-500 font-bold text-lg">No tickets found for {auth.currentUser?.email}</p>
+            <p className="text-gray-500 font-bold text-lg">No tickets found for {userEmail}</p>
           </div>
         )}
       </div>

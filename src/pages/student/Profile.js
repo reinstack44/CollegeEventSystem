@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { auth } from '../../firebaseConfig';
 import { supabase } from '../../sbclient/supabaseClient';
 
 const Profile = () => {
@@ -7,7 +6,9 @@ const Profile = () => {
 
   useEffect(() => {
     const fetchProfile = async () => {
-      const user = auth.currentUser;
+      // Corrected: Fetching user from Supabase instead of Firebase
+      const { data: { user } } = await supabase.auth.getUser();
+      
       if (user) {
         const { data, error } = await supabase
           .from('students')
@@ -21,14 +22,14 @@ const Profile = () => {
     fetchProfile();
   }, []);
 
-  if (!student) return <div className="text-center py-20">Loading profile...</div>;
+  if (!student) return <div className="text-center py-20 font-bold text-gray-500">Loading profile...</div>;
 
   return (
     <div className="max-w-2xl mx-auto py-10 px-4">
       <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100">
         <div className="bg-blue-600 p-8 text-white text-center">
           <div className="w-24 h-24 bg-white text-blue-600 rounded-full flex items-center justify-center text-4xl font-black mx-auto mb-4 shadow-lg">
-            {student.name[0]}
+            {student.name ? student.name[0] : 'S'}
           </div>
           <h2 className="text-2xl font-bold">{student.name} {student.surname}</h2>
           <p className="opacity-80">{student.email}</p>

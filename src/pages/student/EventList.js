@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { auth } from '../../firebaseConfig';
 import { supabase } from '../../sbclient/supabaseClient';
 
 const EventList = () => {
@@ -8,20 +7,19 @@ const EventList = () => {
   const [showLoginPopup, setShowLoginPopup] = useState(false);
 
   useEffect(() => {
-    // 1. Fetch Events from Supabase
-    const fetchEvents = async () => {
-      const { data } = await supabase.from('events').select('*');
-      setEvents(data);
-    };
-    
-    // 2. Monitor Firebase Auth State
-    const unsubscribe = auth.onAuthStateChanged((currentUser) => {
-      setUser(currentUser);
-    });
+  const fetchEvents = async () => {
+    const { data } = await supabase.from('events').select('*');
+    setEvents(data);
+  };
+  
+  // Replace Firebase auth with Supabase auth
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    setUser(session?.user ?? null);
+  });
 
-    fetchEvents();
-    return () => unsubscribe();
-  }, []);
+  fetchEvents();
+  return () => subscription.unsubscribe();
+}, []);
 
   const handleBookTicket = async (eventId) => {
     // Check if user is logged in via Firebase

@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { auth } from '../firebaseConfig';
-import { onAuthStateChanged, signOut } from "firebase/auth";
+import { supabase } from '../sbclient/supabaseClient'; // Switched to Supabase
 
 const Navbar = () => {
   const [user, setUser] = useState(null);
@@ -9,18 +8,27 @@ const Navbar = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
+    // 1. Get initial session
+    const getInitialSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setUser(session?.user ?? null);
+    };
+    getInitialSession();
+
+    // 2. Listen for auth state changes (login/logout)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
     });
-    return () => unsubscribe();
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const handleLogout = async () => {
     const isAdmin = window.location.pathname.startsWith('/admin');
-    await signOut(auth);
+    await supabase.auth.signOut();
     setIsOpen(false);
     
-    // If they were on an admin page, send to admin login, else student login
+    // Logic remains the same: redirect based on current area
     if (isAdmin) {
       navigate('/adminlogin');
     } else {

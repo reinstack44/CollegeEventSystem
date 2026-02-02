@@ -1,21 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { auth } from '../../firebaseConfig'; 
-import { onAuthStateChanged } from 'firebase/auth';
+import { supabase } from '../../sbclient/supabaseClient';
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
+    const checkAdmin = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
         setLoading(false);
       } else {
         navigate('/adminlogin');
       }
-    });
-    return () => unsubscribe();
+    };
+    checkAdmin();
   }, [navigate]);
 
   if (loading) {
@@ -28,16 +28,12 @@ const Dashboard = () => {
 
   return (
     <div className="container mx-auto p-6">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-800">Admin Dashboard</h1>
-      </div>
-
+      <h1 className="text-3xl font-bold text-gray-800 mb-8">Admin Dashboard</h1>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Link to="/admin/create" className="bg-white p-10 rounded-xl shadow-md border-l-8 border-green-500 hover:shadow-lg transition">
           <h2 className="text-2xl font-bold">➕ Create New Event</h2>
-          <p className="text-gray-500 mt-2">Post event details for students to see.</p>
+          <p className="text-gray-500 mt-2">Post event details for students.</p>
         </Link>
-        
         <Link to="/admin/scan" className="bg-white p-10 rounded-xl shadow-md border-l-8 border-blue-500 hover:shadow-lg transition">
           <h2 className="text-2xl font-bold text-gray-800">📸 Scan Tickets</h2>
           <p className="text-gray-500 mt-2">Verify student entry at the gate.</p>
