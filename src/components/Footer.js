@@ -6,7 +6,7 @@ const Footer = () => {
           © {new Date().getFullYear()} ActiveArch. All Rights Reserved.
         </p>
         <p className="text-[10px] text-slate-300 dark:text-slate-600 mt-2 font-medium">
-          Specialized for ADYPU University Events.
+          Specialized for ADYPU University Events. ❤️
         </p>
       </div>
     </footer>
