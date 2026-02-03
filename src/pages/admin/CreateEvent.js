@@ -1,78 +1,68 @@
 import React, { useState } from 'react';
 import { supabase } from '../../sbclient/supabaseClient';
 import toast from 'react-hot-toast';
-import { CalendarPlus, Type, MapPin, AlignLeft, Send } from 'lucide-react';
+import { CalendarPlus } from 'lucide-react'; // Cleaned imports
 
 const CreateEvent = () => {
-  const [formData, setFormData] = useState({ title: '', date: '', venue: '', description: '', school: '' });
-  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    title: '', date: '', venue: '', description: '', school: '', start_time: '', end_time: ''
+  });
+
+  const schools = ["School of Engineering", "School of Management", "School of Liberal Arts", "School of Design", "School of Film & Media"];
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
-    const loadToast = toast.loading("Deploying event...");
-
-    try {
-      const { error } = await supabase.from('events').insert([formData]);
-      if (error) throw error;
-      toast.success("Event is now live!", { id: loadToast });
-      setFormData({ title: '', date: '', venue: '', description: '', school: '' });
-    } catch (err) {
-      toast.error(err.message, { id: loadToast });
-    } finally {
-      setLoading(false);
+    const { error } = await supabase.from('events').insert([formData]);
+    if (error) toast.error(error.message);
+    else {
+      toast.success("Event Published Successfully!");
+      setFormData({ title: '', date: '', venue: '', description: '', school: '', start_time: '', end_time: '' });
     }
   };
 
   return (
-    <div className="container mx-auto p-8 max-w-3xl py-12 transition-colors duration-500">
-      <div className="bg-white dark:bg-slate-900 p-10 md:p-14 rounded-[4rem] shadow-2xl border border-slate-100 dark:border-slate-800">
-        <div className="flex items-center gap-4 mb-10">
-          <div className="p-3 bg-green-500 text-white rounded-2xl shadow-lg">
-            <CalendarPlus size={28}/>
-          </div>
-          <h2 className="text-3xl font-black text-slate-900 dark:text-white">New Event</h2>
-        </div>
-
+    <div className="pt-12 px-6">
+      <div className="max-w-3xl mx-auto bg-slate-900 p-12 rounded-[4rem] border border-slate-800">
+        <h2 className="text-3xl font-black text-white mb-8 flex items-center gap-4">
+          <CalendarPlus className="text-blue-500" /> Create Event
+        </h2>
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Input label="Event Title" type="text" onChange={v => setFormData({...formData, title: v})} value={formData.title} />
             <div className="space-y-2">
-              <label className="text-xs font-black text-slate-400 uppercase ml-2">Event Title</label>
-              <div className="relative group">
-                <Type className="absolute left-4 top-4 text-slate-400" size={20} />
-                <input required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="w-full pl-12 p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/10 dark:text-white border-none transition-all" />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-black text-slate-400 uppercase ml-2">Event Date</label>
-              <input required type="date" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} className="w-full p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/10 dark:text-white border-none transition-all" />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-xs font-black text-slate-400 uppercase ml-2">Venue / Location</label>
-            <div className="relative group">
-              <MapPin className="absolute left-4 top-4 text-slate-400" size={20} />
-              <input required value={formData.venue} onChange={e => setFormData({...formData, venue: e.target.value})} className="w-full pl-12 p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/10 dark:text-white border-none transition-all" />
+              <label className="text-xs font-black text-slate-500 uppercase ml-2 tracking-widest">Select School</label>
+              <select 
+                required value={formData.school} onChange={e => setFormData({...formData, school: e.target.value})}
+                className="w-full p-4 bg-slate-800 border border-slate-700 rounded-2xl text-white outline-none focus:border-blue-500 transition-all"
+              >
+                <option value="">Select School</option>
+                {schools.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
             </div>
           </div>
-
-          <div className="space-y-2">
-            <label className="text-xs font-black text-slate-400 uppercase ml-2">Event Description</label>
-            <div className="relative group">
-              <AlignLeft className="absolute left-4 top-4 text-slate-400" size={20} />
-              <textarea rows="4" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full pl-12 p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/10 dark:text-white border-none transition-all" />
-            </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <Input label="Date" type="date" onChange={v => setFormData({...formData, date: v})} value={formData.date} />
+            <Input label="Start Time (e.g. 9AM)" type="text" onChange={v => setFormData({...formData, start_time: v})} value={formData.start_time} />
+            <Input label="End Time (e.g. 2PM)" type="text" onChange={v => setFormData({...formData, end_time: v})} value={formData.end_time} />
           </div>
 
-          <button type="submit" disabled={loading} className="w-full bg-slate-900 dark:bg-blue-600 text-white py-5 rounded-[2rem] font-black text-xl flex items-center justify-center gap-3 hover:opacity-90 transition-all shadow-xl">
-            {loading ? "PROCESSING..." : "PUBLISH EVENT"}
-            <Send size={20} />
+          <Input label="Venue" type="text" onChange={v => setFormData({...formData, venue: v})} value={formData.venue} />
+          
+          <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-[2rem] font-black text-lg shadow-xl shadow-blue-500/20 active:scale-95 transition-all">
+            PUBLISH EVENT
           </button>
         </form>
       </div>
     </div>
   );
 };
+
+const Input = ({ label, type, onChange, value }) => (
+  <div className="space-y-2">
+    <label className="text-xs font-black text-slate-500 uppercase ml-2 tracking-widest">{label}</label>
+    <input required type={type} value={value} onChange={e => onChange(e.target.value)} className="w-full p-4 bg-slate-800 border border-slate-700 rounded-2xl text-white outline-none focus:border-blue-500 transition-all" />
+  </div>
+);
 
 export default CreateEvent;
