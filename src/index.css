@@ -1,10 +1,19 @@
 @import "tailwindcss";
 
-/* Using standard CSS to avoid the @apply warnings */
 @layer base {
+  /* Force the application root to allow vertical growth and scrolling */
+  html, body, #root {
+    height: auto !important;
+    min-height: 100% !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    background-color: #0a0f1d;
+  }
+
   body {
     transition-property: background-color, color;
     transition-duration: 300ms;
     transition-timing-function: ease;
+    margin: 0;
   }
 }

@@ -1,126 +1,78 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../sbclient/supabaseClient';
-import { Calendar, Clock, MapPin, ShieldCheck, ShieldAlert, Loader2 } from 'lucide-react';
+import { QRCodeCanvas } from 'qrcode.react'; 
+import { Ticket, Calendar, MapPin, Loader2, Clock, CheckCircle2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const MyTickets = () => {
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchMyTickets();
+    fetchUserTickets();
   }, []);
 
-  const fetchMyTickets = async () => {
+  const fetchUserTickets = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      // Fetching tickets joined with event and student data
       const { data, error } = await supabase
         .from('bookings')
-        .select(`
-          id,
-          status,
-          events (title, date, venue, start_time, end_time),
-          students (full_name, urn)
-        `)
-        .eq('students.email', user.email);
+        .select(`id, status, events ( title, date, venue, school, start_time, end_time )`)
+        .eq('student_email', user.email)
+        .order('created_at', { ascending: false });
 
-      if (!error) setTickets(data || []);
-    } catch (err) {
-      console.error("Error fetching tickets:", err);
+      if (error) throw error;
+      setTickets(data || []);
+    } catch (error) {
+      toast.error("Could not load your vault");
     } finally {
       setLoading(false);
     }
   };
 
-  const isExpired = (eventDate) => {
-    return new Date(eventDate) < new Date().setHours(0, 0, 0, 0);
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-black">
-        <Loader2 className="text-blue-500 animate-spin" size={48} />
-      </div>
-    );
-  }
-
-  const activeTickets = tickets.filter(t => t.events && !isExpired(t.events.date));
-  const expiredTickets = tickets.filter(t => t.events && isExpired(t.events.date));
+  if (loading) return <div className="flex justify-center items-center h-screen bg-black"><Loader2 className="animate-spin text-blue-500" size={48} /></div>;
 
   return (
-    <div className="py-12 px-6 bg-black min-h-screen">
-      <div className="max-w-4xl mx-auto">
-        <h2 className="text-4xl font-black text-white mb-12 tracking-tight">My Vault</h2>
-        
-        {tickets.length === 0 ? (
-          <p className="text-slate-500 font-bold">No tickets found in your vault.</p>
-        ) : (
-          <>
-            <TicketSection title="Active Pass" items={activeTickets} expired={false} />
-            <TicketSection title="History" items={expiredTickets} expired={true} />
-          </>
-        )}
+    <div className="min-h-screen bg-[#0a0f1d] text-white p-6 pb-24">
+      <div className="max-w-5xl mx-auto">
+        <h2 className="text-4xl font-black mb-12 uppercase italic flex items-center gap-3">
+          <Ticket className="text-blue-500" size={36} /> Digital Vault
+        </h2>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {tickets.length === 0 ? (
+            <div className="col-span-full text-center py-20 bg-slate-900/30 rounded-[3rem] border border-dashed border-slate-800">
+              <p className="text-slate-500 font-black uppercase tracking-widest">No Active Passes Found</p>
+            </div>
+          ) : (
+            tickets.map((ticket) => (
+              <div key={ticket.id} className="bg-slate-900 rounded-[3rem] border border-slate-800 overflow-hidden flex flex-col shadow-2xl relative">
+                <div className="bg-white p-8 flex justify-center items-center">
+                  <QRCodeCanvas value={ticket.id} size={180} level={"H"} />
+                </div>
+
+                <div className="p-8 space-y-4">
+                  <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest">{ticket.events?.school}</span>
+                  <h3 className="text-2xl font-black uppercase leading-tight">{ticket.events?.title}</h3>
+                  
+                  <div className="space-y-2 text-slate-400 font-bold text-[10px] uppercase tracking-widest">
+                    <p className="flex items-center gap-2"><Calendar size={14}/> {ticket.events?.date}</p>
+                    <p className="flex items-center gap-2"><Clock size={14}/> {ticket.events?.start_time} - {ticket.events?.end_time}</p>
+                    <p className="flex items-center gap-2"><MapPin size={14}/> {ticket.events?.venue}</p>
+                  </div>
+
+                  <div className={`mt-4 py-3 px-6 rounded-2xl text-center text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 ${
+                    ticket.status === 'checked_in' ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-blue-600 text-white'
+                  }`}>
+                    {ticket.status === 'checked_in' ? <><CheckCircle2 size={16}/> Entry Confirmed</> : "Valid Pass"}
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
     </div>
   );
 };
-
-const TicketSection = ({ title, items, expired }) => {
-  if (items.length === 0) return null;
-
-  return (
-    <div className="mb-12">
-      <h3 className={`text-xs font-black uppercase tracking-[0.3em] mb-6 ml-2 ${expired ? 'text-slate-600' : 'text-blue-500'}`}>
-        {title} ({items.length})
-      </h3>
-      <div className="grid gap-6">
-        {items.map(ticket => (
-          <div key={ticket.id} className={`relative overflow-hidden bg-slate-900 border ${expired ? 'border-slate-800 opacity-60' : 'border-blue-500/30'} rounded-[2.5rem] p-8 flex flex-col md:flex-row justify-between items-center transition-all`}>
-            <div className="space-y-4 text-center md:text-left">
-              <div>
-                <p className="text-blue-500 text-[10px] font-black uppercase tracking-widest mb-1">
-                  {ticket.students?.full_name || 'Student'}
-                </p>
-                <h4 className="text-2xl font-black text-white leading-tight">
-                  {ticket.events?.title || 'Untitled Event'}
-                </h4>
-              </div>
-              <div className="flex flex-wrap gap-4 justify-center md:justify-start">
-                <IconBox icon={<Calendar size={14}/>} text={ticket.events ? new Date(ticket.events.date).toLocaleDateString() : 'N/A'} />
-                <IconBox icon={<Clock size={14}/>} text={ticket.events?.start_time || 'N/A'} />
-                <IconBox icon={<MapPin size={14}/>} text={ticket.events?.venue || 'N/A'} />
-              </div>
-            </div>
-
-            <div className="mt-8 md:mt-0 flex flex-col items-center gap-2">
-              <div className={`p-4 rounded-2xl ${expired ? 'bg-slate-800' : 'bg-white shadow-xl shadow-blue-500/10'}`}>
-                 <div className="w-24 h-24 bg-slate-200 rounded-lg flex items-center justify-center text-[10px] font-black text-slate-500 uppercase">QR CODE</div>
-              </div>
-              <p className="text-[10px] font-black text-slate-500 uppercase tracking-tighter">ID: {ticket.id.split('-')[0]}</p>
-            </div>
-            
-            {expired ? (
-              <div className="absolute top-4 right-8 text-red-500 flex items-center gap-1 font-black text-[10px] uppercase tracking-widest">
-                <ShieldAlert size={14}/> Expired
-              </div>
-            ) : (
-              <div className="absolute top-4 right-8 text-green-500 flex items-center gap-1 font-black text-[10px] uppercase tracking-widest">
-                <ShieldCheck size={14}/> Verified
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-const IconBox = ({ icon, text }) => (
-  <div className="flex items-center gap-2 text-slate-400 font-bold text-xs bg-slate-950/50 px-3 py-1.5 rounded-xl border border-slate-800">
-    <span className="text-blue-500">{icon}</span> {text}
-  </div>
-);
-
 export default MyTickets;

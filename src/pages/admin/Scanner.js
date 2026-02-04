@@ -1,74 +1,69 @@
-import React, { useState } from 'react'; // Removed useEffect
-import { Html5QrcodeScanner } from 'html5-qrcode'; // Removed unused Format import
+import React, { useState, useEffect } from 'react';
+import { Html5QrcodeScanner } from 'html5-qrcode';
 import { supabase } from '../../sbclient/supabaseClient';
+import { ShieldCheck, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { ShieldCheck, ShieldAlert, Camera } from 'lucide-react';
 
 const Scanner = () => {
-  const [result, setResult] = useState(null);
-  const [ticketData, setTicketData] = useState(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [lastScan, setLastScan] = useState(null);
 
-  const startScanner = () => {
-    const scanner = new Html5QrcodeScanner("reader", { 
-      fps: 15, 
-      qrbox: 250,
-      showTorchButtonIfSupported: true,
-      rememberLastUsedCamera: true,
-      supportedScanTypes: [0] 
+  useEffect(() => {
+    const scanner = new Html5QrcodeScanner('reader', { qrbox: 250, fps: 10 });
+    
+    scanner.render(async (decodedText) => {
+      if (decodedText === lastScan) return;
+      
+      setIsVerifying(true);
+      setLastScan(decodedText);
+
+      try {
+        const { data, error } = await supabase
+          .from('bookings')
+          .select('*, events(title)')
+          .eq('id', decodedText)
+          .single();
+        
+        if (error || !data) {
+          toast.error("ACCESS DENIED: Invalid Ticket", { duration: 4000 });
+        } else if (data.status === 'checked_in') {
+          toast.error(`ALREADY USED: Entry recorded earlier`, { icon: '⚠️' });
+        } else {
+          const { error: updateError } = await supabase
+            .from('bookings')
+            .update({ status: 'checked_in' })
+            .eq('id', decodedText);
+
+          if (updateError) throw updateError;
+          toast.success(`VERIFIED: Welcome to ${data.events.title}`, { duration: 5000 });
+        }
+      } catch (err) {
+        toast.error("System Error: Check database connection");
+      } finally {
+        setIsVerifying(false);
+      }
     });
 
-    scanner.render(async (text) => {
-      scanner.clear();
-      setResult(text);
-      verifyTicket(text);
-    }, (err) => {});
-  };
-
-  const verifyTicket = async (id) => {
-    const loadToast = toast.loading("Security Check...");
-    try {
-      const { data, error } = await supabase.from('bookings')
-        .select('*, events(title, date, end_time), students(full_name)')
-        .eq('id', id).single();
-
-      if (error || !data) throw new Error("Invalid Ticket");
-
-      const eventDate = new Date(data.events.date);
-      if (eventDate < new Date().setHours(0,0,0,0)) {
-        toast.error("Ticket is Expired", { id: loadToast });
-        setTicketData({ ...data, expired: true });
-        return;
-      }
-
-      setTicketData(data);
-      toast.success(`Valid: ${data.students.full_name}`, { id: loadToast });
-    } catch (err) {
-      toast.error(err.message, { id: loadToast });
-    }
-  };
+    return () => scanner.clear();
+  }, [lastScan]);
 
   return (
-    <div className="pt-12 px-6 flex flex-col items-center">
-      <div className="w-full max-w-md bg-slate-900 p-8 rounded-[3rem] border border-slate-800 text-center">
-        <h2 className="text-2xl font-black text-white mb-8">Security Scanner</h2>
-        
-        {!result && (
-          <button onClick={startScanner} className="bg-blue-600 text-white p-12 rounded-full shadow-[0_0_30px_rgba(37,99,235,0.4)] hover:scale-105 transition-all">
-            <Camera size={48} />
-          </button>
-        )}
+    <div className="min-h-screen bg-black text-white p-6 flex flex-col items-center">
+      <h2 className="text-4xl font-black mb-8 flex gap-3 uppercase italic tracking-tighter">
+        <ShieldCheck className="text-blue-500" /> Gate Control
+      </h2>
+      
+      <div className="w-full max-w-md bg-slate-900 p-4 rounded-[2.5rem] border border-slate-800 shadow-2xl">
+        <div id="reader" className="overflow-hidden rounded-3xl"></div>
+      </div>
 
-        <div id="reader" className="overflow-hidden rounded-3xl mt-4"></div>
-
-        {ticketData && (
-          <div className={`mt-8 p-6 rounded-3xl border ${ticketData.expired ? 'border-red-500 bg-red-500/10' : 'border-green-500 bg-green-500/10'}`}>
-            {ticketData.expired ? <ShieldAlert className="text-red-500 mx-auto mb-2" /> : <ShieldCheck className="text-green-500 mx-auto mb-2" />}
-            <p className="font-black text-lg text-white tracking-widest uppercase">
-              {ticketData.expired ? "Ticket Expired" : "Valid Entry"}
-            </p>
-            <p className="text-slate-400 font-bold mt-2">{ticketData.students?.full_name}</p>
-            <p className="text-slate-500 text-xs mt-1">ID: {ticketData.id}</p>
+      <div className="mt-12 text-center space-y-4">
+        {isVerifying ? (
+          <div className="flex items-center gap-3 text-blue-400 font-bold animate-pulse">
+            <Loader2 className="animate-spin" /> AUTHORIZING...
           </div>
+        ) : (
+          <p className="text-slate-500 text-xs font-black uppercase tracking-[0.3em]">Ready for Next Admission</p>
         )}
       </div>
     </div>

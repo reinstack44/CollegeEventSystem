@@ -20,14 +20,12 @@ import CreateEvent from './pages/admin/CreateEvent';
 import Scanner from './pages/admin/Scanner';
 
 function App() {
-  // 1. Initialize theme from localStorage or system preference
   const [darkMode, setDarkMode] = useState(() => {
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme) return savedTheme === 'dark';
-    return window.matchMedia('(prefers-color-scheme: dark').matches;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
   });
 
-  // 2. The "Engine" that injects the .dark class into the HTML
   useEffect(() => {
     const root = window.document.documentElement;
     if (darkMode) {
@@ -43,7 +41,6 @@ function App() {
 
   return (
     <Router>
-      {/* Soft Popup Notifications */}
       <Toaster 
         position="top-center" 
         toastOptions={{
@@ -52,32 +49,23 @@ function App() {
         }} 
       />
       
-      {/* Main Wrapper with smooth transition */}
-      <div className="min-h-screen transition-colors duration-500 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
-        
-        {/* Pass theme state to Navbar for the toggle button */}
+      <div className="min-h-screen transition-colors duration-500 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col">
         <Navbar darkMode={darkMode} setDarkMode={setDarkMode} />
         
-        <main className="container mx-auto pb-20">
+        {/* REMOVED 'container mx-auto' to allow full height expansion */}
+        <main className="w-full flex-grow pb-20">
           <Routes>
-            {/* Public Routes */}
             <Route path="/" element={<Signup />} />
             <Route path="/login" element={<Login />} />
             <Route path="/adminlogin" element={<AdminLogin />} />
-
-            {/* Student Routes */}
             <Route path="/events" element={<EventList />} />
             <Route path="/my-tickets" element={<MyTickets />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/complete-registration" element={<CompleteRegistration />} />
             <Route path="/reset-password" element={<ResetPassword />} />
-
-            {/* Admin Routes */}
             <Route path="/admin" element={<AdminDashboard />} />
             <Route path="/admin/create" element={<CreateEvent />} />
             <Route path="/admin/scan" element={<Scanner />} />
-
-            {/* Fallback */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
