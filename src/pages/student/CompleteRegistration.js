@@ -7,7 +7,6 @@ const CompleteRegistration = () => {
   const [formData, setFormData] = useState({ name: '', surname: '', phone: '', urn: '', school: '', password: '' });
   const [loading, setLoading] = useState(false);
   
-  // Updated school list to align with Admin creation options
   const schools = [
     "School of Engineering", 
     "School of Management", 
@@ -35,13 +34,13 @@ const CompleteRegistration = () => {
     const loadToast = toast.loading('Securing your account...');
 
     try {
-      // Step 1: Update Auth Password
+      // Step 1: Set the user's password for future logins
       const { error: authError } = await supabase.auth.updateUser({ password: formData.password });
       if (authError) throw authError;
 
       const { data: { user } } = await supabase.auth.getUser();
 
-      // Step 2: Insert into the 'students' table using your SQL schema
+      // Step 2: Insert into 'students' table. Matches your SQL schema using 'urn'
       const { error: dbError } = await supabase.from('students').insert([{
         name: formData.name,
         surname: formData.surname,
@@ -113,8 +112,9 @@ const CompleteRegistration = () => {
           <div className="space-y-1.5">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Your School/Department</label>
             <div className="relative flex items-center">
+              {/* FIXED: GraduationCap is now used here */}
               <GraduationCap className="absolute left-4 text-slate-500" size={18} />
-              <select name="school" onChange={handleChange} className="w-full pl-12 p-3.5 bg-slate-900/50 border border-slate-800 focus:border-blue-500 rounded-2xl outline-none text-white text-sm font-medium appearance-none transition-all" required>
+              <select name="school" onChange={handleChange} className="w-full pl-12 p-3.5 bg-slate-900/50 border border-slate-800 focus:border-blue-500 rounded-2xl outline-none text-white text-sm font-medium appearance-none transition-all cursor-pointer" required>
                 <option value="" className="bg-slate-900">Select Department</option>
                 {schools.map(s => <option key={s} value={s} className="bg-slate-900">{s}</option>)}
               </select>

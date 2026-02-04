@@ -10,11 +10,11 @@ const Signup = () => {
   const handleSignup = async (e) => {
     e.preventDefault();
     
-    // --- DOMAIN LOCKDOWN LOGIC ---
-    // Converts email to lowercase and checks if it ends with the required domain
+    // --- DOMAIN LOCKDOWN ---
+    // Only allows emails ending in @adypu.edu.in
     if (!email.toLowerCase().endsWith('@adypu.edu.in')) {
       toast.error("Access Denied: Please use your @adypu.edu.in student email.");
-      return; // Stops the function here
+      return; 
     }
 
     setLoading(true);
@@ -22,10 +22,13 @@ const Signup = () => {
     try {
       const { error } = await supabase.auth.signInWithOtp({
         email: email,
-        options: { emailRedirectTo: `${window.location.origin}/events` },
+        options: { 
+          // UPDATED: Redirects to the registration form instead of the events page
+          emailRedirectTo: `${window.location.origin}/complete-registration` 
+        },
       });
       if (error) throw error;
-      toast.success("Verification link sent!", { id: loadToast });
+      toast.success("Verification link sent to Gmail!", { id: loadToast });
     } catch (error) {
       toast.error(error.message, { id: loadToast });
     } finally {
