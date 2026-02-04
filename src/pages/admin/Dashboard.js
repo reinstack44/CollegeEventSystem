@@ -26,7 +26,6 @@ const Dashboard = () => {
   }, [navigate]);
 
   const fetchEvents = async () => {
-    // Select all columns to ensure school and school_target are available
     const { data, error } = await supabase
       .from('events')
       .select('*')
@@ -71,7 +70,8 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16 text-left">
         <AdminCard to="/admin/create" icon={<PlusCircle size={28} className="text-green-500" />} title="Create" desc="New deployments." color="border-green-500" />
         <AdminCard to="/admin/scan" icon={<ScanLine size={28} className="text-blue-500" />} title="Scanner" desc="QR gate control." color="border-blue-500" />
-        <AdminCard to="/admin/users" icon={<Users size={28} className="text-purple-500" />} title="Students" desc="Manage attendees." color="border-purple-500" />
+        {/* FIXED: Link now points to the correct StudentRecords route */}
+        <AdminCard to="/admin/students" icon={<Users size={28} className="text-purple-500" />} title="Students" desc="Manage attendees." color="border-purple-500" /> 
         <AdminCard to="/admin/settings" icon={<Settings size={28} className="text-slate-400" />} title="System" desc="Security logs." color="border-slate-400" />
       </div>
 
@@ -88,7 +88,6 @@ const Dashboard = () => {
               <div key={event.id} className="flex flex-col md:flex-row items-center justify-between bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-100 dark:border-slate-700 transition-all hover:border-blue-500/30 group">
                 <div className="w-full">
                   <span className="text-[10px] font-black text-blue-500 uppercase tracking-[0.2em]">
-                    {/* Fallback logic to support both columns */}
                     {event.school || event.school_target || "Global School"}
                   </span>
                   <h4 className="text-lg font-black text-slate-900 dark:text-white">{event.title}</h4>

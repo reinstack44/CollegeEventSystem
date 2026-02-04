@@ -18,6 +18,7 @@ import AdminDashboard from './pages/admin/Dashboard';
 import AdminLogin from './pages/admin/AdminLogin'; 
 import CreateEvent from './pages/admin/CreateEvent';
 import Scanner from './pages/admin/Scanner';
+import StudentRecords from './pages/admin/StudentRecords'; 
 
 function App() {
   const [darkMode, setDarkMode] = useState(() => {
@@ -52,7 +53,6 @@ function App() {
       <div className="min-h-screen transition-colors duration-500 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col">
         <Navbar darkMode={darkMode} setDarkMode={setDarkMode} />
         
-        {/* REMOVED 'container mx-auto' to allow full height expansion */}
         <main className="w-full flex-grow pb-20">
           <Routes>
             <Route path="/" element={<Signup />} />
@@ -63,9 +63,13 @@ function App() {
             <Route path="/profile" element={<Profile />} />
             <Route path="/complete-registration" element={<CompleteRegistration />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            
+            {/* ADMIN ROUTES */}
             <Route path="/admin" element={<AdminDashboard />} />
             <Route path="/admin/create" element={<CreateEvent />} />
             <Route path="/admin/scan" element={<Scanner />} />
+            <Route path="/admin/students" element={<StudentRecords />} /> 
+            
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>

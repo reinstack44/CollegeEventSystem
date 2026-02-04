@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import { supabase } from '../../sbclient/supabaseClient';
 import toast from 'react-hot-toast';
-import { Loader2, ShieldCheck, AlignLeft, MapPin, Calendar, Building2, Clock } from 'lucide-react';
+import { 
+  Loader2, ShieldCheck, AlignLeft, MapPin, 
+  Calendar, Building2, Clock, Ticket 
+} from 'lucide-react';
 
 const CreateEvent = () => {
   const [loading, setLoading] = useState(false);
@@ -10,23 +13,31 @@ const CreateEvent = () => {
     date: '', 
     venue: '', 
     description: '', 
-    school: '',
+    school: 'ADYPU', // Defaulting to ADYPU
     start_time: '',
-    end_time: ''
+    end_time: '',
+    ticket_limit: '' // New field for attendance control
   });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     
-    const { error } = await supabase.from('events').insert([formData]);
+    // Convert ticket_limit to number for database compatibility
+    const submissionData = {
+      ...formData,
+      ticket_limit: formData.ticket_limit ? parseInt(formData.ticket_limit) : null
+    };
+
+    const { error } = await supabase.from('events').insert([submissionData]);
     
     if (error) {
       toast.error(`Publishing Failed: ${error.message}`);
     } else {
       toast.success("Event Published Successfully!");
       setFormData({ 
-        title: '', date: '', venue: '', description: '', school: '', start_time: '', end_time: '' 
+        title: '', date: '', venue: '', description: '', school: 'ADYPU', 
+        start_time: '', end_time: '', ticket_limit: '' 
       });
     }
     setLoading(false);
@@ -34,7 +45,6 @@ const CreateEvent = () => {
 
   return (
     <div className="min-h-[calc(100vh-64px)] bg-[#0a0f1d] flex items-center justify-center p-4">
-      {/* Main Card with fixed height to enable the internal scrollable view */}
       <div className="w-full max-w-2xl bg-[#111827] rounded-[3rem] border border-slate-800 shadow-2xl flex flex-col overflow-hidden max-h-[85vh]">
         
         {/* FIXED HEADER */}
@@ -42,7 +52,10 @@ const CreateEvent = () => {
           <div className="p-3 bg-blue-600 rounded-2xl shadow-lg shadow-blue-500/20">
             <ShieldCheck className="text-white" size={28} />
           </div>
-          <h2 className="text-3xl font-black uppercase italic tracking-tighter text-white">Create Event</h2>
+          <div>
+            <h2 className="text-3xl font-black uppercase italic tracking-tighter text-white leading-none">Create Event</h2>
+            <p className="text-blue-500 font-black uppercase tracking-[0.3em] text-[10px] mt-2">Command Center Deployment</p>
+          </div>
         </div>
         
         {/* SCROLLABLE VIEWPORT */}
@@ -63,23 +76,38 @@ const CreateEvent = () => {
               />
             </div>
 
-            {/* School Selection */}
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2 flex items-center gap-2">
-                <Building2 size={14} /> Organizing School
-              </label>
-              <select 
-                required 
-                value={formData.school} 
-                onChange={e => setFormData({...formData, school: e.target.value})} 
-                className="w-full p-4 bg-[#1f2937] border border-slate-700 rounded-2xl outline-none focus:border-blue-500 text-white text-sm"
-              >
-                <option value="">Select School</option>
-                <option value="Engineering">School of Engineering</option>
-                <option value="Management">School of Management</option>
-                <option value="Design">School of Design</option>
-                <option value="Film & Media">School of Film & Media</option>
-              </select>
+            {/* School Selection and Ticket Limit Row */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2 flex items-center gap-2">
+                  <Building2 size={14} /> Organizing School
+                </label>
+                <select 
+                  required 
+                  value={formData.school} 
+                  onChange={e => setFormData({...formData, school: e.target.value})} 
+                  className="w-full p-4 bg-[#1f2937] border border-slate-700 rounded-2xl outline-none focus:border-blue-500 text-white text-sm appearance-none cursor-pointer"
+                >
+                  <option value="ADYPU">ADYPU (University)</option>
+                  <option value="Engineering">School of Engineering</option>
+                  <option value="Management">School of Management</option>
+                  <option value="Design">School of Design</option>
+                  <option value="Film & Media">School of Film & Media</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2 flex items-center gap-2">
+                  <Ticket size={14} /> Ticket Limit
+                </label>
+                <input 
+                  type="number"
+                  placeholder="Leave blank for unlimited"
+                  value={formData.ticket_limit} 
+                  onChange={e => setFormData({...formData, ticket_limit: e.target.value})} 
+                  className="w-full p-4 bg-[#1f2937] border border-slate-700 rounded-2xl outline-none focus:border-blue-500 text-white text-sm" 
+                />
+              </div>
             </div>
 
             {/* Date and Time Row */}

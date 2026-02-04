@@ -9,6 +9,14 @@ const Signup = () => {
 
   const handleSignup = async (e) => {
     e.preventDefault();
+    
+    // --- DOMAIN LOCKDOWN LOGIC ---
+    // Converts email to lowercase and checks if it ends with the required domain
+    if (!email.toLowerCase().endsWith('@adypu.edu.in')) {
+      toast.error("Access Denied: Please use your @adypu.edu.in student email.");
+      return; // Stops the function here
+    }
+
     setLoading(true);
     const loadToast = toast.loading('Sending verification link...');
     try {
