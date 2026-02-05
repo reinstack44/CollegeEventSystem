@@ -11,8 +11,7 @@ const ProtectedRoute = ({ children }) => {
     const checkAdmin = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       
-      // Check if user exists and if their email belongs to the admin list
-      // Replace these emails with your actual admin emails
+      // Admin Whitelist Protocol
       const adminEmails = ['admin@activearch.in', 'staff@adypu.edu.in'];
       
       if (user && adminEmails.includes(user.email)) {

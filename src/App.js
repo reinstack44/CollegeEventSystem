@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { Toaster } from 'react-hot-toast';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
-import ProtectedRoute from './components/ProtectedRoute'; // New Import
+import ProtectedRoute from './components/ProtectedRoute';
 
 // Student Pages
 import Signup from './pages/student/Signup'; 
@@ -20,7 +20,7 @@ import AdminLogin from './pages/admin/AdminLogin';
 import CreateEvent from './pages/admin/CreateEvent';
 import Scanner from './pages/admin/Scanner';
 import StudentRecords from './pages/admin/StudentRecords'; 
-console.log("EventList check:", EventList);
+import ManageRegistrations from './pages/admin/ManageRegistrations'; 
 
 function App() {
   const [darkMode, setDarkMode] = useState(() => {
@@ -57,7 +57,6 @@ function App() {
         
         <main className="w-full flex-grow pb-20">
           <Routes>
-            {/* PUBLIC & STUDENT ROUTES */}
             <Route path="/" element={<Signup />} />
             <Route path="/login" element={<Login />} />
             <Route path="/adminlogin" element={<AdminLogin />} />
@@ -67,11 +66,13 @@ function App() {
             <Route path="/complete-registration" element={<CompleteRegistration />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             
-            {/* PROTECTED ADMIN ROUTES */}
             <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
             <Route path="/admin/create" element={<ProtectedRoute><CreateEvent /></ProtectedRoute>} />
             <Route path="/admin/scan" element={<ProtectedRoute><Scanner /></ProtectedRoute>} />
             <Route path="/admin/students" element={<ProtectedRoute><StudentRecords /></ProtectedRoute>} /> 
+            
+            {/* MATCHING ROUTE FOR LOGS */}
+            <Route path="/admin/logs" element={<ProtectedRoute><ManageRegistrations /></ProtectedRoute>} /> 
             
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

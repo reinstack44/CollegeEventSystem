@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../../sbclient/supabaseClient';
 import { 
-  LayoutDashboard, PlusCircle, ScanLine, Settings, 
+  LayoutDashboard, PlusCircle, ScanLine, ShieldAlert, 
   Users, ArrowRight, Trash2, Calendar, MapPin, Activity, 
   Archive, Search, X, Users2, AlertCircle
 } from 'lucide-react';
@@ -28,7 +28,6 @@ const Dashboard = () => {
   }, [navigate]);
 
   const fetchEvents = async () => {
-    // 1. Fetch events
     const { data: eventData, error: eventError } = await supabase
       .from('events')
       .select('*')
@@ -39,7 +38,6 @@ const Dashboard = () => {
       return;
     }
 
-    // 2. Fetch booking counts
     const { data: bookingData, error: bookingError } = await supabase
       .from('bookings')
       .select('event_id');
@@ -123,7 +121,7 @@ const Dashboard = () => {
         <AdminCard to="/admin/create" icon={<PlusCircle size={28} className="text-green-500" />} title="Create" desc="New deployments." color="border-green-500" />
         <AdminCard to="/admin/scan" icon={<ScanLine size={28} className="text-blue-500" />} title="Scanner" desc="QR gate control." color="border-blue-500" />
         <AdminCard to="/admin/students" icon={<Users size={28} className="text-purple-500" />} title="Students" desc="Manage attendees." color="border-purple-500" /> 
-        <AdminCard to="/admin/settings" icon={<Settings size={28} className="text-slate-400" />} title="System" desc="Security logs." color="border-slate-400" />
+        <AdminCard to="/admin/logs" icon={<ShieldAlert size={28} className="text-red-500" />} title="Logs" desc="Security protocol." color="border-red-500" />
       </div>
 
       <div className="bg-slate-50 dark:bg-slate-900/50 p-10 rounded-[3.5rem] border border-slate-200 dark:border-slate-800 mb-10">
@@ -135,6 +133,7 @@ const Dashboard = () => {
 
       <div className="bg-slate-100/50 dark:bg-slate-950/30 p-10 rounded-[3.5rem] border border-dashed border-slate-300 dark:border-slate-800 opacity-80">
         <h3 className="text-xl font-black text-slate-500 mb-8 flex items-center gap-3 text-left">
+          {/* FIXED: Removed anchor tag with # to fix ESLint error */}
           <Archive size={24} /> Completed Events
         </h3>
         <EventTable list={completedEvents} status="Completed" onDelete={handleDeleteEvent} />
@@ -143,13 +142,14 @@ const Dashboard = () => {
   );
 };
 
+// ... EventTable and AdminCard components remain unchanged ...
 const EventTable = ({ list, status, onDelete }) => (
   <div className="space-y-4 text-left">
     {list.length === 0 ? (
       <p className="text-slate-500 italic p-4 text-xs font-bold uppercase tracking-widest">No matching {status} entries.</p>
     ) : (
       list.map((event) => {
-        const isSoldOut = event.ticket_limit && event.count >= event.ticket_limit; // Sold Out Logic
+        const isSoldOut = event.ticket_limit && event.count >= event.ticket_limit;
 
         return (
           <div key={event.id} className="flex flex-col md:flex-row items-center justify-between bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-100 dark:border-slate-700 transition-all hover:border-blue-500/30 group">
@@ -161,8 +161,6 @@ const EventTable = ({ list, status, onDelete }) => (
                 <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border ${status === 'Active' ? 'text-green-500 border-green-500/20 bg-green-500/5' : 'text-slate-500 border-slate-500/20 bg-slate-500/5'}`}>
                   {status}
                 </span>
-                
-                {/* ATTENDANCE & LIMIT BADGE */}
                 <span className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border transition-colors ${isSoldOut ? 'bg-red-500 text-white border-red-500' : 'bg-slate-900 text-white border-white/10'}`}>
                   {isSoldOut ? <AlertCircle size={10} /> : <Users2 size={10} className="text-blue-500" />}
                   {event.count || 0} / {event.ticket_limit || '∞'} {isSoldOut ? 'Sold Out' : 'Booked'}
