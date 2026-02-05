@@ -80,7 +80,7 @@ const EventList = () => {
 
     if (!error) {
       toast.success("Pass Secured!");
-      fetchEvents(); // Refresh data to update UI state
+      fetchEvents(); 
     } else {
       toast.error("Booking failed: " + error.message);
     }
@@ -100,7 +100,7 @@ const EventList = () => {
         <div className="flex flex-col gap-6">
           <div className="flex flex-col md:flex-row items-center gap-4 bg-[#111827]/90 backdrop-blur-xl p-3 rounded-[2rem] border border-white/5 shadow-2xl">
             <div className="relative flex-grow w-full text-left">
-              <Search className="absolute left-6 top-8.5 -translate-y-1/2 text-slate-500" size={20} />
+              <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
               <input 
                 type="text"
                 placeholder="SEARCH Events..."
@@ -195,17 +195,38 @@ const FlipCard = ({ event, onBook, isFlipped, onFlip }) => {
           </button>
         </div>
 
-        {/* BACK FACE */}
+        {/* BACK FACE - Paragraph Fix Applied Here */}
         <div onClick={onFlip} className={`absolute inset-0 backface-hidden rotate-y-180 bg-[#1e293b] rounded-[2.5rem] border-2 p-8 flex flex-col cursor-pointer ${glowClass}`}>
           <h4 className="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-4 flex items-center gap-2 border-b border-white/5 pb-2"><Zap size={10}/> Specs</h4>
           <div className="flex-grow overflow-y-auto custom-scrollbar pr-2">
-            <p className="text-slate-300 text-[12px] leading-relaxed font-medium text-left italic">"{event.description}"</p>
+            <p className="text-slate-300 text-[12px] leading-relaxed font-medium text-left italic whitespace-pre-line">
+              {event.description}
+            </p>
           </div>
           <p className="mt-4 text-[8px] font-black text-slate-500 uppercase tracking-widest text-center">Tap to resume</p>
         </div>
       </div>
 
-      <style>{`.perspective-2000 { perspective: 2000px; } .transform-style-3d { transform-style: preserve-3d; } .backface-hidden { backface-visibility: hidden; } .rotate-y-180 { transform: rotateY(180deg); } .line-clamp-3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; } .custom-scrollbar::-webkit-scrollbar { width: 3px; } .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(59, 130, 246, 0.4); border-radius: 10px; }`}</style>
+      <style>{`
+        .perspective-2000 { perspective: 2000px; } 
+        .transform-style-3d { transform-style: preserve-3d; } 
+        .backface-hidden { backface-visibility: hidden; } 
+        .rotate-y-180 { transform: rotateY(180deg); } 
+        .line-clamp-3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; } 
+        
+        /* Refined Custom Scrollbar */
+        .custom-scrollbar::-webkit-scrollbar { 
+          width: 4px; 
+        } 
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.05);
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb { 
+          background: rgba(59, 130, 246, 0.6); 
+          border-radius: 10px; 
+        }
+      `}</style>
     </div>
   );
 };
