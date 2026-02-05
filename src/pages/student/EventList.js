@@ -103,7 +103,7 @@ const EventList = () => {
               <Search className="absolute left-6 top-8.5 -translate-y-1/2 text-slate-500" size={20} />
               <input 
                 type="text"
-                placeholder="SEARCH DEPLOYMENTS..."
+                placeholder="SEARCH Events..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-14 pr-6 py-4 bg-[#1f2937]/50 border-none rounded-[1.5rem] outline-none text-sm font-black tracking-widest uppercase"
