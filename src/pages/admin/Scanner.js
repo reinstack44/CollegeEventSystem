@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import { supabase } from '../../sbclient/supabaseClient';
 import { 
@@ -29,14 +29,16 @@ const Scanner = () => {
     fetchInitialCount();
   }, []);
 
-  const processCheckIn = async (identifier) => {
-    if (!identifier) return;
+  // FIXED: Wrapped in useCallback to resolve ESLint dependency warning
+  const processCheckIn = useCallback(async (identifier) => {
+    if (!identifier || isVerifying) return;
     setIsVerifying(true);
+
     try {
       const { data, error } = await supabase
         .from('bookings')
-        .select('*, events(title), students(name, surname, roll_number)')
-        .or(`id.eq.${identifier}, student_email.eq.${identifier}`)
+        .select('*, events(title), students(name, surname)')
+        .eq('id', identifier)
         .single();
 
       if (error || !data) {
@@ -58,7 +60,7 @@ const Scanner = () => {
         
         const newEntry = {
           id: data.id,
-          name: `${data.students?.name} ${data.students?.surname}`,
+          name: `${data.students?.name || 'Student'} ${data.students?.surname || ''}`,
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           event: data.events?.title
         };
@@ -66,30 +68,34 @@ const Scanner = () => {
         toast.success(`VERIFIED: Welcome, ${data.students?.name}`);
       }
     } catch (err) {
-      toast.error("Database Link Error");
+      toast.error("Security Link Error");
     } finally {
       setIsVerifying(false);
       setManualId('');
-      setTimeout(() => setScanResult(null), 3000);
+      setTimeout(() => {
+        setScanResult(null);
+        setLastScan(null); 
+      }, 3000);
     }
-  };
+  }, [isVerifying]); // Dependencies for stable reference
 
   useEffect(() => {
     const scanner = new Html5QrcodeScanner('reader', { 
       qrbox: { width: 250, height: 250 }, 
-      fps: 15,
+      fps: 20,
       aspectRatio: 1.0 
     });
     
     scanner.render((decodedText) => {
-      if (decodedText !== lastScan) {
+      // Logic to prevent double-processing the same scan while verifying
+      if (decodedText !== lastScan && !isVerifying) {
         setLastScan(decodedText);
         processCheckIn(decodedText);
       }
     });
 
     return () => scanner.clear();
-  }, [lastScan]);
+  }, [lastScan, isVerifying, processCheckIn]); // Added processCheckIn as dependency
 
   const clearHistory = () => {
     setHistory([]);
@@ -99,9 +105,8 @@ const Scanner = () => {
   return (
     <div className="min-h-screen bg-[#020617] text-white p-6 pb-32 flex flex-col items-center selection:bg-blue-500/30">
       
-      {/* --- LIVE STATS --- */}
       <div className="w-full max-w-md flex items-center justify-between mb-10 bg-blue-600/5 border border-blue-500/20 p-6 rounded-[2.5rem] shadow-[0_0_50px_rgba(59,130,246,0.1)]">
-        <div>
+        <div className="text-left">
            <p className="text-blue-500 font-black uppercase tracking-[0.4em] text-[10px] mb-1">Gate Admissions</p>
            <h2 className="text-4xl font-black italic tracking-tighter leading-none">{totalScanned} <span className="text-slate-600 text-lg not-italic">Scanned</span></h2>
         </div>
@@ -118,7 +123,6 @@ const Scanner = () => {
         {scanResult?.type === 'warning' && <AlertTriangle className="text-yellow-500 animate-pulse" size={20} />}
       </header>
       
-      {/* --- SCANNER INTERFACE --- */}
       <div className={`w-full max-w-md p-2 rounded-[3rem] border-2 transition-all duration-500 shadow-2xl overflow-hidden ${
         scanResult?.type === 'success' ? 'border-green-500 bg-green-500/5' : 
         scanResult?.type === 'error' ? 'border-red-500 bg-red-500/5' :
@@ -128,7 +132,6 @@ const Scanner = () => {
         <div id="reader" className="overflow-hidden rounded-[2.5rem]"></div>
       </div>
 
-      {/* --- STATUS OVERLAY --- */}
       <div className="mt-8 w-full max-w-md text-center h-20">
         {isVerifying ? (
           <div className="flex flex-col items-center gap-2">
@@ -150,13 +153,12 @@ const Scanner = () => {
         )}
       </div>
 
-      {/* --- MANUAL ENTRY --- */}
       <div className="mt-6 w-full max-w-md space-y-4">
         <div className="relative group">
           <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-blue-500 transition-colors" size={18} />
           <input 
             type="text"
-            placeholder="Manual ID / Email Check-in..."
+            placeholder="Manual ID Check-in..."
             value={manualId}
             onChange={(e) => setManualId(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && processCheckIn(manualId)}
@@ -172,7 +174,6 @@ const Scanner = () => {
         </div>
       </div>
 
-      {/* --- SCANNER HISTORY --- */}
       <div className="mt-12 w-full max-w-md space-y-6">
         <div className="flex items-center justify-between px-2 text-slate-400 border-b border-white/5 pb-4">
           <div className="flex items-center gap-3">
@@ -182,7 +183,6 @@ const Scanner = () => {
           <button 
             onClick={clearHistory}
             className="p-2 hover:bg-red-500/10 text-slate-600 hover:text-red-500 rounded-xl transition-all"
-            title="Clear History"
           >
             <Trash2 size={16} />
           </button>
@@ -196,7 +196,7 @@ const Scanner = () => {
           ) : (
             history.map((entry, index) => (
               <div key={index} className="bg-slate-900/50 p-5 rounded-3xl border border-white/5 flex items-center justify-between group animate-in slide-in-from-bottom-2">
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 text-left">
                   <div className="w-10 h-10 bg-green-500/10 rounded-xl flex items-center justify-center text-green-500 border border-green-500/20">
                     <UserCheck size={20} />
                   </div>

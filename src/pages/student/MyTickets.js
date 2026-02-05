@@ -16,37 +16,56 @@ const MyTickets = () => {
   }, []);
 
   const fetchUserTickets = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
 
-      const { data: profile } = await supabase
-        .from('students')
-        .select('name, surname')
-        .eq('email', user.email)
-        .single();
-      
-      setStudentName(`${profile?.name || ''} ${profile?.surname || ''}`);
+    // Fetch profile
+    const { data: profile } = await supabase
+      .from('students')
+      .select('name, surname')
+      .eq('email', user.email)
+      .single();
+    
+    setStudentName(`${profile?.name || 'Student'} ${profile?.surname || ''}`);
 
-      const { data, error } = await supabase
-        .from('bookings')
-        .select(`id, status, events ( title, date, venue, school, start_time, end_time )`)
-        .eq('student_email', user.email)
-        .order('created_at', { ascending: false });
+    // Fetch bookings without date restrictions
+    const { data, error } = await supabase
+      .from('bookings')
+      .select(`
+        id, 
+        status, 
+        events ( 
+          title, 
+          date, 
+          venue, 
+          school, 
+          start_time, 
+          end_time,
+          registration_deadline
+        )
+      `)
+      .eq('student_email', user.email)
+      .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setTickets(data || []);
-    } catch (error) {
-      toast.error("Vault Access Failure");
-    } finally {
-      setLoading(false);
-    }
-  };
+    if (error) throw error;
+
+    // Safety Filter: Ensure the underlying event still exists
+    const validTickets = (data || []).filter(ticket => ticket.events !== null);
+
+    setTickets(validTickets);
+  } catch (error) {
+    toast.error("Vault Access Failure");
+  } finally {
+    setLoading(false);
+  }
+};
 
   const openTicket = (ticket) => {
     setSelectedTicket(ticket);
     setIsFlipping(false);
-    setTimeout(() => setIsFlipping(true), 150);
+    // Trigger the flip animation after a short delay for security feel
+    setTimeout(() => setIsFlipping(true), 300);
   };
 
   if (loading) return (
@@ -68,52 +87,60 @@ const MyTickets = () => {
            <h2 className="text-5xl font-black uppercase italic tracking-tighter text-white">Digital Vault</h2>
         </header>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-10">
-          {tickets.map((ticket) => (
-            <div 
-              key={ticket.id} 
-              onClick={() => openTicket(ticket)}
-              className="relative aspect-square bg-[#0f172a] rounded-[3rem] border border-white/10 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] p-8 flex flex-col justify-between group cursor-pointer overflow-hidden transition-all duration-300 active:scale-95"
-            >
-              <div className="absolute inset-0 bg-gradient-to-br from-blue-600/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-              <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-blue-500 to-transparent shadow-[0_0_15px_rgba(59,130,246,0.8)]" />
+        {tickets.length === 0 ? (
+          <div className="text-center py-20 bg-[#0f172a] rounded-[3rem] border border-dashed border-white/10">
+            <Info size={48} className="mx-auto text-slate-700 mb-4" />
+            <p className="text-slate-500 font-black uppercase tracking-widest text-xs">No active passes in your vault.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-10">
+            {tickets.map((ticket) => (
+              <div 
+                key={ticket.id} 
+                onClick={() => openTicket(ticket)}
+                className="relative aspect-square bg-[#0f172a] rounded-[3rem] border border-white/10 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] p-8 flex flex-col justify-between group cursor-pointer overflow-hidden transition-all duration-300 active:scale-95"
+              >
+                <div className="absolute inset-0 bg-gradient-to-br from-blue-600/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-blue-500 to-transparent shadow-[0_0_15px_rgba(59,130,246,0.8)]" />
 
-              <div className="relative z-10 flex justify-between items-start">
-                <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest bg-blue-500/20 px-4 py-1.5 rounded-full border border-blue-400/30 shadow-[0_0_10px_rgba(59,130,246,0.2)]">
-                  {ticket.events?.school}
-                </span>
-                <ShieldCheck size={20} className="text-blue-500/50 group-hover:text-blue-400 transition-colors" />
-              </div>
+                <div className="relative z-10 flex justify-between items-start">
+                  <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest bg-blue-500/20 px-4 py-1.5 rounded-full border border-blue-400/30">
+                    {ticket.events?.school}
+                  </span>
+                  <ShieldCheck size={20} className="text-blue-500/50 group-hover:text-blue-400 transition-colors" />
+                </div>
 
-              <div className="relative z-10 space-y-4">
-                <h3 className="text-3xl font-black uppercase tracking-tighter leading-[0.85] group-hover:text-blue-400 transition-colors">
-                  {ticket.events?.title}
-                </h3>
-                <div className="space-y-2">
-                  <p className="flex items-center gap-2 text-[10px] font-bold text-slate-300 uppercase tracking-widest">
-                    <Calendar size={12} className="text-blue-500"/> {ticket.events?.date}
-                  </p>
-                  <p className="flex items-center gap-2 text-[10px] font-bold text-slate-300 uppercase tracking-widest">
-                    <Clock size={12} className="text-blue-500"/> {ticket.events?.start_time}
-                  </p>
+                <div className="relative z-10 space-y-4">
+                  <h3 className="text-3xl font-black uppercase tracking-tighter leading-[0.85] group-hover:text-blue-400 transition-colors">
+                    {ticket.events?.title}
+                  </h3>
+                  <div className="space-y-2">
+                    <p className="flex items-center gap-2 text-[10px] font-bold text-slate-300 uppercase tracking-widest">
+                      <Calendar size={12} className="text-blue-500"/> {ticket.events?.date}
+                    </p>
+                    <p className="flex items-center gap-2 text-[10px] font-bold text-slate-300 uppercase tracking-widest">
+                      <Clock size={12} className="text-blue-500"/> {ticket.events?.start_time}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="relative z-10 pt-6 border-t border-white/5 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-blue-400 font-black text-[9px] uppercase tracking-widest animate-pulse">
+                     <Info size={12} /> Tap to Open
+                  </div>
+                  <div className="flex gap-1.5">
+                     <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]" />
+                     <div className="w-1.5 h-1.5 rounded-full bg-slate-700" />
+                     <div className="w-1.5 h-1.5 rounded-full bg-slate-700" />
+                  </div>
                 </div>
               </div>
-
-              <div className="relative z-10 pt-6 border-t border-white/5 flex items-center justify-between">
-                <div className="flex items-center gap-2 text-blue-400 font-black text-[9px] uppercase tracking-widest animate-pulse">
-                   <Info size={12} /> Tap to Open
-                </div>
-                <div className="flex gap-1.5">
-                   <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]" />
-                   <div className="w-1.5 h-1.5 rounded-full bg-slate-700" />
-                   <div className="w-1.5 h-1.5 rounded-full bg-slate-700" />
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
+      {/* TICKET DETAIL MODAL WITH 3D FLIP */}
       {selectedTicket && (
         <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-3xl flex items-center justify-center p-4">
           <button 
@@ -125,6 +152,8 @@ const MyTickets = () => {
 
           <div className="perspective-2000 w-full max-w-lg h-[600px] md:h-[550px]">
             <div className={`relative w-full h-full transition-all duration-[900ms] transform-style-3d ${isFlipping ? 'rotate-y-180' : ''}`}>
+              
+              {/* FRONT: EVENT SUMMARY */}
               <div className="absolute inset-0 backface-hidden bg-[#0f172a] rounded-[3.5rem] border border-blue-500/40 p-10 flex flex-col justify-between shadow-[0_0_100px_rgba(37,99,235,0.2)]">
                 <div className="absolute top-0 left-0 w-full h-[4px] bg-gradient-to-r from-transparent via-blue-500 to-transparent" />
                 <div>
@@ -161,6 +190,7 @@ const MyTickets = () => {
                 </div>
               </div>
 
+              {/* BACK: QR CODE ACCESS */}
               <div className="absolute inset-0 backface-hidden rotate-y-180 bg-white rounded-[3.5rem] flex flex-col items-center p-10 text-slate-900 shadow-[0_0_100px_rgba(255,255,255,0.2)]">
                 <div className="text-center mb-8">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mb-2">Gate Access Authorized</p>
@@ -171,7 +201,7 @@ const MyTickets = () => {
                 <div className="bg-[#f8fafc] p-10 rounded-[3rem] border-2 border-slate-100 shadow-[inset_0_2px_10px_rgba(0,0,0,0.05)] mb-8">
                   <QRCodeCanvas 
                     value={selectedTicket.id} 
-                    size={280} 
+                    size={260} 
                     level="H" 
                     includeMargin={false}
                   />
@@ -186,6 +216,7 @@ const MyTickets = () => {
                   <p className="text-[9px] text-center font-bold text-slate-400 uppercase tracking-[0.5em]">Scan for Instant Admission</p>
                 </div>
               </div>
+
             </div>
           </div>
         </div>
