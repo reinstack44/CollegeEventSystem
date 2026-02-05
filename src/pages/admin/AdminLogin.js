@@ -62,7 +62,7 @@ const AdminLogin = () => {
               <Mail className="absolute left-4 text-slate-500" size={18} />
               <input 
                 type="email" 
-                placeholder="admin@activearch.in" 
+                placeholder="admin@gmail.com" 
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full pl-12 pr-4 py-4 bg-slate-950 border border-slate-800 focus:border-red-500 rounded-2xl outline-none text-white text-sm font-medium transition-all" 
