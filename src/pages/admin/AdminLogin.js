@@ -25,7 +25,7 @@ const AdminLogin = () => {
       if (error) throw error;
 
       // Step 2: AUTHORITY CHECK - Only allow generic admin email
-      const authorizedAdmins = ['admin@gmail.com'];
+      const authorizedAdmins = ['admin@activearch.in'];
 
       if (!authorizedAdmins.includes(data.user.email)) {
         // If they are not an authorized admin, log them out immediately
