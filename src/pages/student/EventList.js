@@ -118,7 +118,7 @@ const EventList = () => {
 
           {/* 2. ADYPU LOGO SECTION - Centered Below Search */}
           <div className="flex justify-center w-full">
-            <div className="bg-white rounded-2xl px-50 py-5.5 shadow-[0_10px_40px_rgba(0,0,0,0.4)] border border-white/10 flex items-center justify-center">
+            <div className="bg-white rounded-2xl px-20 py-3.5 shadow-[0_10px_40px_rgba(0,0,0,0.4)] border border-white/10 flex items-center justify-center">
               <img 
                 src="/adypu logo.png" 
                 alt="ADYPU Logo" 
