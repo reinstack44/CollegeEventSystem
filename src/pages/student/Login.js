@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { supabase } from '../../sbclient/supabaseClient';
 import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Mail, Lock, ArrowRight, ShieldCheck, Zap } from 'lucide-react';
+import { Mail, Lock, ArrowRight, ShieldCheck, Zap, Command } from 'lucide-react';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -61,13 +61,20 @@ const Login = () => {
             {loading ? <Zap className="animate-pulse" size={20} /> : "SIGN IN"} <ArrowRight size={20} />
           </button>
 
-          <div className="pt-6 text-center border-t border-slate-800/50">
+          <div className="pt-6 space-y-4 text-center border-t border-slate-800/50">
             <p className="text-slate-500 text-xs font-medium">
               New student?{' '}
               <Link to="/signup" className="text-blue-500 font-black uppercase tracking-widest hover:underline transition-all">
                 Register Here
               </Link>
             </p>
+
+            <Link 
+              to="/adminlogin" 
+              className="flex items-center justify-center gap-2 w-full py-3 bg-slate-800/50 hover:bg-slate-800 text-slate-400 hover:text-white rounded-xl text-[9px] font-black uppercase tracking-[0.2em] border border-white/5 transition-all"
+            >
+              <Command size={14} /> Administrative Portal
+            </Link>
           </div>
         </form>
       </div>
