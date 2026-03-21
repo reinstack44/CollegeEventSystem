@@ -93,21 +93,18 @@ const MyTickets = () => {
     if (!printRef.current || !selectedTicket) return;
     
     setIsDownloading(true);
-    const toastId = toast.loading("Generating A4 Vertical PDF...");
+    const toastId = toast.loading("Generating Secure PDF Pass...");
     
     try {
-      // Force html2canvas to render exactly at 794px width (standard A4 px width)
-      // This prevents mobile browsers from squishing the layout
       const canvas = await html2canvas(printRef.current, { 
-        scale: 2, 
+        scale: 3, 
         useCORS: true,
-        backgroundColor: '#ffffff',
-        windowWidth: 794
+        backgroundColor: '#0a0f1d',
+        windowWidth: 794,
+        logging: false
       });
       
       const imgData = canvas.toDataURL('image/png', 1.0);
-      
-      // Initialize exact A4 portrait dimensions
       const pdf = new jsPDF('p', 'px', [794, 1123]);
       
       pdf.addImage(imgData, 'PNG', 0, 0, 794, 1123);
@@ -193,7 +190,7 @@ const MyTickets = () => {
 
                   <div className="relative z-10 pt-6 border-t border-white/5 flex items-center justify-between">
                     <div className="flex items-center gap-2 text-blue-400 font-black text-[9px] uppercase tracking-widest animate-pulse">
-                       <Info size={12} /> Tap to Open QR Pass
+                       <Info size={12} /> Tap to Open Pass
                     </div>
                     {!isCheckedIn && (
                       <button 
@@ -202,7 +199,6 @@ const MyTickets = () => {
                           handleCancelTicket(ticket.id, ticket.events?.title);
                         }}
                         className="p-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl border border-red-500/20 transition-all active:scale-90"
-                        title="Cancel Ticket"
                       >
                         <Trash2 size={16} />
                       </button>
@@ -215,7 +211,7 @@ const MyTickets = () => {
         )}
       </div>
 
-      {/* TICKET DETAIL MODAL WITH 3D FLIP */}
+      {/* TICKET DETAIL MODAL */}
       {selectedTicket && (
         <div className="fixed inset-0 z-100 bg-black/95 backdrop-blur-3xl flex items-center justify-center p-4">
           <button 
@@ -228,7 +224,7 @@ const MyTickets = () => {
           <div className="perspective-2000 w-full max-w-lg h-150 md:h-162.5">
             <div className={`relative w-full h-full transition-transform duration-1000 ease-in-out transform-style-3d ${isFlipping ? 'rotate-y-180' : ''}`}>
               
-              {/* FRONT: EVENT SUMMARY */}
+              {/* FRONT */}
               <div className="absolute inset-0 backface-hidden bg-[#0f172a] rounded-[3.5rem] border border-blue-500/40 p-10 flex flex-col justify-between shadow-[0_0_100px_rgba(37,99,235,0.2)]">
                 <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-transparent via-blue-500 to-transparent" />
                 <div className="text-left">
@@ -238,9 +234,7 @@ const MyTickets = () => {
                         <p className="text-[11px] font-black uppercase tracking-[0.4em] text-blue-400">Security Pass Verified</p>
                      </div>
                      <div className={`px-4 py-1.5 rounded-xl border text-[9px] font-black uppercase tracking-widest ${
-                       selectedTicket.status === 'checked_in' 
-                       ? 'text-green-500 border-green-500/20 bg-green-500/5' 
-                       : 'text-blue-500 border-blue-500/20 bg-blue-500/5'
+                       selectedTicket.status === 'checked_in' ? 'text-green-500 border-green-500/20' : 'text-blue-500 border-blue-500/20'
                      }`}>
                        {selectedTicket.status.replace('_', ' ')}
                      </div>
@@ -250,87 +244,58 @@ const MyTickets = () => {
                    </h4>
                    <div className="space-y-6">
                       <div className="flex items-center gap-5">
-                        <div className="p-3 bg-blue-500/10 rounded-2xl border border-blue-500/20">
-                          <Calendar className="text-blue-500" size={24} />
-                        </div>
+                        <Calendar className="text-blue-500" size={24} />
                         <div>
                           <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Pass Valid For</p>
                           <p className="text-xl font-bold">{selectedTicket.events?.date}</p>
                         </div>
                       </div>
-
                       <div className="flex items-center gap-5">
-                        <div className="p-3 bg-blue-500/10 rounded-2xl border border-blue-500/20">
-                          <Clock className="text-blue-500" size={24} />
-                        </div>
+                        <Clock className="text-blue-500" size={24} />
                         <div>
-                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Event Duration</p>
-                          <p className="text-xl font-bold">
-                            {selectedTicket.events?.start_time} — {selectedTicket.events?.end_time || 'End'}
-                          </p>
+                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Event Time</p>
+                          <p className="text-xl font-bold">{selectedTicket.events?.start_time}</p>
                         </div>
                       </div>
-
                       <div className="flex items-center gap-5">
-                        <div className="p-3 bg-blue-500/10 rounded-2xl border border-blue-500/20">
-                          <MapPin className="text-blue-500" size={24} />
-                        </div>
+                        <MapPin className="text-blue-500" size={24} />
                         <div>
                           <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Venue Location</p>
-                          <p className="text-xl font-bold">{selectedTicket.events?.venue}</p>
+                          <p className="text-xl font-bold truncate max-w-62.5">{selectedTicket.events?.venue}</p>
                         </div>
                       </div>
                    </div>
                 </div>
                 <div className="flex flex-col items-center gap-4 py-6 border-t border-white/5">
-                  {selectedTicket.status !== 'checked_in' && (
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleCancelTicket(selectedTicket.id, selectedTicket.events?.title);
-                      }}
-                      className="flex items-center gap-2 px-6 py-2 bg-red-600/10 text-red-500 border border-red-500/20 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-600 hover:text-white transition-all active:scale-95"
-                    >
-                      <Trash2 size={14} /> Cancel Ticket
-                    </button>
-                  )}
                   <p className="text-blue-500 font-black text-[10px] uppercase tracking-widest animate-pulse">Preparing Entry Token...</p>
                 </div>
               </div>
 
               {/* BACK: QR CODE ACCESS */}
-              <div className="absolute inset-0 backface-hidden rotate-y-180 bg-white rounded-[3.5rem] flex flex-col items-center p-8 text-slate-900 shadow-[0_0_100px_rgba(255,255,255,0.2)]">
+              <div className="absolute inset-0 backface-hidden rotate-y-180 bg-white rounded-[3.5rem] flex flex-col items-center p-8 text-slate-900">
                 <div className="text-center mb-6">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mb-1">Gate Pass Authorized For</p>
-                  <h4 className="text-2xl font-black uppercase tracking-tighter text-blue-600 italic underline decoration-blue-600/20 underline-offset-8">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mb-1">Authorized For</p>
+                  <h4 className="text-2xl font-black uppercase tracking-tighter text-blue-600 italic">
                     {studentName}
                   </h4>
                 </div>
-                <div className="bg-[#f8fafc] p-6 rounded-[3rem] border-2 border-slate-100 shadow-[inset_0_2px_10px_rgba(0,0,0,0.05)] mb-6">
-                  <QRCodeCanvas 
-                    value={selectedTicket.id} 
-                    size={220} 
-                    level="H" 
-                    includeMargin={false}
-                  />
+                <div className="bg-[#f8fafc] p-6 rounded-[3rem] border-2 border-slate-100 mb-6">
+                  <QRCodeCanvas value={selectedTicket.id} size={220} level="H" />
                 </div>
                 <div className="w-full space-y-4">
                   <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex items-center justify-between">
-                    <p className="font-mono text-[11px] text-slate-400 uppercase font-bold tracking-tighter truncate max-w-62.5">
+                    <p className="font-mono text-[11px] text-slate-400 uppercase font-bold truncate max-w-62.5">
                       ID: {selectedTicket.id}
                     </p>
                     <Fingerprint size={18} className="text-blue-500" />
                   </div>
-                  <p className="text-[9px] text-center font-bold text-slate-400 uppercase tracking-[0.5em] mb-2">Show Your QR Pass At The Entrance</p>
-                  
-                  {/* DOWNLOAD PDF BUTTON */}
                   <button 
                     onClick={downloadPDF}
                     disabled={isDownloading}
-                    className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black uppercase text-[10px] tracking-widest transition-all active:scale-95 shadow-lg shadow-blue-500/20"
+                    className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 text-white rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-blue-700 transition-all"
                   >
                     {isDownloading ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
-                    {isDownloading ? 'Generating PDF...' : 'Download PDF Pass'}
+                    {isDownloading ? 'Generating...' : 'Download PDF'}
                   </button>
                 </div>
               </div>
@@ -340,106 +305,108 @@ const MyTickets = () => {
         </div>
       )}
 
-      {/* HIDDEN PRINTABLE TICKET: Strict Vertical A4 Dimensions (794x1123) */}
+      {/* HIDDEN PRINTABLE TICKET: FINAL FIX FOR TEXT CLIPPING */}
       {selectedTicket && (
         <div style={{ position: 'absolute', top: '-20000px', left: '-20000px', zIndex: -9999 }}>
-          {/* Exact A4 Wrapper Container */}
           <div 
             ref={printRef} 
             style={{ 
               width: '794px', 
               height: '1123px', 
-              backgroundColor: '#ffffff', 
+              backgroundColor: '#0a0f1d', 
               padding: '40px',
-              boxSizing: 'border-box',
-              fontFamily: 'system-ui, -apple-system, sans-serif'
+              boxSizing: 'border-box'
             }}
           >
-            {/* The Ticket Frame */}
             <div style={{
-              width: '714px', /* 794 - 40 - 40 */
-              height: '1043px', /* 1123 - 40 - 40 */
-              border: '4px solid #0f172a',
+              width: '714px', 
+              height: '1043px', 
+              border: '4px solid #3b82f6',
               borderRadius: '32px',
               display: 'flex',
               flexDirection: 'column',
-              boxSizing: 'border-box',
-              overflow: 'hidden'
+              backgroundColor: '#0a0f1d',
+              boxSizing: 'border-box'
             }}>
               
-              {/* TOP SECTION: Details (Dark) */}
+              {/* TOP SECTION: Midnight Navy (Flexible height) */}
               <div style={{
-                flex: 1,
-                backgroundColor: '#0a0f1d',
-                padding: '50px',
+                flex: '0 0 auto',
+                padding: '50px 60px 30px 60px',
                 display: 'flex',
                 flexDirection: 'column',
                 boxSizing: 'border-box'
               }}>
-                 {/* Header & Badge */}
-                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '40px' }}>
-                   <p style={{ margin: 0, fontSize: '18px', fontWeight: 'bold', color: '#3b82f6', letterSpacing: '2px', textTransform: 'uppercase' }}>
-                     {selectedTicket.events?.school || 'EVENT'} • OFFICIAL SECURITY PASS
+                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
+                   <p style={{ margin: 0, fontSize: '18px', fontWeight: 'bold', color: '#3b82f6', letterSpacing: '3px', textTransform: 'uppercase' }}>
+                     {selectedTicket.events?.school || 'EVENT'} • SECURITY PASS
                    </p>
-                   <div style={{ backgroundColor: '#dcfce7', color: '#16a34a', padding: '10px 20px', borderRadius: '12px', fontWeight: '900', fontSize: '16px', border: '2px solid #bbf7d0', textTransform: 'uppercase' }}>
-                      VALID PASS
+                   <div style={{ backgroundColor: '#1e293b', color: '#3b82f6', padding: '10px 20px', borderRadius: '12px', fontWeight: '900', fontSize: '14px', border: '1px solid rgba(59,130,246,0.3)' }}>
+                      VERIFIED ACCESS
                    </div>
                  </div>
 
-                 {/* Event Title (Natural Wrapping) */}
-                 <h1 style={{ margin: '0 0 40px 0', fontSize: '56px', fontWeight: '900', color: '#ffffff', textTransform: 'uppercase', fontStyle: 'italic', lineHeight: '1.15', wordWrap: 'break-word', whiteSpace: 'normal' }}>
-                   {selectedTicket.events?.title}
-                 </h1>
+                 {/* TITLE AREA: No fixed height, explicit line height */}
+                 <div style={{ marginBottom: '30px', width: '100%' }}>
+                    <h1 style={{ 
+                      margin: 0, 
+                      fontSize: selectedTicket.events?.title.length > 30 ? '34px' : '48px', 
+                      fontWeight: '900', 
+                      color: '#ffffff', 
+                      textTransform: 'uppercase', 
+                      fontStyle: 'italic', 
+                      lineHeight: '38px', // Fixed line height to prevent overlapping
+                      wordWrap: 'break-word',
+                      display: 'block'
+                    }}>
+                      {selectedTicket.events?.title}
+                    </h1>
+                 </div>
 
-                 {/* Date & Time Row */}
-                 <div style={{ display: 'flex', marginBottom: '30px', gap: '30px' }}>
+                 <div style={{ display: 'flex', marginBottom: '25px', gap: '40px' }}>
                     <div style={{ flex: 1 }}>
-                       <p style={{ margin: '0 0 8px 0', fontSize: '16px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: '1px' }}>Event Date</p>
+                       <p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Date</p>
                        <p style={{ margin: 0, fontSize: '26px', fontWeight: 'bold', color: '#ffffff' }}>{selectedTicket.events?.date}</p>
                     </div>
                     <div style={{ flex: 1 }}>
-                       <p style={{ margin: '0 0 8px 0', fontSize: '16px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: '1px' }}>Authorized Time</p>
-                       <p style={{ margin: 0, fontSize: '26px', fontWeight: 'bold', color: '#ffffff' }}>{selectedTicket.events?.start_time} - {selectedTicket.events?.end_time || 'End'}</p>
+                       <p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Time</p>
+                       <p style={{ margin: 0, fontSize: '26px', fontWeight: 'bold', color: '#ffffff' }}>{selectedTicket.events?.start_time}</p>
                     </div>
                  </div>
 
-                 {/* Venue */}
-                 <div style={{ marginBottom: 'auto' }}>
-                    <p style={{ margin: '0 0 8px 0', fontSize: '16px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: '1px' }}>Venue Location</p>
-                    <p style={{ margin: 0, fontSize: '26px', fontWeight: 'bold', color: '#ffffff', wordWrap: 'break-word', whiteSpace: 'normal' }}>{selectedTicket.events?.venue}</p>
+                 <div style={{ marginBottom: '30px' }}>
+                    <p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Venue Location</p>
+                    <p style={{ margin: 0, fontSize: '22px', fontWeight: 'bold', color: '#ffffff' }}>{selectedTicket.events?.venue}</p>
                  </div>
 
-                 {/* Student Name */}
-                 <div style={{ borderTop: '2px solid #1e293b', paddingTop: '30px', marginTop: '30px' }}>
-                    <p style={{ margin: '0 0 8px 0', fontSize: '16px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: '1px' }}>Authorized Attendee</p>
-                    <p style={{ margin: 0, fontSize: '40px', fontWeight: '900', color: '#ffffff', textTransform: 'uppercase' }}>{studentName}</p>
+                 <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '20px' }}>
+                    <p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Authorized Attendee</p>
+                    <p style={{ margin: 0, fontSize: '38px', fontWeight: '900', color: '#ffffff', textTransform: 'uppercase' }}>{studentName}</p>
                  </div>
               </div>
 
-              {/* THICK DASHED DIVIDER */}
-              <div style={{ height: '0', borderBottom: '6px dashed #cbd5e1', backgroundColor: '#0a0f1d' }}></div>
+              {/* DASHED DIVIDER */}
+              <div style={{ height: '0', borderBottom: '4px dashed #3b82f6', margin: '0 40px' }}></div>
 
-              {/* BOTTOM SECTION: QR Code (Light) */}
+              {/* BOTTOM SECTION: Admit One (White) */}
               <div style={{
-                height: '420px',
-                backgroundColor: '#f8fafc',
+                flex: '1 1 auto',
+                backgroundColor: '#ffffff',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxSizing: 'border-box',
-                padding: '40px'
+                padding: '20px',
+                boxSizing: 'border-box'
               }}>
-                 <p style={{ margin: '0 0 20px 0', fontSize: '28px', fontWeight: '900', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '6px' }}>ADMIT ONE</p>
-                 
-                 <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '24px', border: '3px solid #e2e8f0', boxShadow: '0 10px 25px rgba(0,0,0,0.05)' }}>
-                    <QRCodeCanvas value={selectedTicket.id} size={200} level="H" />
+                 <p style={{ margin: '0 0 10px 0', fontSize: '20px', fontWeight: '900', color: '#0a0f1d', textTransform: 'uppercase', letterSpacing: '8px' }}>ADMIT ONE</p>
+                 <div style={{ backgroundColor: '#ffffff', padding: '10px', borderRadius: '15px', border: '1px solid #e2e8f0' }}>
+                    <QRCodeCanvas value={selectedTicket.id} size={170} level="H" />
                  </div>
-                 
-                 <p style={{ margin: '25px 0 8px 0', fontSize: '14px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', letterSpacing: '2px' }}>Ticket ID Reference</p>
-                 <p style={{ margin: 0, fontSize: '18px', fontWeight: 'bold', color: '#0f172a', fontFamily: 'monospace', wordBreak: 'break-all', textAlign: 'center', padding: '0 40px' }}>
-                   {selectedTicket.id}
-                 </p>
+                 <div style={{ marginTop: '10px', textAlign: 'center' }}>
+                    <p style={{ margin: '0 0 2px 0', fontSize: '11px', fontWeight: 'bold', color: '#94a3b8', textTransform: 'uppercase' }}>Secure Token ID</p>
+                    <p style={{ margin: 0, fontSize: '12px', fontWeight: 'bold', color: '#0a0f1d', fontFamily: 'monospace' }}>{selectedTicket.id}</p>
+                 </div>
               </div>
 
             </div>
