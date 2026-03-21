@@ -133,44 +133,65 @@ const MyTickets = () => {
 
   const TicketCard = ({ ticket }) => {
     const isCheckedIn = ticket.status === 'checked_in';
+    const isPending = ticket.status === 'pending';
     const isExpired = new Date(ticket.events?.date) < today;
+
+    // Secure Click Handler
+    const handleCardClick = () => {
+      if (isPending) {
+        toast('Pass is awaiting Admin UTR verification.', {
+          icon: '⏳',
+          style: {
+            borderRadius: '10px',
+            background: '#1f2937',
+            color: '#eab308',
+            border: '1px solid rgba(234, 179, 8, 0.2)'
+          },
+        });
+        return; // Stop the flip!
+      }
+      openTicket(ticket);
+    };
 
     return (
       <div 
-        className={`relative aspect-square bg-[#0f172a] rounded-[3rem] border border-white/10 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] p-8 flex flex-col justify-between group cursor-pointer overflow-hidden transition-all duration-300 active:scale-95 ${isExpired ? 'opacity-60 grayscale-[0.5]' : ''}`}
-        onClick={() => openTicket(ticket)}
+        className={`relative aspect-square bg-[#0f172a] rounded-[3rem] border border-white/10 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] p-8 flex flex-col justify-between group overflow-hidden transition-all duration-300 ${isExpired ? 'opacity-60 grayscale-[0.5] cursor-pointer' : isPending ? 'cursor-not-allowed border-yellow-500/20' : 'cursor-pointer active:scale-95'}`}
+        onClick={handleCardClick}
       >
-        <div className={`absolute inset-0 bg-linear-to-br ${isExpired ? 'from-slate-600/10' : 'from-blue-600/10'} via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500`} />
-        <div className={`absolute top-0 left-0 w-full h-0.5 bg-linear-to-r from-transparent ${isExpired ? 'via-slate-500' : 'via-blue-500'} to-transparent shadow-[0_0_15px_rgba(59,130,246,0.8)]`} />
+        <div className={`absolute inset-0 bg-linear-to-br ${isExpired ? 'from-slate-600/10' : isPending ? 'from-yellow-600/5' : 'from-blue-600/10'} via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500`} />
+        <div className={`absolute top-0 left-0 w-full h-0.5 bg-linear-to-r from-transparent ${isExpired ? 'via-slate-500' : isPending ? 'via-yellow-500' : 'via-blue-500'} to-transparent ${!isExpired && !isPending && 'shadow-[0_0_15px_rgba(59,130,246,0.8)]'}`} />
 
         <div className="relative z-10 flex justify-between items-start">
-          <span className={`text-[9px] font-black uppercase tracking-widest px-4 py-1.5 rounded-full border ${isExpired ? 'text-slate-400 bg-slate-500/10 border-slate-400/30' : 'text-blue-400 bg-blue-500/20 border-blue-400/30'}`}>
+          <span className={`text-[9px] font-black uppercase tracking-widest px-4 py-1.5 rounded-full border ${isExpired ? 'text-slate-400 bg-slate-500/10 border-slate-400/30' : isPending ? 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' : 'text-blue-400 bg-blue-500/20 border-blue-400/30'}`}>
             {ticket.events?.school}
           </span>
           <span className={`flex items-center gap-1.5 text-[8px] font-black uppercase tracking-[0.2em] px-3 py-1 rounded-md border ${
             isCheckedIn 
             ? 'text-green-500 border-green-500/20 bg-green-500/10' 
-            : isExpired ? 'text-slate-500 border-slate-500/20 bg-slate-500/10' : 'text-blue-500 border-blue-500/20 bg-blue-500/10'
+            : isExpired ? 'text-slate-500 border-slate-500/20 bg-slate-500/10' 
+            : isPending ? 'text-yellow-500 border-yellow-500/20 bg-yellow-500/10'
+            : 'text-blue-500 border-blue-500/20 bg-blue-500/10'
           }`}>
-            {isCheckedIn ? <CheckCircle2 size={10}/> : <ShieldCheck size={10}/>}
+            {isCheckedIn ? <CheckCircle2 size={10}/> : isPending ? <Clock size={10}/> : <ShieldCheck size={10}/>}
             {isExpired ? 'EXPIRED' : ticket.status.replace('_', ' ')}
           </span>
         </div>
 
         <div className="relative z-10 space-y-4 text-left">
-          <h3 className={`text-3xl font-black uppercase tracking-tighter leading-[0.85] transition-colors ${isExpired ? 'text-slate-500' : 'group-hover:text-blue-400'}`}>
+          <h3 className={`text-3xl font-black uppercase tracking-tighter leading-[0.85] transition-colors ${isExpired ? 'text-slate-500' : isPending ? 'text-yellow-500/80' : 'group-hover:text-blue-400'}`}>
             {ticket.events?.title}
           </h3>
           <div className="space-y-2">
-            <p className="flex items-center gap-2 text-[10px] font-bold text-slate-300 uppercase tracking-widest"><Calendar size={12} className={isExpired ? "text-slate-500" : "text-blue-500"}/> {ticket.events?.date}</p>
-            <p className="flex items-center gap-2 text-[10px] font-bold text-slate-300 uppercase tracking-widest"><Clock size={12} className={isExpired ? "text-slate-500" : "text-blue-500"}/> {ticket.events?.start_time} — {ticket.events?.end_time || 'End'}</p>
-            <p className="flex items-center gap-2 text-[10px] font-bold text-slate-300 uppercase tracking-widest truncate max-w-[90%]"><MapPin size={12} className={isExpired ? "text-slate-500" : "text-blue-500"}/> {ticket.events?.venue}</p>
+            <p className="flex items-center gap-2 text-[10px] font-bold text-slate-300 uppercase tracking-widest"><Calendar size={12} className={isExpired ? "text-slate-500" : isPending ? "text-yellow-600" : "text-blue-500"}/> {ticket.events?.date}</p>
+            <p className="flex items-center gap-2 text-[10px] font-bold text-slate-300 uppercase tracking-widest"><Clock size={12} className={isExpired ? "text-slate-500" : isPending ? "text-yellow-600" : "text-blue-500"}/> {ticket.events?.start_time} — {ticket.events?.end_time || 'End'}</p>
+            <p className="flex items-center gap-2 text-[10px] font-bold text-slate-300 uppercase tracking-widest truncate max-w-[90%]"><MapPin size={12} className={isExpired ? "text-slate-500" : isPending ? "text-yellow-600" : "text-blue-500"}/> {ticket.events?.venue}</p>
           </div>
         </div>
 
         <div className="relative z-10 pt-6 border-t border-white/5 flex items-center justify-between">
-          <div className={`flex items-center gap-2 font-black text-[9px] uppercase tracking-widest ${isExpired ? 'text-slate-500' : 'text-blue-400 animate-pulse'}`}>
-             <Info size={12} /> {isExpired ? 'View Record' : 'Tap to Open Pass'}
+          <div className={`flex items-center gap-2 font-black text-[9px] uppercase tracking-widest ${isExpired ? 'text-slate-500' : isPending ? 'text-yellow-500 animate-pulse' : 'text-blue-400 animate-pulse'}`}>
+             {isPending ? <Clock size={12} /> : <Info size={12} />} 
+             {isExpired ? 'View Record' : isPending ? 'Awaiting Audit' : 'Tap to Open Pass'}
           </div>
           {!isCheckedIn && !isExpired && (
             <button 
