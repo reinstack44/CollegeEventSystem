@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { supabase } from '../../sbclient/supabaseClient';
+import { useNavigate } from 'react-router-dom'; // Added for navigation
 import { 
-  History, Radio, Flashlight, FlashlightOff, Activity, RefreshCw
+  History, Radio, Flashlight, FlashlightOff, Activity, RefreshCw, ArrowLeft 
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const Scanner = () => {
+  const navigate = useNavigate(); // Hook for back navigation
   const [isVerifying, setIsVerifying] = useState(false);
   const [scanResult, setScanResult] = useState(null);
   const [history, setHistory] = useState([]);
@@ -154,6 +156,16 @@ const Scanner = () => {
   return (
     <div className="min-h-screen bg-[#02040a] text-blue-500 p-6 pb-32 flex flex-col items-center font-mono">
       
+      {/* BACK NAVIGATION */}
+      <div className="w-full max-w-md mb-6 flex justify-start">
+        <button 
+          onClick={() => navigate('/admin')} 
+          className="flex items-center gap-2 text-slate-500 hover:text-blue-500 transition-all font-black text-[10px] uppercase tracking-widest"
+        >
+          <ArrowLeft size={14} /> Back to Dashboard
+        </button>
+      </div>
+
       {/* HUD HEADER - THEMED BLUE */}
       <div className="w-full max-w-md flex items-center justify-between mb-8 bg-[#050914] border-l-4 border-l-red-600 border-white/5 p-6 rounded-r-3xl shadow-[0_0_30px_rgba(37,99,235,0.1)]">
         <div className="text-left">
@@ -171,7 +183,7 @@ const Scanner = () => {
       </div>
 
       {/* CENTERED BLUE THEMED SCANNER */}
-      <div className={`relative w-full max-w-md aspect-square rounded-[2rem] border-2 transition-all duration-300 overflow-hidden shadow-2xl flex items-center justify-center ${
+      <div className={`relative w-full max-w-md aspect-square rounded-4xl border-2 transition-all duration-300 overflow-hidden shadow-2xl flex items-center justify-center ${
         scanResult?.type === 'success' ? 'border-green-500 shadow-[0_0_50px_rgba(34,197,94,0.4)]' : 
         scanResult?.type === 'error' ? 'border-red-600 shadow-[0_0_50px_rgba(220,38,38,0.4)]' :
         'border-blue-500/30 shadow-[0_0_30px_rgba(37,99,235,0.1)]'
@@ -179,7 +191,6 @@ const Scanner = () => {
         
         <div id="reader" className="w-full h-full scanner-container"></div>
         
-        {/* RE-SCAN BUTTON: BLUE THEMED */}
         <button 
           onClick={handleReScan}
           className="absolute top-6 left-6 z-30 p-4 bg-black/60 border border-blue-500/20 rounded-xl text-blue-500 hover:bg-blue-500/20 transition-all active:scale-90"
@@ -188,16 +199,13 @@ const Scanner = () => {
           <RefreshCw size={20} />
         </button>
 
-        {/* HUD OVERLAYS - BLUE BRACKETS */}
         <div className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center">
-            <div className="w-[250px] h-[250px] relative">
+            <div className="w-62.5 h-62.5 relative">
                 <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-blue-500"></div>
                 <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-blue-500"></div>
                 <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-blue-500"></div>
                 <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-blue-500"></div>
-                
-                {/* BLUE LASER SCAN */}
-                <div className="absolute top-0 left-0 w-full h-[2px] bg-blue-500 shadow-[0_0_15px_#2563eb] animate-cyber-scan"></div>
+                <div className="absolute top-0 left-0 w-full h-0.5 bg-blue-500 shadow-[0_0_15px_#2563eb] animate-cyber-scan"></div>
             </div>
         </div>
 
@@ -222,10 +230,9 @@ const Scanner = () => {
         </button>
       </div>
 
-      {/* RESULT INDICATOR */}
       <div className="mt-8 h-16 flex items-center justify-center w-full text-center">
         {scanResult ? (
-          <div className="px-10 py-3 border-2 skew-x-[-12deg] flex items-center bg-[#050914]">
+          <div className="px-10 py-3 border-2 -skew-x-12 flex items-center bg-[#050914]">
              <span className={`text-2xl font-black italic tracking-tighter uppercase ${
                scanResult.type === 'success' ? 'text-green-500' : 'text-red-600'
              }`}>
@@ -237,7 +244,6 @@ const Scanner = () => {
         )}
       </div>
 
-      {/* ACTIVITY FEED */}
       <div className="mt-8 w-full max-w-md space-y-4 pb-20">
         <div className="flex items-center px-4 border-b border-blue-500/10 pb-4">
           <History size={14} className="mr-2" />
@@ -270,14 +276,12 @@ const Scanner = () => {
           50% { top: 100%; opacity: 1; }
         }
         .animate-cyber-scan { animation: cyber-scan 2.5s ease-in-out infinite; }
-        
         #reader video {
           width: 100% !important;
           height: 100% !important;
           object-fit: cover !important;
           border-radius: 2rem !important;
         }
-        
         #reader__dashboard { display: none !important; }
         #reader__scan_region { background: transparent !important; }
       `}</style>

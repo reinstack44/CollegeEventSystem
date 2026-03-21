@@ -55,7 +55,7 @@ function App() {
       <div className="min-h-screen transition-colors duration-500 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col">
         <Navbar darkMode={darkMode} setDarkMode={setDarkMode} />
         
-        <main className="w-full flex-grow pb-20">
+        <main className="w-full grow pb-20">
           <Routes>
             <Route path="/" element={<Signup />} />
             <Route path="/login" element={<Login />} />

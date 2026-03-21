@@ -86,28 +86,27 @@ const Navbar = () => {
               }`}
             >
               {isOpen ? <X size={18} /> : <Menu size={18} />}
-              <span className="hidden sm:inline ml-1">Portal</span>
             </button>
 
             {/* Dropdown Menu */}
             {isOpen && (
               <div className="absolute right-0 mt-5 w-72 bg-[#111827] rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.5)] py-4 border border-white/5 overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300 backdrop-blur-2xl">
                 <div className="px-6 py-3 mb-2 border-b border-white/5">
-                  <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.3em]">Navigation</p>
+                  <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.3em]">Menu</p>
                 </div>
                 
-                <MenuLink to="/events" icon={<Calendar size={18} className="text-blue-500"/>} label="Live Feed" onClick={() => setIsOpen(false)} />
+                <MenuLink to="/events" icon={<Calendar size={18} className="text-blue-500"/>} label="Live Events" onClick={() => setIsOpen(false)} />
                 
                 {user ? (
                   <>
                     {!isAdmin ? (
                       <>
-                        <MenuLink to="/my-tickets" icon={<Ticket size={18} className="text-blue-500"/>} label="Digital Vault" onClick={() => setIsOpen(false)} />
+                        <MenuLink to="/my-tickets" icon={<Ticket size={18} className="text-blue-500"/>} label="Your Tickets" onClick={() => setIsOpen(false)} />
                         <MenuLink to="/profile" icon={<User size={18} className="text-blue-500"/>} label="My Profile" onClick={() => setIsOpen(false)} />
                       </>
                     ) : (
                       <>
-                        <MenuLink to="/admin" icon={<Shield size={18} className="text-red-500"/>} label="Command Center" onClick={() => setIsOpen(false)} />
+                        <MenuLink to="/admin" icon={<Shield size={18} className="text-red-500"/>} label="Admin Panel" onClick={() => setIsOpen(false)} />
                         <MenuLink to="/admin/create" icon={<Calendar size={18} className="text-blue-500"/>} label="Create Event" onClick={() => setIsOpen(false)} />
                       </>
                     )}
@@ -122,7 +121,8 @@ const Navbar = () => {
                   </>
                 ) : (
                   <div className="px-4 mt-2">
-                    <MenuLink to="/login" icon={<User size={18}/>} label="Client Login" onClick={() => setIsOpen(false)} primary />
+                    {/* CHANGED: Label updated from "Client Login" to "Student Login" */}
+                    <MenuLink to="/login" icon={<User size={18}/>} label="Student Login" onClick={() => setIsOpen(false)} primary />
                   </div>
                 )}
               </div>

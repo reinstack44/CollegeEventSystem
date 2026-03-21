@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { supabase } from '../sbclient/supabaseClient';
-import { Loader2 } from 'lucide-react';
+import { Zap } from 'lucide-react';
 
 const ProtectedRoute = ({ children }) => {
   const [loading, setLoading] = useState(true);
@@ -11,7 +11,6 @@ const ProtectedRoute = ({ children }) => {
     const checkAdmin = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       
-      // Admin Whitelist Protocol
       const adminEmails = ['admin@activearch.in', 'staff@adypu.edu.in'];
       
       if (user && adminEmails.includes(user.email)) {
@@ -25,7 +24,7 @@ const ProtectedRoute = ({ children }) => {
   if (loading) {
     return (
       <div className="min-h-screen bg-[#0a0f1d] flex items-center justify-center">
-        <Loader2 className="animate-spin text-blue-500" size={48} />
+        <Zap className="animate-pulse text-blue-500" size={48} />
       </div>
     );
   }

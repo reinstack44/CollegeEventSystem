@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { supabase } from '../../sbclient/supabaseClient';
 import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Mail, Lock, ArrowRight, ShieldCheck, Loader2, Command } from 'lucide-react';
+import { Mail, Lock, ArrowRight, ShieldCheck, Zap, Command } from 'lucide-react';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -86,7 +86,7 @@ const Login = () => {
             disabled={loading} 
             className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-black text-base flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 active:scale-95 transition-all"
           >
-            {loading ? <Loader2 className="animate-spin" /> : "SIGN IN"} <ArrowRight size={20} />
+            {loading ? <Zap className="animate-pulse" size={20} /> : "SIGN IN"} <ArrowRight size={20} />
           </button>
 
           <div className="pt-6 space-y-4 text-center border-t border-slate-800/50">

@@ -28,8 +28,8 @@ const Profile = () => {
   return (
     <div className="max-w-3xl mx-auto py-12 px-6">
       <div className="bg-white dark:bg-slate-900 rounded-[3rem] shadow-xl dark:border dark:border-slate-800 overflow-hidden transition-all">
-        <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-10 text-white text-center relative">
-          <div className="w-28 h-28 bg-white/20 backdrop-blur-md rounded-[2rem] flex items-center justify-center text-5xl font-black mx-auto mb-4 border border-white/30 shadow-2xl">
+        <div className="bg-linear-to-br from-blue-600 to-indigo-700 p-10 text-white text-center relative">
+          <div className="w-28 h-28 bg-white/20 backdrop-blur-md rounded-4xl flex items-center justify-center text-5xl font-black mx-auto mb-4 border border-white/30 shadow-2xl">
             {student.name ? student.name[0] : 'S'}
           </div>
           <h2 className="text-3xl font-black">{student.name} {student.surname}</h2>

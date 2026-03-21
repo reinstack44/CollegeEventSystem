@@ -98,15 +98,15 @@ const EventList = () => {
     <div className="min-h-screen bg-[#0a0f1d] text-white p-4 md:p-6 pb-24 selection:bg-blue-500/30">
       <div className="max-w-6xl mx-auto space-y-12">
         <div className="flex flex-col gap-6">
-          <div className="flex flex-col md:flex-row items-center gap-4 bg-[#111827]/90 backdrop-blur-xl p-3 rounded-[2rem] border border-white/5 shadow-2xl">
-            <div className="relative flex-grow w-full text-left">
+          <div className="flex flex-col md:flex-row items-center gap-4 bg-[#111827]/90 backdrop-blur-xl p-3 rounded-4xl border border-white/5 shadow-2xl">
+            <div className="relative grow w-full text-left">
               <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
               <input 
                 type="text"
                 placeholder="SEARCH Events..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-14 pr-6 py-4 bg-[#1f2937]/50 border-none rounded-[1.5rem] outline-none text-sm font-black tracking-widest uppercase"
+                className="w-full pl-14 pr-6 py-4 bg-[#1f2937]/50 border-none rounded-3xl outline-none text-sm font-black tracking-widest uppercase"
               />
             </div>
           </div>
@@ -151,9 +151,8 @@ const FlipCard = ({ event, onBook, isFlipped, onFlip }) => {
 
   return (
     <div className="perspective-2000 aspect-square w-full group">
-      <div className={`relative w-full h-full transition-all duration-[800ms] transform-style-3d ${isFlipped ? 'rotate-y-180' : ''}`}>
+      <div className={`relative w-full h-full transition-transform duration-1000 ease-in-out transform-style-3d ${isFlipped ? 'rotate-y-180' : ''}`}>
         
-        {/* FRONT FACE */}
         <div 
           onClick={onFlip} 
           className={`absolute inset-0 backface-hidden bg-[#0f172a] rounded-[2.5rem] border-2 p-6 md:p-7 flex flex-col justify-between cursor-pointer transition-all duration-500 ${glowClass}`}
@@ -171,7 +170,7 @@ const FlipCard = ({ event, onBook, isFlipped, onFlip }) => {
             )}
           </div>
 
-          <div className="flex-grow flex flex-col justify-center text-left gap-4">
+          <div className="grow flex flex-col justify-center text-left gap-4">
             <h3 className={`text-2xl font-black uppercase italic leading-[0.9] line-clamp-3 overflow-hidden ${event.isBooked ? 'text-green-500' : 'text-white'}`}>
               {event.title}
             </h3>
@@ -195,15 +194,14 @@ const FlipCard = ({ event, onBook, isFlipped, onFlip }) => {
           </button>
         </div>
 
-        {/* BACK FACE - Paragraph Fix Applied Here */}
         <div onClick={onFlip} className={`absolute inset-0 backface-hidden rotate-y-180 bg-[#1e293b] rounded-[2.5rem] border-2 p-8 flex flex-col cursor-pointer ${glowClass}`}>
           <h4 className="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-4 flex items-center gap-2 border-b border-white/5 pb-2"><Zap size={10}/> Specs</h4>
-          <div className="flex-grow overflow-y-auto custom-scrollbar pr-2">
-            <p className="text-slate-300 text-[12px] leading-relaxed font-medium text-left italic whitespace-pre-line">
-              {event.description}
-            </p>
+          <div className="grow overflow-y-auto custom-scrollbar pr-2">
+            <p className="text-slate-300 text-[12px] leading-relaxed font-medium text-left italic whitespace-pre-line"
+               dangerouslySetInnerHTML={{ __html: event.description }}
+            />
           </div>
-          <p className="mt-4 text-[8px] font-black text-slate-500 uppercase tracking-widest text-center">Tap to resume</p>
+          <p className="mt-4 text-[8px] font-black text-slate-500 uppercase tracking-widest text-center">Tap to see details</p>
         </div>
       </div>
 
@@ -214,7 +212,6 @@ const FlipCard = ({ event, onBook, isFlipped, onFlip }) => {
         .rotate-y-180 { transform: rotateY(180deg); } 
         .line-clamp-3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; } 
         
-        /* Refined Custom Scrollbar */
         .custom-scrollbar::-webkit-scrollbar { 
           width: 4px; 
         } 
