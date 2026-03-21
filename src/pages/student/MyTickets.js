@@ -93,29 +93,29 @@ const MyTickets = () => {
     if (!printRef.current || !selectedTicket) return;
     
     setIsDownloading(true);
-    const toastId = toast.loading("Generating Secure PDF...");
+    const toastId = toast.loading("Generating A4 Secure PDF...");
     
     try {
-      // Capture the hidden print layout
+      // Capture the hidden print layout at high resolution
       const canvas = await html2canvas(printRef.current, { 
-        scale: 3, // High resolution
+        scale: 2, 
         useCORS: true,
         backgroundColor: '#ffffff'
       });
       
       const imgData = canvas.toDataURL('image/png');
       
-      // Create landscape PDF matching the 800x320 layout
-      const pdf = new jsPDF({
-        orientation: 'landscape',
-        unit: 'px',
-        format: [800, 320]
-      });
+      // Initialize a standard A4 portrait PDF (210mm x 297mm)
+      const pdf = new jsPDF('p', 'mm', 'a4');
       
-      pdf.addImage(imgData, 'PNG', 0, 0, 800, 320);
+      // Calculate dimensions to maintain aspect ratio on A4
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
       pdf.save(`ActiveArch_Pass_${selectedTicket.events?.title.replace(/\s+/g, '_')}.pdf`);
       
-      toast.success("PDF Download Complete!", { id: toastId });
+      toast.success("A4 PDF Download Complete!", { id: toastId });
     } catch (error) {
       toast.error("Failed to generate PDF.", { id: toastId });
     } finally {
@@ -325,7 +325,7 @@ const MyTickets = () => {
                   </div>
                   <p className="text-[9px] text-center font-bold text-slate-400 uppercase tracking-[0.5em] mb-2">Show Your QR Pass At The Entrance</p>
                   
-                  {/* NEW DOWNLOAD PDF BUTTON */}
+                  {/* DOWNLOAD PDF BUTTON */}
                   <button 
                     onClick={downloadPDF}
                     disabled={isDownloading}
@@ -342,47 +342,73 @@ const MyTickets = () => {
         </div>
       )}
 
-      {/* HIDDEN PRINTABLE TICKET (Used for html2canvas to generate PDF) */}
+      {/* HIDDEN PRINTABLE TICKET (A4 Portrait Ratio: 794x1123) */}
       {selectedTicket && (
         <div className="fixed top-[200vh] opacity-0 pointer-events-none">
-          <div ref={printRef} className="w-200 h-80 bg-white flex rounded-4xl border-[6px] border-blue-600 overflow-hidden shadow-2xl">
+          <div ref={printRef} className="w-198.5 h-280.75 bg-white flex flex-col relative overflow-hidden text-slate-800">
             
-            {/* Left Side: Event Info */}
-            <div className="flex-1 p-10 flex flex-col justify-center border-r-[3px] border-dashed border-slate-300 relative">
-              <div className="absolute top-0 left-0 w-full h-4 bg-blue-600"></div>
-              <h4 className="text-sm font-black text-slate-400 uppercase tracking-[0.3em] mb-2">{selectedTicket.events?.school}</h4>
-              <h2 className="text-4xl font-black uppercase italic text-blue-600 mb-6 leading-none tracking-tighter">
-                {selectedTicket.events?.title}
-              </h2>
-              <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-50 rounded-xl"><Calendar size={20} className="text-blue-600"/></div>
-                  <p className="text-xl font-bold text-slate-700">{selectedTicket.events?.date}</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-50 rounded-xl"><Clock size={20} className="text-blue-600"/></div>
-                  <p className="text-xl font-bold text-slate-700">{selectedTicket.events?.start_time} - {selectedTicket.events?.end_time || 'End'}</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-50 rounded-xl"><MapPin size={20} className="text-blue-600"/></div>
-                  <p className="text-xl font-bold text-slate-700">{selectedTicket.events?.venue}</p>
-                </div>
-              </div>
+            {/* Top Accent */}
+            <div className="h-6 w-full bg-blue-600 shrink-0"></div>
+
+            {/* Header Area */}
+            <div className="px-16 pt-16 pb-12 border-b-[3px] border-slate-100 flex justify-between items-center shrink-0">
+               <div>
+                 <p className="text-2xl font-black text-slate-400 uppercase tracking-[0.4em] mb-4">{selectedTicket.events?.school}</p>
+                 <h1 className="text-[3.5rem] font-black uppercase italic text-blue-600 leading-[0.9] w-125 tracking-tighter">
+                   {selectedTicket.events?.title}
+                 </h1>
+               </div>
+               <div className="w-32 h-32 bg-blue-600 rounded-4xl flex items-center justify-center font-black text-white text-6xl italic shadow-2xl">
+                 A
+               </div>
             </div>
 
-            {/* Right Side: QR & Student Info */}
-            <div className="w-75 p-6 flex flex-col items-center justify-center bg-slate-50 relative">
-              <div className="absolute top-0 left-0 w-full h-4 bg-blue-600"></div>
-              <p className="text-xs font-black text-slate-400 uppercase tracking-[0.4em] mb-4">Admit One</p>
-              <div className="bg-white p-4 rounded-3xl border-2 border-slate-200 shadow-sm">
-                <QRCodeCanvas value={selectedTicket.id} size={140} level="H" />
-              </div>
-              <p className="mt-4 text-lg font-black uppercase text-center text-slate-800 leading-tight">
-                {studentName}
-              </p>
-              <p className="text-[10px] text-slate-400 font-mono mt-2 font-bold">{selectedTicket.id}</p>
+            {/* Main Center Area: QR & ID */}
+            <div className="flex-1 flex flex-col items-center justify-center py-12">
+               <p className="text-3xl font-black text-slate-300 uppercase tracking-[0.6em] mb-10">Official Gate Pass</p>
+               
+               <div className="bg-white p-8 rounded-[3.5rem] border-[6px] border-slate-50 shadow-2xl mb-12">
+                  <QRCodeCanvas value={selectedTicket.id} size={300} level="H" />
+               </div>
+               
+               <h2 className="text-5xl font-black uppercase text-slate-800 tracking-tighter mb-4 text-center">
+                 {studentName}
+               </h2>
+               <div className="flex items-center gap-3 text-slate-400">
+                 <Fingerprint size={24} />
+                 <p className="text-xl font-mono font-bold tracking-widest uppercase">ID: {selectedTicket.id}</p>
+               </div>
             </div>
 
+            {/* Footer Area: Details Grid */}
+            <div className="bg-slate-50 p-16 border-t-[3px] border-slate-100 grid grid-cols-2 gap-12 shrink-0">
+               <div className="space-y-8">
+                  <div>
+                    <p className="text-lg font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2"><Calendar size={20}/> Event Date</p>
+                    <p className="text-3xl font-bold text-slate-800">{selectedTicket.events?.date}</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2"><Clock size={20}/> Authorized Time</p>
+                    <p className="text-3xl font-bold text-slate-800">{selectedTicket.events?.start_time} — {selectedTicket.events?.end_time || 'End'}</p>
+                  </div>
+               </div>
+               <div className="space-y-8">
+                  <div>
+                    <p className="text-lg font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2"><MapPin size={20}/> Venue Location</p>
+                    <p className="text-3xl font-bold text-slate-800">{selectedTicket.events?.venue}</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2"><ShieldCheck size={20}/> Pass Status</p>
+                    <div className="inline-flex items-center gap-2 px-6 py-3 bg-green-100 border-2 border-green-200 rounded-2xl text-green-600 font-black uppercase tracking-widest text-lg">
+                      <CheckCircle2 size={24}/> Verified Entry
+                    </div>
+                  </div>
+               </div>
+            </div>
+            
+            {/* Bottom Accent */}
+            <div className="h-6 w-full bg-blue-600 shrink-0"></div>
+            
           </div>
         </div>
       )}
