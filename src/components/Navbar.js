@@ -94,7 +94,7 @@ const Navbar = ({ session }) => {
               <div className="absolute right-0 mt-5 w-72 bg-[#111827] rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.5)] py-4 border border-white/5 overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300 backdrop-blur-2xl">
                 <div className="px-6 py-3 mb-2 border-b border-white/5">
                   <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.3em]">
-                    {user ? `System Portal: ${user.email.split('@')[0]}` : "Identity Verification"}
+                    {user ? `-Welcome-  ${user.email.split('@')[0]}` : "Identity Verification"}
                   </p>
                 </div>
                 
@@ -110,7 +110,6 @@ const Navbar = ({ session }) => {
                     ) : (
                       <>
                         <MenuLink to="/admin" icon={<Shield size={18} className="text-red-500"/>} label="Admin Dashboard" onClick={() => setIsOpen(false)} />
-                        <MenuLink to="/admin/create" icon={<Calendar size={18} className="text-blue-500"/>} label="Host New Event" onClick={() => setIsOpen(false)} />
                       </>
                     )}
                     
@@ -119,7 +118,7 @@ const Navbar = ({ session }) => {
                         onClick={handleLogout} 
                         className="w-full flex items-center gap-4 px-4 py-4 text-red-400 hover:bg-red-500/10 rounded-2xl font-black text-[10px] transition-all uppercase tracking-[0.2em]"
                       >
-                        <LogOut size={18} /> Terminate Session
+                        <LogOut size={18} /> Logout
                       </button>
                     </div>
                   </>

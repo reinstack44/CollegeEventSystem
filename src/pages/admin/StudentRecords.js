@@ -102,7 +102,7 @@ const StudentRecords = () => {
           <div className="space-y-2 text-left">
             <div className="flex items-center gap-3 text-blue-500">
               <Shield size={24} />
-              <p className="font-black uppercase tracking-[0.4em] text-[10px]">Command Intelligence</p>
+              <p className="font-black uppercase tracking-[0.4em] text-[10px]">Secure Database</p>
             </div>
             <h2 className="text-4xl md:text-6xl font-black uppercase italic tracking-tighter">Student Database</h2>
           </div>
@@ -129,7 +129,7 @@ const StudentRecords = () => {
         </header>
 
         <div className="relative max-w-2xl">
-          <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
+          <Search className="absolute left-6 top-10 -translate-y-1/2 text-slate-500" size={20} />
           <input 
             type="text"
             placeholder="Search attendees..."

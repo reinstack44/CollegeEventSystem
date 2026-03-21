@@ -3,7 +3,7 @@ import { supabase } from '../../sbclient/supabaseClient';
 import { useNavigate } from 'react-router-dom'; 
 import { 
   Trash2, Search, Filter, ShieldAlert, 
-  UserX, ArrowLeft, History, Activity, Terminal, Zap
+  UserX, ArrowLeft, History, Activity, Zap
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -120,9 +120,9 @@ const ManageRegistrations = () => {
             <div className="flex items-center gap-3 text-blue-500">
               <ShieldAlert size={32} />
               <div className="h-0.5 w-12 bg-blue-500/30"></div>
-              <p className="font-black uppercase tracking-[0.4em] text-[10px]">Secure Operations</p>
+              <p className="font-black uppercase tracking-[0.4em] text-[10px]">Security Control</p>
             </div>
-            <h2 className="text-4xl md:text-6xl font-black uppercase italic tracking-tighter leading-none">Security_Logs</h2>
+            <h2 className="text-4xl md:text-6xl font-black uppercase italic tracking-tighter leading-none">Terminate Entries</h2>
           </div>
 
           <div className="flex items-center gap-4 bg-[#111827] p-2 rounded-2xl border border-white/5 shadow-xl">
@@ -132,7 +132,7 @@ const ManageRegistrations = () => {
               onChange={(e) => setSelectedEventId(e.target.value)}
               className="bg-[#1f2937] border-none text-white text-[11px] font-black uppercase rounded-xl px-6 py-3 outline-none cursor-pointer min-w-55"
             >
-              <option value="">Select Target Sector</option>
+              <option value="">Select Event</option>
               {events.map(event => (
                 <option key={event.id} value={event.id}>{event.title}</option>
               ))}
@@ -151,20 +151,15 @@ const ManageRegistrations = () => {
               <span className="text-[9px] font-black uppercase text-slate-500 tracking-widest">Sync Status</span>
               <span className="text-xl font-black text-white uppercase">{loading ? 'Syncing' : 'Stabilized'}</span>
            </div>
-           <div className="bg-[#111827] p-6 rounded-4xl border border-white/5 flex flex-col items-center gap-2">
-              <Terminal className="text-purple-500" size={24} />
-              <span className="text-[9px] font-black uppercase text-slate-500 tracking-widest">Node Path</span>
-              <span className="text-xl font-black text-white truncate w-full px-4 uppercase">MANAGE_REGS</span>
-           </div>
         </div>
 
         {selectedEventId ? (
           <div className="space-y-6 text-left">
             <div className="relative max-w-md">
-              <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
+              <Search className="absolute left-6 top-9 -translate-y-1/2 text-slate-500" size={20} />
               <input 
                 type="text"
-                placeholder="FILTER LOGS BY ID OR URN..."
+                placeholder="SEARCH BY NAME, ID OR URN..."
                 className="w-full pl-16 pr-6 py-5 bg-[#050914] border border-white/5 rounded-4xl outline-none focus:border-blue-500/50 text-xs font-black tracking-widest transition-all"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}

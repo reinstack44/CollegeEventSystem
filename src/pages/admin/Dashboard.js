@@ -81,15 +81,15 @@ const Dashboard = () => {
         <div className="flex items-center gap-4">
           <div className="p-3.5 bg-blue-600 text-white rounded-2xl shadow-xl"><LayoutDashboard size={28}/></div>
           <div>
-            <h2 className="text-4xl font-black text-white tracking-tight uppercase italic leading-none">Command Center</h2>
-            <p className="text-slate-500 font-medium text-sm mt-2 uppercase tracking-wider">Management Dashboard</p>
+            <h2 className="text-4xl font-black text-white tracking-tight uppercase italic leading-none">Admin dashboard</h2>
+            <p className="text-slate-500 font-medium text-sm mt-2 uppercase tracking-wider">Management Control Panel</p>
           </div>
         </div>
         <div className="relative flex items-center w-full md:w-80 group">
           <Search className="absolute left-4 text-slate-500" size={18} />
           <input 
             type="text"
-            placeholder="Search deployments..."
+            placeholder="Search Events..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-12 pr-10 py-3.5 bg-slate-900 border border-slate-800 rounded-2xl outline-none focus:border-blue-500 text-white text-sm font-bold shadow-sm"
@@ -98,14 +98,14 @@ const Dashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
-        <AdminCard to="/admin/create" icon={<PlusCircle size={28} className="text-green-500" />} title="Create" desc="New deployments." color="border-green-500" />
-        <AdminCard to="/admin/scan" icon={<ScanLine size={28} className="text-blue-500" />} title="Scanner" desc="QR gate control." color="border-blue-500" />
-        <AdminCard to="/admin/students" icon={<Users size={28} className="text-purple-500" />} title="Students" desc="Manage attendees." color="border-purple-500" /> 
-        <AdminCard to="/admin/logs" icon={<ShieldAlert size={28} className="text-red-500" />} title="Logs" desc="Security protocol." color="border-red-500" />
+        <AdminCard to="/admin/create" icon={<PlusCircle size={28} className="text-green-500" />} title="Create" desc="New Event." color="border-green-500" />
+        <AdminCard to="/admin/scan" icon={<ScanLine size={28} className="text-blue-500" />} title="Scanner" desc="QR Gate Control." color="border-blue-500" />
+        <AdminCard to="/admin/students" icon={<Users size={28} className="text-purple-500" />} title="Students" desc="Attendence Record." color="border-purple-500" /> 
+        <AdminCard to="/admin/logs" icon={<ShieldAlert size={28} className="text-red-500" />} title="Terminate Entry" desc="Security Control." color="border-red-500" />
       </div>
 
       <div className="bg-slate-900/50 p-10 rounded-[3.5rem] border border-slate-800">
-        <h3 className="text-xl font-black text-white mb-8 flex items-center gap-3"><Activity size={24} className="text-blue-500" /> Operations Feed</h3>
+        <h3 className="text-xl font-black text-white mb-8 flex items-center gap-3"><Activity size={24} className="text-blue-500" /> Created Events Modification & Deletion Controls</h3>
         <div className="space-y-4">
           {filteredEvents.map((event) => (
             <div key={event.id} className="flex flex-col md:flex-row items-center justify-between bg-slate-800 p-6 rounded-3xl border border-white/5 hover:border-blue-500/30 transition-all">
