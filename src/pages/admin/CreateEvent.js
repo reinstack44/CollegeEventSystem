@@ -34,12 +34,16 @@ const CreateEvent = () => {
   const [selectedImages, setSelectedImages] = useState([]);
   const [currentImgIndex, setCurrentImgIndex] = useState(0);
   
+  // Extended Form Data State
   const [formData, setFormData] = useState({
     title: '', date: '', venue: '', description: '', 
     school: ADYPU_SCHOOLS[0],
     start_time: '', end_time: '', ticket_limit: '',
     reg_start_date: '', reg_start_time: '09:00',
-    reg_end_date: '', reg_end_time: '23:59'
+    reg_end_date: '', reg_end_time: '23:59',
+    event_type: 'free', // 'free' or 'paid'
+    price: '',
+    merchant_upi: ''
   });
 
   const applyFormatting = (tag) => {
@@ -75,7 +79,10 @@ const CreateEvent = () => {
             reg_start_date: start.toISOString().split('T')[0],
             reg_start_time: start.toTimeString().slice(0, 5),
             reg_end_date: end.toISOString().split('T')[0],
-            reg_end_time: end.toTimeString().slice(0, 5)
+            reg_end_time: end.toTimeString().slice(0, 5),
+            event_type: data.event_type || 'free',
+            price: data.price || '',
+            merchant_upi: data.merchant_upi || ''
           });
           // Load existing images if editing
           if (data.images && data.images.length > 0) {
@@ -145,7 +152,11 @@ const CreateEvent = () => {
         start_time: formData.start_time, end_time: formData.end_time,
         ticket_limit: formData.ticket_limit ? parseInt(formData.ticket_limit) : null,
         reg_start_timestamp: startIso, reg_end_timestamp: endIso,
-        images: finalImageUrls
+        images: finalImageUrls,
+        // NEW FINANCIAL SPECS
+        event_type: formData.event_type,
+        price: formData.event_type === 'paid' ? Number(formData.price) : 0,
+        merchant_upi: formData.event_type === 'paid' ? formData.merchant_upi : null
       };
 
       const { error } = editId 
@@ -260,7 +271,58 @@ const CreateEvent = () => {
                 </div>
               </div>
 
-              {/* NEW: IMAGE UPLOADER */}
+              {/* NEW ROW: MISSION ECONOMY (FREE VS PAID) */}
+              <div className="space-y-4 text-left p-5 bg-emerald-900/10 border border-emerald-500/20 rounded-3xl transition-all">
+                <div className="flex justify-between items-center">
+                  <label className="text-[10px] font-black text-emerald-500 uppercase tracking-widest ml-2 flex items-center gap-2">
+                    <Ticket size={14} /> Mission Economy
+                  </label>
+                  <div className="flex bg-[#1f2937] rounded-xl p-1">
+                    {['free', 'paid'].map((type) => (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, event_type: type })}
+                        className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                          formData.event_type === type ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'
+                        }`}
+                      >
+                        {type}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {formData.event_type === 'paid' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 animate-in fade-in slide-in-from-top-2 duration-500">
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Ticket Price (₹)</p>
+                      <input 
+                        required 
+                        type="number" 
+                        min="1"
+                        value={formData.price} 
+                        onChange={e => setFormData({...formData, price: e.target.value})} 
+                        placeholder="e.g. 199" 
+                        className="w-full p-4 bg-[#111827] border border-slate-700 rounded-2xl outline-none focus:border-emerald-500 text-white text-sm" 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Receiving UPI ID</p>
+                      <input 
+                        required 
+                        type="text" 
+                        value={formData.merchant_upi} 
+                        onChange={e => setFormData({...formData, merchant_upi: e.target.value})} 
+                        placeholder="name@okaxis" 
+                        className="w-full p-4 bg-[#111827] border border-slate-700 rounded-2xl outline-none focus:border-emerald-500 text-white text-sm" 
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* IMAGE UPLOADER */}
               <div className="space-y-3 text-left p-5 bg-[#1f2937]/30 border border-slate-700/50 rounded-3xl">
                 <label className="text-[10px] font-black text-blue-500 uppercase tracking-widest ml-2 flex items-center gap-2">
                   <ImageIcon size={14} /> Event Imagery (Max 10)
@@ -298,7 +360,7 @@ const CreateEvent = () => {
                 )}
               </div>
 
-              {/* Row 5: Description Shell */}
+              {/* Description Shell */}
               <div className="space-y-2 text-left">
                 <label className="text-[10px] font-black text-blue-500 uppercase tracking-widest ml-2 flex items-center gap-2"><Type size={14} /> Description Shell</label>
                 <div className="bg-[#1f2937] rounded-3xl border border-slate-700 overflow-hidden focus-within:border-blue-500 transition-all">
@@ -390,8 +452,10 @@ const CreateEvent = () => {
 
                 {/* Preview Reg Window */}
                 <div className="pt-3 border-t border-slate-700/50 space-y-2 shrink-0">
-                  <div className="flex items-center gap-2 text-blue-500 text-[9px] font-black uppercase tracking-widest">
-                    <Timer size={12}/> Registration Window
+                  <div className="flex items-center justify-between gap-2 text-blue-500 text-[9px] font-black uppercase tracking-widest">
+                    <span className="flex items-center gap-2"><Timer size={12}/> Registration Window</span>
+                    {/* NEW: LIVE PREVIEW PRICE TAG */}
+                    {formData.event_type === 'paid' && <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">₹{formData.price || '0'}</span>}
                   </div>
                   <div className="flex flex-col gap-1.5 text-[9px] font-bold text-slate-400 uppercase tracking-widest">
                     <div className="flex justify-between bg-[#111827] px-3 py-2 rounded-lg border border-white/5">

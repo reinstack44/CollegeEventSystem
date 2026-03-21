@@ -3,7 +3,7 @@ import { supabase } from '../../sbclient/supabaseClient';
 import { 
   Calendar, Clock, Search, Zap, 
   CheckCircle, MapPin, Timer, Info,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, ShieldCheck
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -14,6 +14,14 @@ const EventList = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [flippedCards, setFlippedCards] = useState({});
   const [now, setNow] = useState(new Date());
+
+  // Payment Gateway State
+  const [paymentModal, setPaymentModal] = useState({ open: false, event: null });
+  const [assignedPrice, setAssignedPrice] = useState(null);
+  const [isVerified, setIsVerified] = useState(false);
+  const [showManual, setShowManual] = useState(false);
+  const [manualUtr, setManualUtr] = useState('');
+  const [submittingManual, setSubmittingManual] = useState(false);
 
   useEffect(() => {
     const ticker = setInterval(() => setNow(new Date()), 60000);
@@ -33,16 +41,22 @@ const EventList = () => {
 
       if (eventError) throw eventError;
 
-      const { data: bookingData } = await supabase.from('bookings').select('event_id, student_email');
+      const { data: bookingData } = await supabase.from('bookings').select('event_id, student_email, status');
 
       const eventsWithMeta = (eventData || []).map(event => {
         const eventBookings = bookingData?.filter(b => b.event_id === event.id) || [];
         const startTime = new Date(event.reg_start_timestamp);
         
+        // Check if user has a confirmed/verified booking
+        const isBooked = user && eventBookings.some(b => b.student_email === user.email && (b.status === 'confirmed' || b.status === 'verified'));
+        // Check if user has a pending booking
+        const isPending = user && eventBookings.some(b => b.student_email === user.email && b.status === 'pending');
+
         return {
           ...event,
           isSoldOut: event.ticket_limit && eventBookings.length >= event.ticket_limit,
-          isBooked: user && eventBookings.some(b => b.student_email === user.email),
+          isBooked: isBooked,
+          isPending: isPending,
           isOpen: now >= startTime
         };
       });
@@ -63,6 +77,31 @@ const EventList = () => {
     setFlippedCards(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
+  // --- AUTOMATED LISTENER FOR INSTANT VERIFICATION ---
+  const listenForVerification = (eventId, studentEmail) => {
+    const channel = supabase
+      .channel(`payment_listener_${eventId}_${studentEmail}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'bookings',
+          filter: `event_id=eq.${eventId}`
+        },
+        (payload) => {
+          if (payload.new.student_email === studentEmail && payload.new.status === 'verified') {
+            setIsVerified(true);
+            toast.success("Payment Received! Pass Issued.");
+            fetchEvents(); // Refresh data to show green border
+            supabase.removeChannel(channel); // Stop listening
+          }
+        }
+      )
+      .subscribe();
+  };
+
+  // --- MAIN BOOKING LOGIC ---
   const handleBook = async (e, event) => {
     e.stopPropagation(); 
     
@@ -73,6 +112,35 @@ const EventList = () => {
     if (event.isBooked) return toast.error("Identity already secured!");
     if (event.isSoldOut) return toast.error("Deployment Full: Sold Out!");
 
+    // PAID EVENT LOGIC
+    if (event.event_type === 'paid') {
+      if (event.isPending) return toast.error("You have a pending transaction. Please wait.");
+
+      setPaymentModal({ open: true, event: event });
+      setAssignedPrice(null);
+      setIsVerified(false);
+      setShowManual(false);
+      setManualUtr('');
+
+      // Call database to get unique decimal price
+      const { data: uniquePrice, error } = await supabase.rpc('assign_unique_price', {
+        p_event_id: event.id,
+        p_student_email: user.email,
+        p_base_price: event.price
+      });
+
+      if (error) {
+        toast.error(error.message || "High traffic. Try again later.");
+        setPaymentModal({ open: false, event: null });
+        return;
+      }
+
+      setAssignedPrice(uniquePrice);
+      listenForVerification(event.id, user.email);
+      return;
+    }
+
+    // FREE EVENT LOGIC
     const { error } = await supabase.from('bookings').insert([{
       event_id: event.id,
       student_email: user.email,
@@ -84,6 +152,32 @@ const EventList = () => {
       fetchEvents(); 
     } else {
       toast.error("Booking failed: " + error.message);
+    }
+  };
+
+  // --- MANUAL UTR SUBMISSION LOGIC ---
+  const handleManualSubmit = async () => {
+    if (manualUtr.length !== 12) return toast.error("Invalid UTR. Must be 12 digits.");
+    setSubmittingManual(true);
+    
+    try {
+      const { error } = await supabase.from('bookings')
+        .update({ utr_number: manualUtr })
+        .match({ 
+          event_id: paymentModal.event.id, 
+          amount_expected: assignedPrice, 
+          status: 'pending' 
+        });
+      
+      if (error) throw error;
+      
+      toast.success("UTR Submitted! Admin will verify shortly.");
+      setPaymentModal({ open: false, event: null });
+      fetchEvents();
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setSubmittingManual(false);
     }
   };
 
@@ -116,7 +210,7 @@ const EventList = () => {
             </div>
           </div>
 
-          {/* 2. ADYPU LOGO SECTION - Centered Below Search */}
+          {/* 2. ADYPU LOGO SECTION */}
           <div className="flex justify-center w-full">
             <div className="bg-white rounded-2xl px-20 py-3.5 shadow-[0_10px_40px_rgba(0,0,0,0.4)] border border-white/10 flex items-center justify-center">
               <img 
@@ -151,6 +245,92 @@ const EventList = () => {
           </div>
         </section>
       </div>
+
+      {/* PAYMENT GATEWAY MODAL */}
+      {paymentModal.open && (
+        <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-[#0a0f1d]/90 backdrop-blur-md">
+          <div className="bg-[#111827] border-2 border-emerald-500/30 rounded-[3rem] p-8 max-w-md w-full shadow-[0_0_50px_rgba(16,185,129,0.1)] relative">
+            
+            {!assignedPrice ? (
+              // Loading state while assigning the decimal
+              <div className="flex flex-col items-center justify-center py-12 gap-4">
+                 <Zap className="animate-spin text-emerald-500" size={40} />
+                 <p className="text-emerald-400 font-black uppercase tracking-widest text-xs">Generating Secure Gateway...</p>
+              </div>
+            ) : isVerified ? (
+              // Success State (Ticket Revealed!)
+              <div className="flex flex-col items-center text-center gap-6 py-6 animate-in zoom-in">
+                 <div className="w-20 h-20 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mb-2">
+                   <ShieldCheck size={40} />
+                 </div>
+                 <h3 className="text-3xl font-black uppercase italic text-white">ACCESS GRANTED</h3>
+                 <p className="text-slate-400 font-bold tracking-widest text-xs">Your Pass is ready in your dashboard.</p>
+                 <button onClick={() => setPaymentModal({open: false, event: null})} className="w-full mt-4 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all">
+                   View Ticket
+                 </button>
+              </div>
+            ) : (
+              // The QR Code & Payment State
+              <div className="flex flex-col items-center text-center gap-6">
+                <div className="p-4 bg-white rounded-3xl shadow-xl relative">
+                  <img 
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=upi://pay?pa=${paymentModal.event.merchant_upi}&pn=Event_Pass&am=${assignedPrice}&cu=INR`}
+                    alt="Payment QR"
+                    className="w-48 h-48"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <h3 className="text-2xl font-black uppercase italic text-white">PAY EXACTLY</h3>
+                  {/* Display the assigned price prominently */}
+                  <p className="text-emerald-400 font-black text-4xl tracking-widest">₹{assignedPrice}</p>
+                  <p className="text-[9px] text-red-400 uppercase font-black tracking-widest mt-2 px-4">Do not change this amount. It verifies your identity.</p>
+                </div>
+
+                <div className="w-full space-y-4 pt-4 border-t border-white/5">
+                  {/* Auto-Verification Spinner */}
+                  <div className="flex items-center justify-center gap-3 text-[10px] font-black uppercase tracking-widest text-emerald-500">
+                     <span className="relative flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span></span>
+                     Awaiting Bank Confirmation...
+                  </div>
+
+                  {/* Manual Claim Fallback */}
+                  {!showManual ? (
+                    <button onClick={() => setShowManual(true)} className="text-[9px] text-slate-500 hover:text-white underline uppercase font-bold tracking-widest pt-4 transition-colors">
+                      Money deducted but screen stuck?
+                    </button>
+                  ) : (
+                    <div className="bg-[#1f2937] p-4 rounded-2xl border border-slate-700 text-left animate-in slide-in-from-bottom-2">
+                      <p className="text-[9px] text-slate-400 uppercase font-black mb-2 ml-1">Enter 12-Digit UTR Number</p>
+                      <input 
+                        value={manualUtr}
+                        onChange={(e) => setManualUtr(e.target.value.replace(/\D/g, '').slice(0, 12))}
+                        className="w-full p-3 bg-black border border-slate-800 rounded-xl text-emerald-400 text-center font-mono tracking-[0.3em] mb-3 outline-none focus:border-emerald-500"
+                        placeholder="0000 0000 0000"
+                      />
+                      <button 
+                        onClick={handleManualSubmit}
+                        disabled={manualUtr.length !== 12 || submittingManual}
+                        className="w-full bg-emerald-600 hover:bg-emerald-700 py-3 rounded-xl text-[10px] text-white font-black uppercase tracking-widest disabled:opacity-50 transition-all"
+                      >
+                        {submittingManual ? "Submitting..." : "Submit for Manual Verification"}
+                      </button>
+                    </div>
+                  )}
+                  
+                  <button onClick={() => {
+                    setPaymentModal({ open: false, event: null });
+                    fetchEvents();
+                  }} className="w-full pt-2 text-[8px] font-black text-slate-600 hover:text-red-400 uppercase tracking-widest transition-colors">
+                    Close Gateway
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
@@ -165,7 +345,8 @@ const FlipCard = ({ event, onBook, isFlipped, onFlip }) => {
     "https://images.unsplash.com/photo-1505373877841-8d25f7d46678?auto=format&fit=crop&q=80&w=800"
   ];
   
-  const images = event.images && event.images.length > 0 ? event.images : defaultImages;
+  // Safety check for images array
+  const images = Array.isArray(event.images) && event.images.length > 0 ? event.images : defaultImages;
 
   const nextImage = (e) => {
     e.stopPropagation(); 
@@ -179,6 +360,8 @@ const FlipCard = ({ event, onBook, isFlipped, onFlip }) => {
 
   const glowClass = event.isBooked 
     ? 'border-green-500 shadow-[0_0_25px_rgba(34,197,94,0.25)]' 
+    : event.isPending 
+    ? 'border-yellow-500 shadow-[0_0_25px_rgba(234,179,8,0.25)]'
     : 'border-blue-500/40 group-hover:border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.15)]';
 
   const getTimeRemaining = () => {
@@ -221,6 +404,8 @@ const FlipCard = ({ event, onBook, isFlipped, onFlip }) => {
             <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-400 border border-blue-500/20 truncate max-w-35">{event.school}</span>
             {event.isBooked ? (
               <div className="flex items-center gap-1 text-green-500 font-black text-[8px] uppercase shrink-0"><CheckCircle size={12}/> Verified</div>
+            ) : event.isPending ? (
+              <div className="flex items-center gap-1 text-yellow-500 font-black text-[8px] uppercase shrink-0 animate-pulse"><Timer size={12}/> Pending Verif.</div>
             ) : !event.isOpen ? (
               <div className="flex items-center gap-1.5 text-blue-400 font-black text-[8px] uppercase bg-blue-500/10 px-3 py-1 rounded-full shrink-0">
                 <Timer size={12}/> {getTimeRemaining()}
@@ -264,7 +449,7 @@ const FlipCard = ({ event, onBook, isFlipped, onFlip }) => {
 
           {/* Event Details, Reg Window, & Button container */}
           <div className="grow flex flex-col justify-start text-left gap-3">
-            <h3 className={`text-2xl font-black uppercase italic leading-[0.9] line-clamp-2 overflow-hidden shrink-0 ${event.isBooked ? 'text-green-500' : 'text-white'}`}>
+            <h3 className={`text-2xl font-black uppercase italic leading-[0.9] line-clamp-2 overflow-hidden shrink-0 ${event.isBooked ? 'text-green-500' : event.isPending ? 'text-yellow-500' : 'text-white'}`}>
               {event.title}
             </h3>
             
@@ -283,8 +468,9 @@ const FlipCard = ({ event, onBook, isFlipped, onFlip }) => {
 
             {/* Registration Window */}
             <div className="pt-3 border-t border-slate-700/50 space-y-2 shrink-0">
-              <div className="flex items-center gap-2 text-blue-500 text-[9px] font-black uppercase tracking-widest">
-                <Timer size={12}/> Registration Window
+              <div className="flex items-center gap-2 text-blue-500 text-[9px] font-black uppercase tracking-widest justify-between">
+                <span className="flex items-center gap-2"><Timer size={12}/> Registration Window</span>
+                {event.event_type === 'paid' && <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">₹{event.price}</span>}
               </div>
               <div className="flex flex-col gap-1.5 text-[9px] font-bold text-slate-400 uppercase tracking-widest">
                 <div className="flex justify-between bg-[#111827] px-3 py-2 rounded-lg border border-white/5">
@@ -300,15 +486,17 @@ const FlipCard = ({ event, onBook, isFlipped, onFlip }) => {
 
             {/* Action Button */}
             <button 
-              disabled={event.isBooked || event.isSoldOut || !event.isOpen}
+              disabled={event.isBooked || event.isSoldOut || !event.isOpen || event.isPending}
               onClick={(e) => { e.stopPropagation(); onBook(e, event); }}
               className={`w-full py-3.5 mt-auto rounded-2xl font-black uppercase text-[9px] transition-all tracking-widest shrink-0 ${
                 event.isBooked ? 'bg-green-600/20 text-green-500 border border-green-500/30' : 
+                event.isPending ? 'bg-yellow-600/20 text-yellow-500 border border-yellow-500/30' :
                 !event.isOpen ? 'bg-slate-900 text-slate-700 border border-white/5' :
+                event.event_type === 'paid' ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg active:scale-95' :
                 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg active:scale-95'
               }`}
             >
-              {event.isBooked ? "Pass Secured" : !event.isOpen ? "Opening Soon" : "Book Your Pass"}
+              {event.isBooked ? "Pass Secured" : event.isPending ? "Awaiting Verification" : !event.isOpen ? "Opening Soon" : "Book Your Pass"}
             </button>
           </div>
         </div>

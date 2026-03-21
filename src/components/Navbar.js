@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../sbclient/supabaseClient';
-import { Menu, X, LogOut, Ticket, User, Calendar, Download, Shield } from 'lucide-react';
+import { Menu, X, LogOut, Ticket, User, Calendar, Download, Shield, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const Navbar = ({ session }) => {
@@ -109,7 +109,9 @@ const Navbar = ({ session }) => {
                       </>
                     ) : (
                       <>
-                        <MenuLink to="/admin" icon={<Shield size={18} className="text-red-500"/>} label="Admin Dashboard" onClick={() => setIsOpen(false)} />
+                        {/* Admin Routes */}
+                        <MenuLink to="/admin" icon={<Shield size={18} className="text-red-500"/>} label="Mission Control" onClick={() => setIsOpen(false)} />
+                        <MenuLink to="/admin/bookings" icon={<Users size={18} className="text-red-500"/>} label="Student Database" onClick={() => setIsOpen(false)} />
                       </>
                     )}
                     

@@ -22,6 +22,7 @@ import CreateEvent from './pages/admin/CreateEvent';
 import Scanner from './pages/admin/Scanner';
 import StudentRecords from './pages/admin/StudentRecords'; 
 import ManageRegistrations from './pages/admin/ManageRegistrations'; 
+import AdminBookings from './pages/admin/AdminBookings'; // <-- NEW: Import the unified bookings database
 
 function App() {
   const [session, setSession] = useState(null);
@@ -87,6 +88,8 @@ function App() {
             <Route path="/admin/scan" element={<ProtectedRoute><Scanner /></ProtectedRoute>} />
             <Route path="/admin/students" element={<ProtectedRoute><StudentRecords /></ProtectedRoute>} /> 
             <Route path="/admin/logs" element={<ProtectedRoute><ManageRegistrations /></ProtectedRoute>} /> 
+            {/* NEW: Secured route for the UTR & Booking verification dashboard */}
+            <Route path="/admin/bookings" element={<ProtectedRoute><AdminBookings /></ProtectedRoute>} /> 
 
             {/* 5. GLOBAL CATCH-ALL */}
             <Route path="*" element={<Navigate to="/" replace />} />
