@@ -93,29 +93,29 @@ const MyTickets = () => {
     if (!printRef.current || !selectedTicket) return;
     
     setIsDownloading(true);
-    const toastId = toast.loading("Generating A4 Secure PDF...");
+    const toastId = toast.loading("Generating Perfect PDF...");
     
     try {
-      // Capture the hidden print layout at high resolution
+      // High-resolution capture strictly ignoring mobile viewport limits
       const canvas = await html2canvas(printRef.current, { 
-        scale: 2, 
+        scale: 3, 
         useCORS: true,
-        backgroundColor: '#ffffff'
+        backgroundColor: '#ffffff',
       });
       
-      const imgData = canvas.toDataURL('image/png');
+      const imgData = canvas.toDataURL('image/png', 1.0);
       
-      // Initialize a standard A4 portrait PDF (210mm x 297mm)
-      const pdf = new jsPDF('p', 'mm', 'a4');
+      // Strict 1000x400 output matches the fixed pixel layout exactly
+      const pdf = new jsPDF({
+        orientation: 'landscape',
+        unit: 'px',
+        format: [1000, 400]
+      });
       
-      // Calculate dimensions to maintain aspect ratio on A4
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.addImage(imgData, 'PNG', 0, 0, 1000, 400);
       pdf.save(`ActiveArch_Pass_${selectedTicket.events?.title.replace(/\s+/g, '_')}.pdf`);
       
-      toast.success("A4 PDF Download Complete!", { id: toastId });
+      toast.success("PDF Download Complete!", { id: toastId });
     } catch (error) {
       toast.error("Failed to generate PDF.", { id: toastId });
     } finally {
@@ -342,73 +342,77 @@ const MyTickets = () => {
         </div>
       )}
 
-      {/* HIDDEN PRINTABLE TICKET (A4 Portrait Ratio: 794x1123) */}
+      {/* INDESTRUCTIBLE PRINTABLE TICKET: Absolute Positioning & Strict Inline Pixels ONLY */}
       {selectedTicket && (
-        <div className="fixed top-[200vh] opacity-0 pointer-events-none">
-          <div ref={printRef} className="w-198.5 h-280.75 bg-white flex flex-col relative overflow-hidden text-slate-800">
-            
-            {/* Top Accent */}
-            <div className="h-6 w-full bg-blue-600 shrink-0"></div>
-
-            {/* Header Area */}
-            <div className="px-16 pt-16 pb-12 border-b-[3px] border-slate-100 flex justify-between items-center shrink-0">
-               <div>
-                 <p className="text-2xl font-black text-slate-400 uppercase tracking-[0.4em] mb-4">{selectedTicket.events?.school}</p>
-                 <h1 className="text-[3.5rem] font-black uppercase italic text-blue-600 leading-[0.9] w-125 tracking-tighter">
-                   {selectedTicket.events?.title}
-                 </h1>
-               </div>
-               <div className="w-32 h-32 bg-blue-600 rounded-4xl flex items-center justify-center font-black text-white text-6xl italic shadow-2xl">
-                 A
-               </div>
-            </div>
-
-            {/* Main Center Area: QR & ID */}
-            <div className="flex-1 flex flex-col items-center justify-center py-12">
-               <p className="text-3xl font-black text-slate-300 uppercase tracking-[0.6em] mb-10">Official Gate Pass</p>
+        <div style={{ position: 'absolute', top: '-15000px', left: '-15000px', zIndex: -9999 }}>
+          <div 
+            ref={printRef} 
+            style={{ 
+              width: '1000px', 
+              height: '400px', 
+              backgroundColor: '#ffffff', 
+              fontFamily: 'Arial, sans-serif',
+              display: 'flex',
+              border: '4px solid #0f172a',
+              borderRadius: '24px',
+              boxSizing: 'border-box'
+            }}
+          >
+            {/* Left Side (Event Details) */}
+            <div style={{ width: '700px', padding: '40px', display: 'flex', flexDirection: 'column', justifyContent: 'center', borderRight: '4px dashed #cbd5e1', boxSizing: 'border-box' }}>
                
-               <div className="bg-white p-8 rounded-[3.5rem] border-[6px] border-slate-50 shadow-2xl mb-12">
-                  <QRCodeCanvas value={selectedTicket.id} size={300} level="H" />
+               <p style={{ margin: '0 0 10px 0', fontSize: '16px', fontWeight: 'bold', color: '#2563eb', letterSpacing: '2px', textTransform: 'uppercase' }}>
+                 {selectedTicket.events?.school || 'EVENT'} • OFFICIAL SECURITY PASS
+               </p>
+               
+               {/* Event Title - Allowed to wrap naturally with standard line height */}
+               <h1 style={{ margin: '0 0 20px 0', fontSize: '42px', fontWeight: '900', color: '#0f172a', textTransform: 'uppercase', lineHeight: '1.2', wordWrap: 'break-word' }}>
+                 {selectedTicket.events?.title}
+               </h1>
+               
+               <div style={{ display: 'flex', marginBottom: '20px', gap: '20px' }}>
+                  <div style={{ flex: 1 }}>
+                     <p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Event Date</p>
+                     <p style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', color: '#0f172a' }}>{selectedTicket.events?.date}</p>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                     <p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Authorized Time</p>
+                     <p style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', color: '#0f172a' }}>{selectedTicket.events?.start_time} - {selectedTicket.events?.end_time || 'End'}</p>
+                  </div>
                </div>
                
-               <h2 className="text-5xl font-black uppercase text-slate-800 tracking-tighter mb-4 text-center">
-                 {studentName}
-               </h2>
-               <div className="flex items-center gap-3 text-slate-400">
-                 <Fingerprint size={24} />
-                 <p className="text-xl font-mono font-bold tracking-widest uppercase">ID: {selectedTicket.id}</p>
+               <div style={{ marginBottom: '20px' }}>
+                  <p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Venue Location</p>
+                  <p style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', color: '#0f172a', wordWrap: 'break-word' }}>{selectedTicket.events?.venue}</p>
+               </div>
+               
+               <div style={{ borderTop: '2px solid #f1f5f9', paddingTop: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div>
+                    <p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Authorized Attendee</p>
+                    <p style={{ margin: 0, fontSize: '26px', fontWeight: '900', color: '#0f172a', textTransform: 'uppercase' }}>{studentName}</p>
+                  </div>
+                  <div style={{ backgroundColor: '#dcfce7', color: '#16a34a', padding: '12px 24px', borderRadius: '12px', fontWeight: 'bold', fontSize: '16px', border: '2px solid #bbf7d0' }}>
+                    VALID PASS
+                  </div>
                </div>
             </div>
 
-            {/* Footer Area: Details Grid */}
-            <div className="bg-slate-50 p-16 border-t-[3px] border-slate-100 grid grid-cols-2 gap-12 shrink-0">
-               <div className="space-y-8">
-                  <div>
-                    <p className="text-lg font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2"><Calendar size={20}/> Event Date</p>
-                    <p className="text-3xl font-bold text-slate-800">{selectedTicket.events?.date}</p>
-                  </div>
-                  <div>
-                    <p className="text-lg font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2"><Clock size={20}/> Authorized Time</p>
-                    <p className="text-3xl font-bold text-slate-800">{selectedTicket.events?.start_time} — {selectedTicket.events?.end_time || 'End'}</p>
-                  </div>
+            {/* Right Side (QR) */}
+            <div style={{ width: '300px', backgroundColor: '#f8fafc', padding: '30px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' }}>
+               <p style={{ margin: '0 0 20px 0', fontSize: '22px', fontWeight: '900', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '2px' }}>ADMIT ONE</p>
+               
+               <div style={{ backgroundColor: '#ffffff', padding: '15px', borderRadius: '16px', border: '2px solid #e2e8f0', display: 'inline-block' }}>
+                  <QRCodeCanvas value={selectedTicket.id} size={150} level="H" />
                </div>
-               <div className="space-y-8">
-                  <div>
-                    <p className="text-lg font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2"><MapPin size={20}/> Venue Location</p>
-                    <p className="text-3xl font-bold text-slate-800">{selectedTicket.events?.venue}</p>
-                  </div>
-                  <div>
-                    <p className="text-lg font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2"><ShieldCheck size={20}/> Pass Status</p>
-                    <div className="inline-flex items-center gap-2 px-6 py-3 bg-green-100 border-2 border-green-200 rounded-2xl text-green-600 font-black uppercase tracking-widest text-lg">
-                      <CheckCircle2 size={24}/> Verified Entry
-                    </div>
-                  </div>
-               </div>
+               
+               <p style={{ margin: '20px 0 5px 0', fontSize: '12px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>Ticket ID Reference</p>
+               
+               {/* Full ID, wrapped properly */}
+               <p style={{ margin: 0, fontSize: '12px', fontWeight: 'bold', color: '#0f172a', fontFamily: 'monospace', wordBreak: 'break-all', textAlign: 'center', padding: '0 10px' }}>
+                 {selectedTicket.id}
+               </p>
             </div>
-            
-            {/* Bottom Accent */}
-            <div className="h-6 w-full bg-blue-600 shrink-0"></div>
-            
+
           </div>
         </div>
       )}
