@@ -22,6 +22,7 @@ const EventList = () => {
   const [showManual, setShowManual] = useState(false);
   const [manualUtr, setManualUtr] = useState('');
   const [submittingManual, setSubmittingManual] = useState(false);
+  const [showQR, setShowQR] = useState(false); // <-- NEW: State to toggle QR visualization
 
   useEffect(() => {
     const ticker = setInterval(() => setNow(new Date()), 60000);
@@ -121,6 +122,7 @@ const EventList = () => {
       setIsVerified(false);
       setShowManual(false);
       setManualUtr('');
+      setShowQR(false); // Reset QR toggle
 
       // Call database to get unique decimal price
       const { data: uniquePrice, error } = await supabase.rpc('assign_unique_price', {
@@ -270,22 +272,43 @@ const EventList = () => {
                  </button>
               </div>
             ) : (
-              // The QR Code & Payment State
+              // The Payment State (DEEP LINK + OPTIONAL QR CODE)
               <div className="flex flex-col items-center text-center gap-6">
-                <div className="p-4 bg-white rounded-3xl shadow-xl relative">
-                  <img 
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=upi://pay?pa=${paymentModal.event.merchant_upi}&pn=Event_Pass&am=${assignedPrice}&cu=INR`}
-                    alt="Payment QR"
-                    className="w-48 h-48"
-                  />
-                </div>
-
+                
                 <div className="space-y-1">
                   <h3 className="text-2xl font-black uppercase italic text-white">PAY EXACTLY</h3>
-                  {/* Display the assigned price prominently */}
-                  <p className="text-emerald-400 font-black text-4xl tracking-widest">₹{assignedPrice}</p>
+                  <p className="text-emerald-400 font-black text-5xl tracking-widest">₹{assignedPrice}</p>
                   <p className="text-[9px] text-red-400 uppercase font-black tracking-widest mt-2 px-4">Do not change this amount. It verifies your identity.</p>
                 </div>
+
+                {/* DEEP LINK BUTTON & QR TOGGLE */}
+                <div className="w-full space-y-3">
+                  <a 
+                    href={`upi://pay?pa=${paymentModal.event.merchant_upi}&pn=Event_Pass&am=${assignedPrice}&cu=INR`}
+                    className="w-full flex items-center justify-center gap-3 py-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-black uppercase tracking-widest transition-all shadow-lg shadow-emerald-600/20 active:scale-95"
+                  >
+                    <Zap size={20} className="fill-white" />
+                    Tap to Pay via UPI App
+                  </a>
+                  
+                  <button 
+                    onClick={() => setShowQR(!showQR)}
+                    className="w-full flex items-center justify-center py-3 bg-[#1f2937] hover:bg-slate-800 text-slate-300 rounded-xl font-bold uppercase text-[9px] tracking-widest transition-all border border-slate-700"
+                  >
+                    {showQR ? "Hide QR Code" : "Using a PC? Click to Show QR Code"}
+                  </button>
+                </div>
+
+                {/* QR CODE VISUALIZATION (Toggled for PC Users) */}
+                {showQR && (
+                  <div className="p-4 bg-white rounded-3xl shadow-xl relative animate-in zoom-in duration-300">
+                    <img 
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`upi://pay?pa=${paymentModal.event.merchant_upi}&pn=Event_Pass&am=${assignedPrice}&cu=INR`)}`}
+                      alt="Payment QR"
+                      className="w-48 h-48"
+                    />
+                  </div>
+                )}
 
                 <div className="w-full space-y-4 pt-4 border-t border-white/5">
                   {/* Auto-Verification Spinner */}
@@ -297,7 +320,7 @@ const EventList = () => {
                   {/* Manual Claim Fallback */}
                   {!showManual ? (
                     <button onClick={() => setShowManual(true)} className="text-[9px] text-slate-500 hover:text-white underline uppercase font-bold tracking-widest pt-4 transition-colors">
-                      Money deducted but screen stuck?
+                      Paid but screen stuck? Enter UTR manually
                     </button>
                   ) : (
                     <div className="bg-[#1f2937] p-4 rounded-2xl border border-slate-700 text-left animate-in slide-in-from-bottom-2">
