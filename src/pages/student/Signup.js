@@ -1,73 +1,97 @@
 import React, { useState } from 'react';
 import { supabase } from '../../sbclient/supabaseClient';
+import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Mail, Sparkles, ArrowRight } from 'lucide-react';
+import { Mail, ArrowRight, Sparkles, Zap } from 'lucide-react';
 
 const Signup = () => {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
 
-  const handleSignup = async (e) => {
+  const handleVerify = async (e) => {
     e.preventDefault();
     
-    // --- DOMAIN LOCKDOWN ---
-    // Only allows emails ending in @adypu.edu.in
+    // Strict domain check for ADYPU credentials
     if (!email.toLowerCase().endsWith('@adypu.edu.in')) {
-      toast.error("Access Denied: Please use your @adypu.edu.in student email.");
-      return; 
+      toast.error("Access Denied: Only @adypu.edu.in emails allowed.");
+      return;
     }
 
     setLoading(true);
     const loadToast = toast.loading('Sending verification link...');
+
     try {
       const { error } = await supabase.auth.signInWithOtp({
         email: email,
-        options: { 
-          // UPDATED: Redirects to the registration form instead of the events page
-          emailRedirectTo: `${window.location.origin}/complete-registration` 
+        options: {
+          // Redirects them back to your app to finish registration
+          emailRedirectTo: window.location.origin + '/complete-registration',
         },
       });
+
       if (error) throw error;
-      toast.success("Verification link sent to Gmail!", { id: loadToast });
+
+      toast.success("Verification link sent! Check your university inbox.", { id: loadToast });
+      
+      // UTILIZING NAVIGATE: Redirect to Login after successful email trigger
+      // This solves the 'unused-vars' error and improves user flow
+      setTimeout(() => {
+        navigate('/login');
+      }, 2000);
+
     } catch (error) {
-      toast.error(error.message, { id: loadToast });
+      toast.error(error.message || "Something went wrong", { id: loadToast });
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-[calc(100vh-64px)] flex justify-center items-start pt-16 md:pt-24 px-4 transition-colors duration-500">
-      <div className="bg-[#0f172a] p-8 md:p-10 rounded-[2.5rem] shadow-2xl border border-slate-800 w-full max-w-md transition-all">
-        <div className="mb-8 text-center">
-          <div className="w-14 h-14 bg-blue-600 text-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl shadow-blue-500/20">
-             <Sparkles size={28} />
+    <div className="min-h-[calc(100vh-64px)] flex justify-center items-start pt-16 md:pt-24 px-4 bg-[#0a0f1d]">
+      <div className="bg-[#111827] p-8 md:p-10 rounded-[2.5rem] shadow-2xl border border-slate-800 w-full max-w-md transition-all relative overflow-hidden">
+        {/* Decorative Top Accent */}
+        <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-transparent via-blue-500 to-transparent" />
+        
+        <div className="mb-10 text-center">
+          <div className="w-16 h-16 bg-blue-600 text-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl shadow-blue-500/20">
+            <Sparkles size={32} />
           </div>
-          <h2 className="text-3xl font-black text-white mb-2 tracking-tight">Get Started</h2>
-          <p className="text-slate-400 font-medium text-xs leading-relaxed uppercase tracking-widest">Verify your ADYPU credentials</p>
+          <h2 className="text-3xl font-black text-white mb-2 tracking-tight uppercase italic">Get Started</h2>
+          <p className="text-slate-500 font-bold text-[10px] uppercase tracking-[0.3em]">Verify ADYPU Credentials</p>
         </div>
 
-        <form onSubmit={handleSignup} className="space-y-6">
-          <div className="space-y-1.5">
+        <form onSubmit={handleVerify} className="space-y-6">
+          <div className="space-y-2">
             <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2">University Email</label>
             <div className="relative flex items-center">
               <Mail className="absolute left-4 text-slate-500" size={18} />
               <input 
-                type="email" placeholder="name@adypu.edu.in" 
+                type="email" 
+                placeholder="name@adypu.edu.in" 
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full pl-12 pr-4 py-3.5 bg-slate-900/50 border border-slate-800 focus:border-blue-500 rounded-2xl outline-none text-white transition-all text-sm font-medium shadow-inner" 
+                className="w-full pl-12 pr-4 py-4 bg-slate-900/50 border border-slate-800 focus:border-blue-500 rounded-2xl outline-none text-white text-sm font-medium transition-all" 
                 required 
               />
             </div>
           </div>
 
-          <button type="submit" disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3.5 rounded-2xl font-black text-base flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(37,99,235,0.3)] active:scale-95 transition-all">
-            {loading ? "SENDING..." : "VERIFY EMAIL"} <ArrowRight size={20} />
+          <button 
+            type="submit" 
+            disabled={loading}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-black text-base flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 active:scale-95 transition-all"
+          >
+            {loading ? <Zap className="animate-pulse" size={20} /> : "VERIFY EMAIL"} <ArrowRight size={20} />
           </button>
 
-          <div className="mt-8 text-center border-t border-slate-800 pt-6">
-            <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest">© ActiveArch {new Date().getFullYear()}</p>
+          <div className="pt-6 space-y-4 text-center border-t border-slate-800/50">
+            <p className="text-slate-500 text-xs font-medium">
+              Already have an account?{' '}
+              <Link to="/login" className="text-blue-500 font-black uppercase tracking-widest hover:underline">
+                Login Here
+              </Link>
+            </p>
           </div>
         </form>
       </div>

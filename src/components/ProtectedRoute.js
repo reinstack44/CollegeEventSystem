@@ -10,8 +10,8 @@ const ProtectedRoute = ({ children }) => {
   useEffect(() => {
     const checkAdmin = async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      
-      const adminEmails = ['admin@activearch.in', 'staff@adypu.edu.in'];
+      // Authorized Admin/Staff Emails
+      const adminEmails = ['admin@activearch.in', 'staff@adypu.edu.in', 'prathamesh@adypu.edu.in'];
       
       if (user && adminEmails.includes(user.email)) {
         setAuthorized(true);
@@ -29,6 +29,7 @@ const ProtectedRoute = ({ children }) => {
     );
   }
 
+  // If not an admin, send to admin login
   return authorized ? children : <Navigate to="/adminlogin" replace />;
 };
 

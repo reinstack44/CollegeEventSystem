@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
+import { supabase } from './sbclient/supabaseClient';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -23,61 +24,74 @@ import StudentRecords from './pages/admin/StudentRecords';
 import ManageRegistrations from './pages/admin/ManageRegistrations'; 
 
 function App() {
-  const [darkMode, setDarkMode] = useState(() => {
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme) return savedTheme === 'dark';
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
-  });
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
   useEffect(() => {
-    const root = window.document.documentElement;
-    if (darkMode) {
-      root.classList.add('dark');
-      root.style.colorScheme = 'dark';
-      localStorage.setItem('theme', 'dark');
-    } else {
-      root.classList.remove('dark');
-      root.style.colorScheme = 'light';
-      localStorage.setItem('theme', 'light');
-    }
-  }, [darkMode]);
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setAuthLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setAuthLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (authLoading) {
+    return (
+      <div className="h-screen bg-[#0a0f1d] flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
 
   return (
     <Router>
-      <Toaster 
-        position="top-center" 
-        toastOptions={{
-          className: 'dark:bg-slate-800 dark:text-white rounded-2xl shadow-xl font-bold',
-          duration: 3000,
-        }} 
-      />
-      
-      <div className="min-h-screen transition-colors duration-500 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col">
-        <Navbar darkMode={darkMode} setDarkMode={setDarkMode} />
+      <Toaster position="top-center" />
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col">
+        <Navbar session={session} />
         
-        <main className="w-full grow pb-20">
+        <main className="grow">
           <Routes>
-            <Route path="/" element={<Signup />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/adminlogin" element={<AdminLogin />} />
-            <Route path="/events" element={<EventList />} />
-            <Route path="/my-tickets" element={<MyTickets />} />
-            <Route path="/profile" element={<Profile />} />
-            <Route path="/complete-registration" element={<CompleteRegistration />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
+            {/* 1. THE ROOT PATH: Forces the URL to change to /login */}
+            <Route 
+              path="/" 
+              element={session ? <Navigate to="/events" replace /> : <Navigate to="/login" replace />} 
+            />
+
+            {/* 2. AUTHENTICATION */}
+            <Route 
+              path="/login" 
+              element={session ? <Navigate to="/events" replace /> : <Login />} 
+            />
+            <Route 
+              path="/signup" 
+              element={session ? <Navigate to="/events" replace /> : <Signup />} 
+            />
             
+            {/* 3. PROTECTED STUDENT ROUTES */}
+            <Route path="/events" element={session ? <EventList /> : <Navigate to="/login" replace />} />
+            <Route path="/my-tickets" element={session ? <MyTickets /> : <Navigate to="/login" replace />} />
+            <Route path="/profile" element={session ? <Profile /> : <Navigate to="/login" replace />} />
+            <Route path="/complete-registration" element={session ? <CompleteRegistration /> : <Navigate to="/login" replace />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+
+            {/* 4. ADMIN ROUTES */}
+            <Route path="/adminlogin" element={<AdminLogin />} />
             <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
             <Route path="/admin/create" element={<ProtectedRoute><CreateEvent /></ProtectedRoute>} />
             <Route path="/admin/scan" element={<ProtectedRoute><Scanner /></ProtectedRoute>} />
             <Route path="/admin/students" element={<ProtectedRoute><StudentRecords /></ProtectedRoute>} /> 
-            
-            {/* MATCHING ROUTE FOR LOGS */}
             <Route path="/admin/logs" element={<ProtectedRoute><ManageRegistrations /></ProtectedRoute>} /> 
-            
+
+            {/* 5. GLOBAL CATCH-ALL */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
-        
         <Footer />
       </div>
     </Router>

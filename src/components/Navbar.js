@@ -1,33 +1,39 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../sbclient/supabaseClient';
-import { Menu, X, LogOut, Ticket, User, Calendar, Download, Shield } from 'lucide-react';
+import { Menu, X, LogOut, Ticket, User, Calendar, Download, Shield, Zap } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-const Navbar = () => {
-  const [user, setUser] = useState(null);
+const Navbar = ({ session }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const menuRef = useRef(null);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => setUser(session?.user ?? null));
-    supabase.auth.onAuthStateChange((_event, session) => setUser(session?.user ?? null));
+  // Use the session provided by App.js to stay perfectly in sync
+  const user = session?.user ?? null;
+  const isAdmin = user?.email?.includes('admin') || user?.email?.includes('staff@adypu.edu.in');
 
+  useEffect(() => {
     // PWA Install Logic
-    window.addEventListener('beforeinstallprompt', (e) => {
+    const handleInstallPrompt = (e) => {
       e.preventDefault();
       setDeferredPrompt(e);
-    });
+    };
+    window.addEventListener('beforeinstallprompt', handleInstallPrompt);
 
+    // Click outside listener to close dropdown menu
     const handleClickOutside = (event) => {
       if (menuRef.current && !menuRef.current.contains(event.target)) {
         setIsOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleInstallPrompt);
+      document.addEventListener("mousedown", handleClickOutside);
+    };
   }, []);
 
   const handleInstall = async () => {
@@ -39,21 +45,25 @@ const Navbar = () => {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
     setIsOpen(false);
-    toast.success("Signed out successfully");
-    navigate('/login');
+    if (error) {
+      toast.error("Logout failed");
+    } else {
+      toast.success("Signed out successfully");
+      // navigate with replace: true prevents users from hitting 'back' into a private session
+      navigate('/login', { replace: true });
+    }
   };
-
-  const isAdmin = user?.email?.includes('admin');
 
   return (
     <nav className="sticky top-0 z-50 backdrop-blur-xl bg-[#0a0f1d]/90 border-b border-white/5 selection:bg-blue-500/30">
       <div className="container mx-auto px-6 h-18 flex justify-between items-center py-4">
         
-        {/* --- BRANDING: Redirects to Event List --- */}
+        {/* --- BRANDING LOGO --- */}
+        {/* If logged out, logo strictly navigates to Student Login */}
         <Link 
-          to="/events" 
+          to={user ? "/events" : "/login"} 
           className="flex items-center gap-3 group transition-all active:scale-95"
         >
           <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center font-black text-white shadow-lg shadow-blue-500/40 group-hover:shadow-blue-500/60 transition-all italic text-xl">
@@ -65,7 +75,7 @@ const Navbar = () => {
         </Link>
 
         <div className="flex items-center gap-4">
-          {/* PWA Install Button */}
+          {/* PWA Install Button (Desktop) */}
           {deferredPrompt && (
             <button 
               onClick={handleInstall} 
@@ -92,13 +102,16 @@ const Navbar = () => {
             {isOpen && (
               <div className="absolute right-0 mt-5 w-72 bg-[#111827] rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.5)] py-4 border border-white/5 overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300 backdrop-blur-2xl">
                 <div className="px-6 py-3 mb-2 border-b border-white/5">
-                  <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.3em]">Menu</p>
+                  <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.3em]">
+                    {user ? `System Portal: ${user.email.split('@')[0]}` : "Identity Verification"}
+                  </p>
                 </div>
-                
-                <MenuLink to="/events" icon={<Calendar size={18} className="text-blue-500"/>} label="Live Events" onClick={() => setIsOpen(false)} />
                 
                 {user ? (
                   <>
+                    {/* Logged In Navigation */}
+                    <MenuLink to="/events" icon={<Calendar size={18} className="text-blue-500"/>} label="Live Events" onClick={() => setIsOpen(false)} />
+                    
                     {!isAdmin ? (
                       <>
                         <MenuLink to="/my-tickets" icon={<Ticket size={18} className="text-blue-500"/>} label="Your Tickets" onClick={() => setIsOpen(false)} />
@@ -106,23 +119,36 @@ const Navbar = () => {
                       </>
                     ) : (
                       <>
-                        <MenuLink to="/admin" icon={<Shield size={18} className="text-red-500"/>} label="Admin Panel" onClick={() => setIsOpen(false)} />
-                        <MenuLink to="/admin/create" icon={<Calendar size={18} className="text-blue-500"/>} label="Create Event" onClick={() => setIsOpen(false)} />
+                        <MenuLink to="/admin" icon={<Shield size={18} className="text-red-500"/>} label="Admin Dashboard" onClick={() => setIsOpen(false)} />
+                        <MenuLink to="/admin/create" icon={<Calendar size={18} className="text-blue-500"/>} label="Host New Event" onClick={() => setIsOpen(false)} />
                       </>
                     )}
+                    
                     <div className="px-6 py-3 mt-2 border-t border-white/5">
                       <button 
                         onClick={handleLogout} 
                         className="w-full flex items-center gap-4 px-4 py-4 text-red-400 hover:bg-red-500/10 rounded-2xl font-black text-[10px] transition-all uppercase tracking-[0.2em]"
                       >
-                        <LogOut size={18} /> Logout Session
+                        <LogOut size={18} /> Terminate Session
                       </button>
                     </div>
                   </>
                 ) : (
+                  /* Logged Out Navigation */
                   <div className="px-4 mt-2">
-                    {/* CHANGED: Label updated from "Client Login" to "Student Login" */}
-                    <MenuLink to="/login" icon={<User size={18}/>} label="Student Login" onClick={() => setIsOpen(false)} primary />
+                    <MenuLink 
+                      to="/login" 
+                      icon={<User size={18}/>} 
+                      label="Student Login" 
+                      onClick={() => setIsOpen(false)} 
+                      primary 
+                    />
+                    <MenuLink 
+                      to="/signup" 
+                      icon={<Zap size={18} className="text-blue-400" />} 
+                      label="Create Account" 
+                      onClick={() => setIsOpen(false)} 
+                    />
                   </div>
                 )}
               </div>
@@ -134,6 +160,7 @@ const Navbar = () => {
   );
 };
 
+// Reusable Menu Link Component
 const MenuLink = ({ to, icon, label, onClick, primary }) => (
   <Link 
     to={to} 
