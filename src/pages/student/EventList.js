@@ -186,9 +186,7 @@ const EventList = () => {
     }
   };
 
-  // --- NEW: HANDLE ABORTING TRANSACTION ---
   const handleCloseModal = async () => {
-    // If the user hasn't paid yet and hasn't submitted a manual UTR, delete the pending reservation
     if (assignedPrice && !isVerified) {
       try {
         const { data: { user } } = await supabase.auth.getUser();
@@ -199,7 +197,7 @@ const EventList = () => {
             .match({ 
               event_id: paymentModal.event.id, 
               student_email: user.email,
-              status: 'pending' // Only delete if it's still pending
+              status: 'pending' 
             });
         }
       } catch (err) {
@@ -207,7 +205,6 @@ const EventList = () => {
       }
     }
 
-    // Reset all modal states and refresh grid
     setPaymentModal({ open: false, event: null });
     setAssignedPrice(null);
     setIsVerified(false);
@@ -232,7 +229,6 @@ const EventList = () => {
       if (error) throw error;
       
       toast.success("UTR Submitted! Admin will verify shortly.");
-      // We don't use handleCloseModal here because we WANT it to stay pending for the Admin to check
       setPaymentModal({ open: false, event: null });
       fetchEvents();
     } catch (error) {
@@ -248,13 +244,13 @@ const EventList = () => {
     return matchesSearch && matchesStatus;
   });
 
-  // --- SMART UPI LINK GENERATOR (BANK COMPLIANT) ---
   const generateUpiUrl = () => {
     if (!paymentModal.event || !assignedPrice) return '';
     const cleanPayeeName = encodeURIComponent("ActiveArch"); 
     const safeAmount = Number(assignedPrice).toFixed(2);
     const tr = `TRX${Date.now()}`;
-    return `upi://pay?pa=${paymentModal.event.merchant_upi}&pn=${cleanPayeeName}&tr=${tr}&mc=8999&am=${safeAmount}&cu=INR`;
+    const note = encodeURIComponent(`Pass_${paymentModal.event.id}`);
+    return `upi://pay?pa=${paymentModal.event.merchant_upi}&pn=${cleanPayeeName}&tr=${tr}&tn=${note}&mc=8999&am=${safeAmount}&cu=INR`;
   };
 
   const handleUpiClick = (e) => {
@@ -277,7 +273,6 @@ const EventList = () => {
     <div className="min-h-screen bg-[#0a0f1d] text-white p-4 md:p-6 pb-24 selection:bg-blue-500/30">
       <div className="max-w-7xl mx-auto space-y-12">
         
-        {/* Header & Search */}
         <div className="flex flex-col gap-6">
           <div className="bg-[#111827]/90 backdrop-blur-xl p-3 rounded-4xl border border-white/5 shadow-2xl">
             <div className="relative w-full text-left">
@@ -300,12 +295,11 @@ const EventList = () => {
           
           <div className="flex items-center gap-2 p-1.5 bg-[#111827] border border-white/5 rounded-2xl w-fit self-center md:self-start">
             {['all', 'available', 'Booked'].map(s => (
-              <button key={s} onClick={() => setStatusFilter(s)} className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${statusFilter === s ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>{s}</button>
+              <button key={s} onClick={() => setStatusFilter(s)} className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${statusFilter === s ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>{s}</button>
             ))}
           </div>
         </div>
 
-        {/* Events Grid */}
         <section className="space-y-8 text-left">
           <h2 className="text-2xl font-black uppercase italic flex items-center gap-3"><Zap className="text-yellow-500 fill-yellow-500" size={24}/> Registrations Open</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -322,14 +316,11 @@ const EventList = () => {
         </section>
       </div>
 
-      {/* RAZORPAY-STYLE RESPONSIVE PAYMENT MODAL */}
       {paymentModal.open && (
         <div className="fixed inset-0 z-100 flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-sm">
           
-          {/* Modal Container */}
           <div className="bg-[#111827] border border-slate-700 rounded-2xl flex flex-col md:flex-row w-full max-w-4xl max-h-[95vh] md:max-h-[85vh] overflow-hidden shadow-2xl relative">
             
-            {/* UPDATED: Close Button now aborts transaction */}
             <button 
               onClick={handleCloseModal} 
               className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white rounded-full hover:bg-white/5 transition-colors z-50"
@@ -352,7 +343,8 @@ const EventList = () => {
                  <p className="text-slate-400 text-sm mb-8 max-w-sm">Your ticket has been secured and sent to your dashboard.</p>
                  <button onClick={() => {
                     setPaymentModal({open: false, event: null});
-                    window.location.href = `/student/tickets#ticket-${paymentModal.event.id}`;
+                    // ADDED ?autoFlip=true right here:
+                    window.location.href = `/student/tickets?autoFlip=true#ticket-${paymentModal.event.id}`;
                  }} className="px-8 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium transition-colors shadow-md">
                    View Ticket
                  </button>
@@ -360,7 +352,6 @@ const EventList = () => {
               
             ) : (
               <>
-                {/* LEFT PANEL - ORDER SUMMARY */}
                 <div className="bg-[#050810] w-full md:w-80 p-6 md:p-8 flex flex-col border-b md:border-b-0 md:border-r border-slate-800 shrink-0">
                   <div className="mb-6 md:mb-8 mt-2 md:mt-0">
                     <div className="w-10 h-10 bg-slate-800/50 rounded-lg flex items-center justify-center text-slate-300 mb-4 border border-slate-700">
@@ -391,14 +382,13 @@ const EventList = () => {
                   </div>
                 </div>
 
-                {/* RIGHT PANEL - PAYMENT ACTION */}
                 <div className="flex-1 p-6 md:p-10 bg-[#111827] overflow-y-auto custom-scrollbar flex flex-col">
                   
                   <h3 className="text-lg font-medium text-white mb-6 hidden md:block">Pay via UPI</h3>
                   
                   <div className="flex flex-col items-center w-full max-w-sm mx-auto">
                     
-                    <div className="flex flex-col items-center mb-6">
+                    <div className="hidden md:flex flex-col items-center mb-6">
                       <div className="bg-white p-4 rounded-2xl shadow-sm mb-4">
                         <img 
                           src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(generateUpiUrl())}`}
@@ -411,7 +401,7 @@ const EventList = () => {
 
                     <div className="md:hidden flex items-center w-full mb-6">
                       <div className="flex-1 border-t border-slate-700"></div>
-                      <span className="px-4 text-xs text-slate-500 uppercase tracking-widest">OR</span>
+                      <span className="px-4 text-xs text-slate-500 uppercase tracking-widest">Select App</span>
                       <div className="flex-1 border-t border-slate-700"></div>
                     </div>
 
@@ -455,7 +445,6 @@ const EventList = () => {
                         </div>
                       )}
                       
-                      {/* UPDATED: Cancel Button now aborts transaction */}
                       <button onClick={handleCloseModal} className="w-full text-[9px] font-black text-slate-600 hover:text-red-400 uppercase tracking-widest transition-colors mt-6 pb-2">
                         Cancel Transaction
                       </button>

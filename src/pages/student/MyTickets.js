@@ -29,22 +29,33 @@ const MyTickets = () => {
     fetchUserTickets();
   }, []);
 
-  // AUTO-FLIP LOGIC: Detects ticket ID from URL and opens it
+  // --- BULLETPROOF AUTO-FLIP LOGIC ---
   useEffect(() => {
     if (!loading && tickets.length > 0) {
-      const hash = window.location.hash;
-      if (hash && hash.startsWith('#ticket-')) {
-        const eventId = hash.replace('#ticket-', '');
-        // Find the ticket that belongs to this event
-        const targetTicket = tickets.find(t => String(t.events?.id) === eventId);
+      // Use raw href and regex to bypass any React Router stripping quirks
+      const currentHref = window.location.href;
+      const hasAutoFlip = currentHref.includes('autoFlip=true');
+      const ticketMatch = currentHref.match(/#ticket-([a-zA-Z0-9-]+)/);
+      
+      if (ticketMatch && ticketMatch[1]) {
+        const eventId = ticketMatch[1];
+        const targetTicket = tickets.find(t => String(t.events?.id) === String(eventId));
         
         if (targetTicket) {
           if (targetTicket.status === 'pending') {
             toast.error("Ticket is still pending verification.");
           } else {
-            openTicket(targetTicket);
-            // Clean the URL so it doesn't pop up again on refresh
-            window.history.replaceState(null, null, ' ');
+            // 1. Instantly open the modal
+            setSelectedTicket(targetTicket);
+            setIsFlipping(false);
+            
+            // 2. If it came from the payment page, flip it after modal animation finishes
+            if (hasAutoFlip) {
+              setTimeout(() => setIsFlipping(true), 700); 
+            }
+            
+            // 3. Clean the URL so it doesn't auto-open again on page refresh
+            window.history.replaceState(null, '', window.location.pathname);
           }
         }
       }
@@ -125,11 +136,14 @@ const MyTickets = () => {
     }
   };
 
-  const openTicket = (ticket) => {
+  // Regular function for manual clicks on grid cards
+  const openTicket = (ticket, shouldFlip = true) => {
     setSelectedTicket(ticket);
     setIsFlipping(false);
-    // Smooth transition into the flip
-    setTimeout(() => setIsFlipping(true), 300);
+    
+    if (shouldFlip) {
+      setTimeout(() => setIsFlipping(true), 300);
+    }
   };
 
   const downloadPDF = async () => {
@@ -174,7 +188,7 @@ const MyTickets = () => {
         });
         return; 
       }
-      openTicket(ticket);
+      openTicket(ticket, true);
     };
 
     return (
@@ -329,7 +343,8 @@ const MyTickets = () => {
       {selectedTicket && (
         <div className="fixed inset-0 z-100 bg-black/95 backdrop-blur-3xl flex items-center justify-center p-4">
           <button onClick={() => setSelectedTicket(null)} className="absolute top-8 right-8 p-3 bg-white/10 hover:bg-white/20 rounded-full transition-colors text-white z-110 border border-white/10 shadow-xl"><X size={32} /></button>
-          <div className="perspective-2000 w-full max-w-lg h-150 md:h-162.5">
+          
+          <div className="perspective-2000 w-full max-w-lg h-150 md:h-162.5 cursor-pointer" onClick={() => setIsFlipping(!isFlipping)}>
             <div className={`relative w-full h-full transition-transform duration-1000 ease-in-out transform-style-3d ${isFlipping ? 'rotate-y-180' : ''}`}>
               
               {/* FRONT OF TICKET */}
@@ -356,7 +371,7 @@ const MyTickets = () => {
                       )}
                    </div>
                 </div>
-                <div className="flex flex-col items-center gap-4 py-6 border-t border-white/5"><p className="text-blue-500 font-black text-[10px] uppercase tracking-widest animate-pulse">Preparing Entry Token...</p></div>
+                <div className="flex flex-col items-center gap-4 py-6 border-t border-white/5"><p className="text-blue-500 font-black text-[10px] uppercase tracking-widest animate-pulse">Tap Card to View Entry QR</p></div>
               </div>
 
               {/* BACK OF TICKET (QR CODE) */}
@@ -365,8 +380,9 @@ const MyTickets = () => {
                 <div className="bg-[#f8fafc] p-6 rounded-[3rem] border-2 border-slate-100 mb-6"><QRCodeCanvas value={selectedTicket.id} size={220} level="H" /></div>
                 <div className="w-full space-y-4">
                   <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex items-center justify-between"><p className="font-mono text-[11px] text-slate-400 uppercase font-bold truncate max-w-62.5">ID: {selectedTicket.id}</p><Fingerprint size={18} className="text-blue-500" /></div>
-                  <button onClick={downloadPDF} disabled={isDownloading} className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 text-white rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-blue-700 transition-all">{isDownloading ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}{isDownloading ? 'Generating...' : 'Download PDF'}</button>
+                  <button onClick={(e) => { e.stopPropagation(); downloadPDF(); }} disabled={isDownloading} className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 text-white rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-blue-700 transition-all z-50">{isDownloading ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}{isDownloading ? 'Generating...' : 'Download PDF'}</button>
                 </div>
+                <p className="mt-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Tap anywhere to flip back</p>
               </div>
 
             </div>
