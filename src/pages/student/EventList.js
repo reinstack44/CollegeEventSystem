@@ -77,26 +77,17 @@ const EventList = () => {
   };
 
   const listenForVerification = (eventId, studentEmail) => {
-    console.log(`[Realtime] Starting listener for Student: ${studentEmail}`);
-    
     const channel = supabase
       .channel(`payment_listener_${studentEmail}`)
       .on(
         'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'bookings'
-        },
+        { event: 'UPDATE', schema: 'public', table: 'bookings' },
         (payload) => {
-          console.log("🔔 REALTIME PING RECEIVED FROM DATABASE:", payload);
-          
           if (
             payload.new.event_id === eventId && 
             payload.new.student_email === studentEmail && 
             payload.new.status === 'verified'
           ) {
-            console.log("✅ MATCH FOUND! Unlocking pass...");
             setIsVerified(true);
             toast.success("Payment Received! Pass Issued.");
             fetchEvents(); 
@@ -104,14 +95,11 @@ const EventList = () => {
           }
         }
       )
-      .subscribe((status) => {
-        console.log("📡 Realtime Connection Status:", status);
-      });
+      .subscribe();
   };
 
   const handleBook = async (e, event) => {
     e.stopPropagation(); 
-    
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return toast.error("Login Required");
 
@@ -120,7 +108,7 @@ const EventList = () => {
     if (event.isSoldOut) return toast.error("Deployment Full: Sold Out!");
 
     if (event.event_type === 'paid') {
-      if (event.isPending) return toast.error("You have a pending transaction. Please wait.");
+      if (event.isPending) return toast.error("You have a pending transaction.");
 
       setPaymentModal({ open: true, event: event });
       setAssignedPrice(null);
@@ -129,7 +117,6 @@ const EventList = () => {
       setManualUtr('');
       setShowQR(false); 
 
-      // Math for Nodal Account Setup
       const PLATFORM_FEE = 10;
       const totalBasePrice = event.price + PLATFORM_FEE; 
 
@@ -167,7 +154,6 @@ const EventList = () => {
   const handleManualSubmit = async () => {
     if (manualUtr.length !== 12) return toast.error("Invalid UTR. Must be 12 digits.");
     setSubmittingManual(true);
-    
     try {
       const { error } = await supabase.from('bookings')
         .update({ utr_number: manualUtr })
@@ -176,9 +162,7 @@ const EventList = () => {
           amount_expected: assignedPrice, 
           status: 'pending' 
         });
-      
       if (error) throw error;
-      
       toast.success("UTR Submitted! Admin will verify shortly.");
       setPaymentModal({ open: false, event: null });
       fetchEvents();
@@ -200,11 +184,10 @@ const EventList = () => {
   return (
     <div className="min-h-screen bg-[#0a0f1d] text-white p-4 md:p-6 pb-24 selection:bg-blue-500/30">
       <div className="max-w-7xl mx-auto space-y-12">
-        
         <div className="flex flex-col gap-6">
           <div className="bg-[#111827]/90 backdrop-blur-xl p-3 rounded-4xl border border-white/5 shadow-2xl">
             <div className="relative w-full text-left">
-              <Search className="absolute left-6 top-9 -translate-y-1/2 text-slate-500" size={20} />
+              <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
               <input 
                 type="text"
                 placeholder="SEARCH Events..."
@@ -217,11 +200,7 @@ const EventList = () => {
 
           <div className="flex justify-center w-full">
             <div className="bg-white rounded-2xl px-20 py-3.5 shadow-[0_10px_40px_rgba(0,0,0,0.4)] border border-white/10 flex items-center justify-center">
-              <img 
-                src="/adypu logo.png" 
-                alt="ADYPU Logo" 
-                className="h-10 md:h-12 object-contain"
-              />
+              <img src="/adypu logo.png" alt="ADYPU Logo" className="h-10 md:h-12 object-contain" />
             </div>
           </div>
           
@@ -248,19 +227,14 @@ const EventList = () => {
         </section>
       </div>
 
-      {/* FULLY RESPONSIVE PAYMENT GATEWAY MODAL */}
+      {/* PAYMENT MODAL */}
       {paymentModal.open && (
         <div className="fixed inset-0 z-100 flex items-center justify-center p-4 md:p-8 bg-[#0a0f1d]/90 backdrop-blur-md">
-          {/* Expanded to lg:max-w-4xl for two-column desktop support */}
-          <div className="bg-[#111827] border-2 border-emerald-500/30 rounded-[2.5rem] md:rounded-[3.5rem] p-6 md:p-10 max-w-md lg:max-w-4xl w-full shadow-[0_0_50px_rgba(16,185,129,0.15)] relative max-h-[95vh] overflow-y-auto custom-scrollbar">
+          <div className="bg-[#111827] border-2 border-emerald-500/30 rounded-[2.5rem] md:rounded-[3.5rem] p-6 md:p-10 max-w-md lg:max-w-4xl w-full relative max-h-[95vh] overflow-y-auto custom-scrollbar">
             
-            {/* Global Close Button */}
             <button 
-              onClick={() => {
-                setPaymentModal({ open: false, event: null });
-                fetchEvents();
-              }} 
-              className="absolute top-4 right-4 md:top-8 md:right-8 p-2.5 bg-black/20 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-full transition-colors z-50 border border-white/5"
+              onClick={() => setPaymentModal({ open: false, event: null })} 
+              className="absolute top-4 right-4 p-2.5 bg-black/20 text-slate-400 hover:text-red-400 rounded-full transition-colors z-50 border border-white/5"
             >
               <X size={20} />
             </button>
@@ -276,165 +250,92 @@ const EventList = () => {
                    <ShieldCheck size={48} />
                  </div>
                  <h3 className="text-4xl font-black uppercase italic text-white">ACCESS GRANTED</h3>
-                 <p className="text-slate-400 font-bold tracking-widest text-sm">Your Pass is ready in your dashboard.</p>
-                 <button onClick={() => setPaymentModal({open: false, event: null})} className="w-full max-w-sm mt-6 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black uppercase text-xs tracking-widest transition-all">
+                 <button onClick={() => setPaymentModal({open: false, event: null})} className="w-full max-w-sm mt-6 py-4 bg-emerald-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest transition-all">
                    View Ticket
                  </button>
               </div>
             ) : (
-              // TWO-COLUMN GRID FOR DESKTOP / STACKED ON MOBILE
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center pt-4">
-                
-                {/* LEFT COLUMN: Pricing & Receipt Details */}
                 <div className="flex flex-col text-left gap-6 order-1">
                   <div className="space-y-2">
                     <h3 className="text-2xl lg:text-3xl font-black uppercase italic text-white leading-none">PAY EXACTLY</h3>
-                    <p className="text-emerald-400 font-black text-6xl lg:text-7xl tracking-tighter drop-shadow-lg">₹{assignedPrice}</p>
-                    <p className="text-[10px] lg:text-[11px] text-red-400 uppercase font-black tracking-widest mt-2 leading-relaxed">
-                      Do not change the decimal amount.<br className="hidden lg:block"/> It verifies your identity securely.
-                    </p>
+                    <p className="text-emerald-400 font-black text-6xl lg:text-7xl tracking-tighter">₹{assignedPrice}</p>
                   </div>
 
                   <div className="w-full bg-[#1f2937] rounded-3xl p-6 border border-slate-700 shadow-inner">
                     <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] border-b border-slate-700 pb-3 mb-4 flex items-center gap-2">
                       <Ticket size={14}/> Transaction Breakdown
                     </h4>
-                    
-                    <div className="space-y-3.5">
-                      <div className="flex justify-between items-center text-sm font-bold text-slate-300">
-                        <span>Event Ticket Price</span>
-                        <span>₹{paymentModal.event.price}</span>
-                      </div>
-                      <div className="flex justify-between items-center text-sm font-bold text-slate-300">
-                        <span>ActiveArch Platform Fee</span>
-                        <span>₹10</span>
-                      </div>
-                      <div className="flex justify-between items-center text-[10px] font-bold text-emerald-500/70 uppercase tracking-widest">
-                        <span>Security Verification Decimal</span>
-                        <span>+ ₹{(assignedPrice - paymentModal.event.price - 10).toFixed(2)}</span>
-                      </div>
-                    </div>
-
-                    <div className="flex justify-between items-end text-2xl lg:text-3xl font-black text-emerald-400 border-t border-slate-700 pt-5 mt-5">
-                      <span className="text-[10px] lg:text-xs text-slate-400 uppercase tracking-widest mb-1.5">Total Payable</span>
-                      <span>₹{assignedPrice}</span>
+                    <div className="space-y-3.5 text-sm font-bold text-slate-300">
+                      <div className="flex justify-between"><span>Event Ticket</span><span>₹{paymentModal.event.price}</span></div>
+                      <div className="flex justify-between"><span>Platform Fee</span><span>₹10</span></div>
+                      <div className="flex justify-between text-emerald-500/70 text-[10px]"><span>Verification Decimal</span><span>+ ₹{(assignedPrice - paymentModal.event.price - 10).toFixed(2)}</span></div>
                     </div>
                   </div>
 
-                  <div className="w-full space-y-4 pt-2 border-t border-white/5">
-                    <div className="flex items-center justify-start gap-3 text-[10px] font-black uppercase tracking-widest text-emerald-500">
-                       <span className="relative flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span></span>
-                       Awaiting Bank Confirmation...
-                    </div>
-
-                    {!showManual ? (
-                      <button onClick={() => setShowManual(true)} className="text-[9px] text-slate-500 hover:text-white underline uppercase font-bold tracking-widest transition-colors text-left">
-                        Paid but screen stuck? Enter UTR manually
+                  {!showManual ? (
+                    <button onClick={() => setShowManual(true)} className="text-[9px] text-slate-500 hover:text-white underline uppercase font-bold tracking-widest">
+                      Paid but screen stuck? Enter UTR manually
+                    </button>
+                  ) : (
+                    <div className="bg-[#111827] p-4 rounded-2xl border border-slate-700 animate-in slide-in-from-bottom-2">
+                      <input 
+                        value={manualUtr}
+                        onChange={(e) => setManualUtr(e.target.value.replace(/\D/g, '').slice(0, 12))}
+                        className="w-full p-3.5 bg-black border border-slate-800 rounded-xl text-emerald-400 text-center font-mono tracking-[0.3em] mb-3 outline-none"
+                        placeholder="0000 0000 0000"
+                      />
+                      <button 
+                        onClick={handleManualSubmit}
+                        disabled={manualUtr.length !== 12 || submittingManual}
+                        className="w-full bg-emerald-600 py-3.5 rounded-xl text-[10px] text-white font-black uppercase tracking-widest disabled:opacity-50"
+                      >
+                        {submittingManual ? "Submitting..." : "Submit UTR"}
                       </button>
-                    ) : (
-                      <div className="bg-[#111827] p-4 rounded-2xl border border-slate-700 text-left animate-in slide-in-from-bottom-2 shadow-2xl">
-                        <p className="text-[9px] text-slate-400 uppercase font-black mb-2 ml-1">Enter 12-Digit UTR Number</p>
-                        <input 
-                          value={manualUtr}
-                          onChange={(e) => setManualUtr(e.target.value.replace(/\D/g, '').slice(0, 12))}
-                          className="w-full p-3.5 bg-black border border-slate-800 rounded-xl text-emerald-400 text-center font-mono tracking-[0.3em] mb-3 outline-none focus:border-emerald-500 text-sm"
-                          placeholder="0000 0000 0000"
-                        />
-                        <button 
-                          onClick={handleManualSubmit}
-                          disabled={manualUtr.length !== 12 || submittingManual}
-                          className="w-full bg-emerald-600 hover:bg-emerald-700 py-3.5 rounded-xl text-[10px] text-white font-black uppercase tracking-widest disabled:opacity-50 transition-all"
-                        >
-                          {submittingManual ? "Submitting..." : "Submit for Manual Verification"}
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
 
-                {/* RIGHT COLUMN: Payment Actions (Deep Link / QR Code) */}
-                {/* Fixed the rounded-4xl warning here! */}
                 <div className="flex flex-col items-center justify-center text-center gap-6 bg-black/40 p-6 lg:p-10 rounded-4xl border border-white/5 order-2 h-full shadow-inner">
+                  <a 
+                    href={`upi://pay?pa=${paymentModal.event.merchant_upi}&pn=Event_Pass&am=${assignedPrice}&cu=INR`}
+                    className="w-full flex items-center justify-center gap-3 py-4 lg:py-5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-black uppercase tracking-widest transition-all"
+                  >
+                    <Zap size={20} className="fill-white" />
+                    Tap to Pay via UPI App
+                  </a>
                   
-                  <div className="w-full space-y-3">
-                    <a 
-                      href={`upi://pay?pa=${paymentModal.event.merchant_upi}&pn=Event_Pass&am=${assignedPrice}&cu=INR`}
-                      className="w-full flex items-center justify-center gap-3 py-4 lg:py-5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-black uppercase tracking-widest transition-all shadow-[0_10px_30px_rgba(16,185,129,0.3)] active:scale-95 text-[11px] lg:text-xs"
-                    >
-                      <Zap size={20} className="fill-white" />
-                      Tap to Pay via UPI App
-                    </a>
-                    
-                    <button 
-                      onClick={() => setShowQR(!showQR)}
-                      className="w-full flex lg:hidden items-center justify-center py-3.5 bg-[#1f2937] hover:bg-slate-800 text-slate-300 rounded-xl font-bold uppercase text-[9px] tracking-widest transition-all border border-slate-700"
-                    >
-                      {showQR ? "Hide QR Code" : "Show QR Code"}
-                    </button>
-                  </div>
+                  <button 
+                    onClick={() => setShowQR(!showQR)}
+                    className="w-full flex lg:hidden items-center justify-center py-3.5 bg-[#1f2937] text-slate-300 rounded-xl font-bold uppercase text-[9px] tracking-widest"
+                  >
+                    {showQR ? "Hide QR Code" : "Show QR Code"}
+                  </button>
 
-                  {/* QR Code permanently visible on large screens, toggleable on mobile */}
                   <div className={`p-5 bg-white rounded-3xl shadow-2xl relative animate-in zoom-in duration-300 ${showQR ? 'block' : 'hidden lg:block'}`}>
                     <img 
                       src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`upi://pay?pa=${paymentModal.event.merchant_upi}&pn=Event_Pass&am=${assignedPrice}&cu=INR`)}`}
                       alt="Payment QR"
                       className="w-48 h-48 lg:w-56 lg:h-56"
                     />
-                    <p className="text-slate-800 font-black text-[10px] lg:text-[11px] uppercase tracking-widest mt-4 mb-1 border-t border-slate-200 pt-3">
-                      Scan with any UPI App
-                    </p>
                   </div>
-
-                  <p className="hidden lg:block text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-auto opacity-60">
-                    Supports GPay, PhonePe, Paytm, etc.
-                  </p>
-
                 </div>
               </div>
             )}
           </div>
         </div>
       )}
-
     </div>
   );
 };
 
-// Sub-component for individual Event Cards
 const FlipCard = ({ event, onBook, isFlipped, onFlip }) => {
   const [currentImgIndex, setCurrentImgIndex] = useState(0);
-
-  const defaultImages = [
-    "https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&q=80&w=800",
-    "https://images.unsplash.com/photo-1551818255-e6e10975bc17?auto=format&fit=crop&q=80&w=800",
-    "https://images.unsplash.com/photo-1505373877841-8d25f7d46678?auto=format&fit=crop&q=80&w=800"
-  ];
-  
+  const defaultImages = ["https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&q=80&w=800"];
   const images = Array.isArray(event.images) && event.images.length > 0 ? event.images : defaultImages;
 
-  const nextImage = (e) => {
-    e.stopPropagation(); 
-    setCurrentImgIndex((prev) => (prev === images.length - 1 ? 0 : prev + 1));
-  };
-
-  const prevImage = (e) => {
-    e.stopPropagation(); 
-    setCurrentImgIndex((prev) => (prev === 0 ? images.length - 1 : prev - 1));
-  };
-
-  const glowClass = event.isBooked 
-    ? 'border-green-500 shadow-[0_0_25px_rgba(34,197,94,0.25)]' 
-    : event.isPending 
-    ? 'border-yellow-500 shadow-[0_0_25px_rgba(234,179,8,0.25)]'
-    : 'border-blue-500/40 group-hover:border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.15)]';
-
-  const getTimeRemaining = () => {
-    const diff = new Date(event.reg_start_timestamp) - new Date();
-    if (diff <= 0) return "Opening...";
-    const hours = Math.floor(diff / 3600000);
-    const mins = Math.floor((diff % 3600000) / 60000);
-    return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-  };
+  const nextImage = (e) => { e.stopPropagation(); setCurrentImgIndex((prev) => (prev === images.length - 1 ? 0 : prev + 1)); };
+  const prevImage = (e) => { e.stopPropagation(); setCurrentImgIndex((prev) => (prev === 0 ? images.length - 1 : prev - 1)); };
 
   const formatDateTime = (isoString) => {
     if (!isoString) return 'TBA';
@@ -443,141 +344,77 @@ const FlipCard = ({ event, onBook, isFlipped, onFlip }) => {
            date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
   };
 
-  const formatEventTime = (timeStr) => {
-    if (!timeStr) return '';
-    if (timeStr.toLowerCase().includes('m')) return timeStr; 
-    const [hours, minutes] = timeStr.split(':');
-    let h = parseInt(hours, 10);
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    h = h % 12 || 12;
-    const formattedH = h < 10 ? `0${h}` : h;
-    return `${formattedH}:${minutes} ${ampm}`;
+  const formatTimeOnly = (isoString) => {
+    if (!isoString) return 'TBA';
+    return new Date(isoString).toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      hour12: true 
+    });
   };
 
   return (
     <div className="perspective-2000 h-132.5 w-full group">
-      <div className={`relative w-full h-full transition-transform duration-1000 ease-in-out transform-style-3d ${isFlipped ? 'rotate-y-180' : ''}`}>
+      <div className={`relative w-full h-full transition-transform duration-1000 transform-style-3d ${isFlipped ? 'rotate-y-180' : ''}`}>
         
-        <div 
-          onClick={onFlip} 
-          className={`absolute inset-0 backface-hidden bg-[#0f172a] rounded-[2.5rem] border-2 p-6 md:p-7 flex flex-col justify-start cursor-pointer transition-all duration-500 ${glowClass}`}
-        >
+        <div onClick={onFlip} className={`absolute inset-0 backface-hidden bg-[#0f172a] rounded-[2.5rem] border-2 p-6 md:p-7 flex flex-col cursor-pointer transition-all duration-500 ${event.isBooked ? 'border-green-500 shadow-[0_0_25px_rgba(34,197,94,0.25)]' : 'border-blue-500/40 group-hover:border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.15)]'}`}>
           <div className="flex justify-between items-start mb-4 shrink-0">
             <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-400 border border-blue-500/20 truncate max-w-35">{event.school}</span>
-            {event.isBooked ? (
-              <div className="flex items-center gap-1 text-green-500 font-black text-[8px] uppercase shrink-0"><CheckCircle size={12}/> Verified</div>
-            ) : event.isPending ? (
-              <div className="flex items-center gap-1 text-yellow-500 font-black text-[8px] uppercase shrink-0 animate-pulse"><Timer size={12}/> Pending Verif.</div>
-            ) : !event.isOpen ? (
-              <div className="flex items-center gap-1.5 text-blue-400 font-black text-[8px] uppercase bg-blue-500/10 px-3 py-1 rounded-full shrink-0">
-                <Timer size={12}/> {getTimeRemaining()}
-              </div>
-            ) : (
-              <div className="flex items-center gap-1.5 text-blue-400/40 font-black text-[10px] uppercase animate-pulse shrink-0"><Info size={22}/> Tap details</div>
-            )}
+            <div className="flex items-center gap-2">
+              <Info size={14} className="text-slate-500 hover:text-blue-400 transition-colors" />
+              {event.isBooked && <div className="flex items-center gap-1 text-green-500 font-black text-[8px] uppercase"><CheckCircle size={12}/> Verified</div>}
+            </div>
           </div>
 
-          <div className="relative w-full h-40 rounded-2xl overflow-hidden shrink-0 mb-4 group/slider border border-white/10 shadow-inner bg-slate-900">
-            <img 
-              src={images[currentImgIndex]} 
-              alt="Event Visualization" 
-              className="w-full h-full object-cover transition-opacity duration-500 ease-in-out"
-            />
+          <div className="relative w-full h-40 rounded-2xl overflow-hidden shrink-0 mb-4 border border-white/10 bg-slate-900 group/slider">
+            <img src={images[currentImgIndex]} alt="Event" className="w-full h-full object-cover" />
             <div className="absolute inset-0 bg-linear-to-t from-[#0f172a] via-transparent to-transparent opacity-80 pointer-events-none"></div>
-            <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-md px-2 py-1 rounded-lg text-[8px] font-black text-white uppercase tracking-widest">
-              {currentImgIndex + 1} / {images.length} IMAGES
-            </div>
-
             {images.length > 1 && (
-              <>
-                <button onClick={prevImage} className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-blue-600 text-white p-1.5 rounded-full opacity-0 group-hover/slider:opacity-100 transition-all backdrop-blur-sm">
-                  <ChevronLeft size={16} />
-                </button>
-                <button onClick={nextImage} className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-blue-600 text-white p-1.5 rounded-full opacity-0 group-hover/slider:opacity-100 transition-all backdrop-blur-sm">
-                  <ChevronRight size={16} />
-                </button>
-              </>
+              <div className="absolute inset-0 flex items-center justify-between px-2 opacity-0 group-hover/slider:opacity-100 transition-opacity">
+                <button onClick={prevImage} className="p-1.5 bg-black/50 rounded-full"><ChevronLeft size={16} /></button>
+                <button onClick={nextImage} className="p-1.5 bg-black/50 rounded-full"><ChevronRight size={16} /></button>
+              </div>
             )}
-
-            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
-              {images.map((_, idx) => (
-                <div key={idx} className={`h-1.5 rounded-full transition-all duration-300 ${idx === currentImgIndex ? 'bg-blue-500 w-4' : 'bg-white/40 w-1.5'}`} />
-              ))}
-            </div>
           </div>
 
-          <div className="grow flex flex-col justify-start text-left gap-3">
-            <h3 className={`text-2xl font-black uppercase italic leading-[0.9] line-clamp-2 overflow-hidden shrink-0 ${event.isBooked ? 'text-green-500' : event.isPending ? 'text-yellow-500' : 'text-white'}`}>
-              {event.title}
-            </h3>
-            
-            <div className="space-y-1 shrink-0">
-              <div className="flex items-center gap-2 text-slate-400 text-[9px] font-bold uppercase">
-                <Calendar size={12} className="text-blue-500"/> {event.date}
-              </div>
-              <div className="flex items-center gap-2 text-slate-400 text-[9px] font-bold uppercase">
-                <Clock size={12} className="text-blue-500"/> 
-                {formatEventTime(event.start_time)} - {formatEventTime(event.end_time)}
-              </div>
-              <div className="flex items-center gap-2 text-slate-400 text-[9px] font-bold uppercase truncate max-w-[95%]">
-                <MapPin size={12} className="text-blue-500"/> {event.venue}
-              </div>
+          <div className="grow flex flex-col gap-3">
+            <h3 className="text-2xl font-black uppercase italic leading-[0.9] text-white line-clamp-2">{event.title}</h3>
+            <div className="space-y-1 text-slate-400 text-[9px] font-bold uppercase">
+              <div className="flex items-center gap-2"><Calendar size={12} className="text-blue-500"/> {event.date}</div>
+              <div className="flex items-center gap-2"><Clock size={12} className="text-blue-500"/> {formatTimeOnly(event.reg_start_timestamp)}</div>
+              <div className="flex items-center gap-2"><MapPin size={12} className="text-blue-500"/> {event.venue}</div>
             </div>
 
-            <div className="pt-3 border-t border-slate-700/50 space-y-2 shrink-0">
-              <div className="flex items-center gap-2 text-blue-500 text-[9px] font-black uppercase tracking-widest justify-between">
-                <span className="flex items-center gap-2"><Timer size={12}/> Registration Window</span>
-                {event.event_type === 'paid' && <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">₹{event.price} + ₹10 Fee</span>}
-              </div>
-              <div className="flex flex-col gap-1.5 text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                <div className="flex justify-between bg-[#111827] px-3 py-2 rounded-lg border border-white/5">
-                  <span className="text-slate-500">Opens</span>
-                  <span className="text-white">{formatDateTime(event.reg_start_timestamp)}</span>
+            <div className="pt-3 border-t border-slate-700/50 space-y-2">
+              <div className="flex justify-between bg-[#111827] px-3 py-2 rounded-lg border border-white/5 text-[9px]">
+                <div className="flex items-center gap-1.5 text-slate-500">
+                  <Timer size={12} />
+                  <span>Opens</span>
                 </div>
-                <div className="flex justify-between bg-[#111827] px-3 py-2 rounded-lg border border-white/5">
-                  <span className="text-slate-500">Closes</span>
-                  <span className="text-white">{formatDateTime(event.reg_end_timestamp)}</span>
-                </div>
+                <span className="text-white uppercase font-black">{formatDateTime(event.reg_start_timestamp)}</span>
               </div>
             </div>
 
             <button 
               disabled={event.isBooked || event.isSoldOut || !event.isOpen || event.isPending}
               onClick={(e) => { e.stopPropagation(); onBook(e, event); }}
-              className={`w-full py-3.5 mt-auto rounded-2xl font-black uppercase text-[9px] transition-all tracking-widest shrink-0 ${
-                event.isBooked ? 'bg-green-600/20 text-green-500 border border-green-500/30' : 
-                event.isPending ? 'bg-yellow-600/20 text-yellow-500 border border-yellow-500/30' :
-                !event.isOpen ? 'bg-slate-900 text-slate-700 border border-white/5' :
-                event.event_type === 'paid' ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg active:scale-95' :
-                'bg-blue-600 hover:bg-blue-700 text-white shadow-lg active:scale-95'
-              }`}
+              className={`w-full py-3.5 mt-auto rounded-2xl font-black uppercase text-[9px] tracking-widest transition-all ${event.isBooked ? 'bg-green-600/20 text-green-500 border-green-500/30' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg'}`}
             >
-              {event.isBooked ? "Pass Secured" : event.isPending ? "Awaiting Verification" : !event.isOpen ? "Opening Soon" : "Book Your Pass"}
+              {event.isBooked ? "Pass Secured" : "Book Your Pass"}
             </button>
           </div>
         </div>
 
-        <div onClick={onFlip} className={`absolute inset-0 backface-hidden rotate-y-180 bg-[#1e293b] rounded-[2.5rem] border-2 p-8 flex flex-col cursor-pointer ${glowClass}`}>
-          <h4 className="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-4 flex items-center gap-2 border-b border-white/5 pb-2"><Zap size={10}/> Event Specification:</h4>
-          <div className="grow overflow-y-auto custom-scrollbar pr-2">
-            <p className="text-slate-300 text-[12px] leading-relaxed font-medium text-left italic whitespace-pre-line"
-               dangerouslySetInnerHTML={{ __html: event.description }}
-            />
+        <div onClick={onFlip} className="absolute inset-0 backface-hidden rotate-y-180 bg-[#1e293b] rounded-[2.5rem] border-2 border-blue-500/40 p-8 flex flex-col cursor-pointer">
+          <h4 className="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-4 border-b border-white/5 pb-2">Event Specification:</h4>
+          <div className="grow overflow-y-auto custom-scrollbar">
+            <p className="text-slate-300 text-[12px] leading-relaxed italic whitespace-pre-line" dangerouslySetInnerHTML={{ __html: event.description }} />
           </div>
-          <p className="mt-4 text-[8px] font-black text-slate-500 uppercase tracking-widest text-center">Tap to flip back</p>
         </div>
       </div>
-
       <style>{`
-        .perspective-2000 { perspective: 2000px; } 
-        .transform-style-3d { transform-style: preserve-3d; } 
-        .backface-hidden { backface-visibility: hidden; } 
-        .rotate-y-180 { transform: rotateY(180deg); } 
-        .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; } 
-        
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; } 
-        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.05); border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(59, 130, 246, 0.6); border-radius: 10px; }
+        .perspective-2000 { perspective: 2000px; } .transform-style-3d { transform-style: preserve-3d; } .backface-hidden { backface-visibility: hidden; } .rotate-y-180 { transform: rotateY(180deg); } 
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; } .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(59, 130, 246, 0.6); border-radius: 10px; }
       `}</style>
     </div>
   );

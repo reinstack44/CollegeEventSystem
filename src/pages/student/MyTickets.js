@@ -17,7 +17,6 @@ const MyTickets = () => {
   const [isFlipping, setIsFlipping] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   
-  // Custom Confirmation Modal State
   const [confirmModal, setConfirmModal] = useState({ 
     isOpen: false, 
     ticketId: null, 
@@ -29,6 +28,28 @@ const MyTickets = () => {
   useEffect(() => {
     fetchUserTickets();
   }, []);
+
+  // AUTO-FLIP LOGIC: Detects ticket ID from URL and opens it
+  useEffect(() => {
+    if (!loading && tickets.length > 0) {
+      const hash = window.location.hash;
+      if (hash && hash.startsWith('#ticket-')) {
+        const eventId = hash.replace('#ticket-', '');
+        // Find the ticket that belongs to this event
+        const targetTicket = tickets.find(t => String(t.events?.id) === eventId);
+        
+        if (targetTicket) {
+          if (targetTicket.status === 'pending') {
+            toast.error("Ticket is still pending verification.");
+          } else {
+            openTicket(targetTicket);
+            // Clean the URL so it doesn't pop up again on refresh
+            window.history.replaceState(null, null, ' ');
+          }
+        }
+      }
+    }
+  }, [loading, tickets]);
 
   const fetchUserTickets = async () => {
     try {
@@ -43,7 +64,6 @@ const MyTickets = () => {
       
       setStudentName(`${profile?.name || 'Student'} ${profile?.surname || ''}`);
 
-      // UPGRADE: Fetching amount_expected and event_type
       const { data, error } = await supabase
         .from('bookings')
         .select(`
@@ -51,6 +71,7 @@ const MyTickets = () => {
           status,
           amount_expected,
           events ( 
+            id,
             title, 
             date, 
             venue, 
@@ -107,7 +128,8 @@ const MyTickets = () => {
   const openTicket = (ticket) => {
     setSelectedTicket(ticket);
     setIsFlipping(false);
-    setTimeout(() => setIsFlipping(true), 100);
+    // Smooth transition into the flip
+    setTimeout(() => setIsFlipping(true), 300);
   };
 
   const downloadPDF = async () => {
@@ -139,7 +161,6 @@ const MyTickets = () => {
     const isPending = ticket.status === 'pending';
     const isExpired = new Date(ticket.events?.date) < today;
 
-    // Secure Click Handler
     const handleCardClick = () => {
       if (isPending) {
         toast('Pass is awaiting Admin UTR verification.', {
@@ -151,7 +172,7 @@ const MyTickets = () => {
             border: '1px solid rgba(234, 179, 8, 0.2)'
           },
         });
-        return; // Stop the flip!
+        return; 
       }
       openTicket(ticket);
     };
@@ -189,7 +210,6 @@ const MyTickets = () => {
             <p className="flex items-center gap-2 text-[10px] font-bold text-slate-300 uppercase tracking-widest"><Clock size={12} className={isExpired ? "text-slate-500" : isPending ? "text-yellow-600" : "text-blue-500"}/> {ticket.events?.start_time} — {ticket.events?.end_time || 'End'}</p>
             <p className="flex items-center gap-2 text-[10px] font-bold text-slate-300 uppercase tracking-widest truncate max-w-[90%]"><MapPin size={12} className={isExpired ? "text-slate-500" : isPending ? "text-yellow-600" : "text-blue-500"}/> {ticket.events?.venue}</p>
             
-            {/* NEW: Display the Paid Amount on the Card */}
             {ticket.events?.event_type === 'paid' && (
               <p className={`flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest pt-1 ${isExpired ? "text-slate-500" : isPending ? "text-yellow-500" : "text-emerald-400"}`}>
                 <CreditCard size={12} /> PAID: ₹{ticket.amount_expected}
@@ -212,7 +232,7 @@ const MyTickets = () => {
               className="flex items-center gap-2 px-3 py-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl border border-red-500/20 transition-all active:scale-95 group/cancel"
             >
               <Trash2 size={14} />
-              <span className="text-[10px] font-black uppercase tracking-widest">Cancel Ticket</span>
+              <span className="text-[10px] font-black uppercase tracking-widest">Cancel</span>
             </button>
           )}
         </div>
@@ -276,7 +296,7 @@ const MyTickets = () => {
         )}
       </div>
 
-      {/* CUSTOM UI CONFIRMATION MODAL */}
+      {/* CONFIRMATION MODAL */}
       {confirmModal.isOpen && (
         <div className="fixed inset-0 z-300 bg-black/80 backdrop-blur-md flex items-center justify-center p-6">
           <div className="w-full max-w-md bg-[#0f172a] border border-red-500/30 rounded-[2.5rem] p-8 shadow-[0_0_80px_rgba(239,68,68,0.15)] relative overflow-hidden">
@@ -305,12 +325,14 @@ const MyTickets = () => {
         </div>
       )}
 
-      {/* TICKET DETAIL MODAL */}
+      {/* TICKET DETAIL MODAL WITH FLIP */}
       {selectedTicket && (
         <div className="fixed inset-0 z-100 bg-black/95 backdrop-blur-3xl flex items-center justify-center p-4">
           <button onClick={() => setSelectedTicket(null)} className="absolute top-8 right-8 p-3 bg-white/10 hover:bg-white/20 rounded-full transition-colors text-white z-110 border border-white/10 shadow-xl"><X size={32} /></button>
           <div className="perspective-2000 w-full max-w-lg h-150 md:h-162.5">
             <div className={`relative w-full h-full transition-transform duration-1000 ease-in-out transform-style-3d ${isFlipping ? 'rotate-y-180' : ''}`}>
+              
+              {/* FRONT OF TICKET */}
               <div className="absolute inset-0 backface-hidden bg-[#0f172a] rounded-[3.5rem] border border-blue-500/40 p-10 flex flex-col justify-between shadow-[0_0_100px_rgba(37,99,235,0.2)]">
                 <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-transparent via-blue-500 to-transparent" />
                 <div className="text-left">
@@ -323,8 +345,6 @@ const MyTickets = () => {
                       <div className="flex items-center gap-5"><Calendar className="text-blue-500" size={24} /><div><p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Pass Valid For</p><p className="text-xl font-bold">{selectedTicket.events?.date}</p></div></div>
                       <div className="flex items-center gap-5"><Clock className="text-blue-500" size={24} /><div><p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Event Time</p><p className="text-xl font-bold">{selectedTicket.events?.start_time}</p></div></div>
                       <div className="flex items-center gap-5"><MapPin className="text-blue-500" size={24} /><div><p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Venue Location</p><p className="text-xl font-bold truncate max-w-62.5">{selectedTicket.events?.venue}</p></div></div>
-                      
-                      {/* NEW: Display Paid Amount in the Modal */}
                       {selectedTicket.events?.event_type === 'paid' && (
                         <div className="flex items-center gap-5">
                           <CreditCard className="text-emerald-500" size={24} />
@@ -338,6 +358,8 @@ const MyTickets = () => {
                 </div>
                 <div className="flex flex-col items-center gap-4 py-6 border-t border-white/5"><p className="text-blue-500 font-black text-[10px] uppercase tracking-widest animate-pulse">Preparing Entry Token...</p></div>
               </div>
+
+              {/* BACK OF TICKET (QR CODE) */}
               <div className="absolute inset-0 backface-hidden rotate-y-180 bg-white rounded-[3.5rem] flex flex-col items-center p-8 text-slate-900">
                 <div className="text-center mb-6"><p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mb-1">Authorized For</p><h4 className="text-2xl font-black uppercase tracking-tighter text-blue-600 italic">{studentName}</h4></div>
                 <div className="bg-[#f8fafc] p-6 rounded-[3rem] border-2 border-slate-100 mb-6"><QRCodeCanvas value={selectedTicket.id} size={220} level="H" /></div>
@@ -346,12 +368,13 @@ const MyTickets = () => {
                   <button onClick={downloadPDF} disabled={isDownloading} className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 text-white rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-blue-700 transition-all">{isDownloading ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}{isDownloading ? 'Generating...' : 'Download PDF'}</button>
                 </div>
               </div>
+
             </div>
           </div>
         </div>
       )}
 
-      {/* HIDDEN PRINTABLE TICKET (PDF FORMAT) */}
+      {/* HIDDEN PRINTABLE TICKET */}
       {selectedTicket && (
         <div style={{ position: 'absolute', top: '-20000px', left: '-20000px', zIndex: -9999 }}>
           <div ref={printRef} style={{ width: '794px', height: '1123px', backgroundColor: '#0a0f1d', padding: '40px', boxSizing: 'border-box' }}>
@@ -361,7 +384,6 @@ const MyTickets = () => {
                  <div style={{ marginBottom: '30px', width: '100%' }}><h1 style={{ margin: 0, fontSize: selectedTicket.events?.title.length > 30 ? '34px' : '48px', fontWeight: '900', color: '#ffffff', textTransform: 'uppercase', fontStyle: 'italic', lineHeight: '38px', wordWrap: 'break-word', display: 'block' }}>{selectedTicket.events?.title}</h1></div>
                  <div style={{ display: 'flex', marginBottom: '25px', gap: '40px' }}><div style={{ flex: 1 }}><p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Date</p><p style={{ margin: 0, fontSize: '26px', fontWeight: 'bold', color: '#ffffff' }}>{selectedTicket.events?.date}</p></div><div style={{ flex: 1 }}><p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Time</p><p style={{ margin: 0, fontSize: '26px', fontWeight: 'bold', color: '#ffffff' }}>{selectedTicket.events?.start_time}</p></div></div>
                  
-                 {/* NEW: Venue and Payment Status side-by-side in PDF */}
                  <div style={{ display: 'flex', marginBottom: '30px', gap: '40px' }}>
                     <div style={{ flex: 1 }}>
                       <p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Venue Location</p>
