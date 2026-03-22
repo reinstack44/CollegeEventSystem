@@ -438,7 +438,7 @@ const EventList = () => {
                         </button>
                       ) : (
                         <div className="bg-[#1f2937]/30 p-4 sm:p-5 rounded-3xl border border-slate-700 text-left animate-in slide-in-from-bottom-2">
-                          <p className="text-[9px] text-slate-400 uppercase font-black mb-2.5 ml-1 tracking-widest">Enter 12-Digit UTR Number</p>
+                          <p className="text-[12px] text-slate-400 uppercase font-black mb-2.5 ml-1 tracking-widest">Enter 12-Digit UPI Ref/ UTR Number if money deducted & ticket not issued.</p>
                           <input 
                             value={manualUtr}
                             onChange={(e) => setManualUtr(e.target.value.replace(/\D/g, '').slice(0, 12))}
