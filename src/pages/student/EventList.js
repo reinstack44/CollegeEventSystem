@@ -78,20 +78,29 @@ const EventList = () => {
     setFlippedCards(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  // --- AUTOMATED LISTENER FOR INSTANT VERIFICATION ---
+ // --- AUTOMATED LISTENER FOR INSTANT VERIFICATION ---
   const listenForVerification = (eventId, studentEmail) => {
+    console.log(`[Realtime] Starting listener for Student: ${studentEmail}`);
+    
     const channel = supabase
-      .channel(`payment_listener_${eventId}_${studentEmail}`)
+      .channel(`payment_listener_${studentEmail}`)
       .on(
         'postgres_changes',
         {
           event: 'UPDATE',
           schema: 'public',
-          table: 'bookings',
-          filter: `event_id=eq.${eventId}`
+          table: 'bookings' // Removed the strict DB filter, we will filter it securely below!
         },
         (payload) => {
-          if (payload.new.student_email === studentEmail && payload.new.status === 'verified') {
+          console.log("🔔 REALTIME PING RECEIVED FROM DATABASE:", payload);
+          
+          // Securely check if the updated row belongs to THIS user and THIS event
+          if (
+            payload.new.event_id === eventId && 
+            payload.new.student_email === studentEmail && 
+            payload.new.status === 'verified'
+          ) {
+            console.log("✅ MATCH FOUND! Unlocking pass...");
             setIsVerified(true);
             toast.success("Payment Received! Pass Issued.");
             fetchEvents(); // Refresh data to show green border
@@ -99,7 +108,9 @@ const EventList = () => {
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log("📡 Realtime Connection Status:", status);
+      });
   };
 
   // --- MAIN BOOKING LOGIC ---
