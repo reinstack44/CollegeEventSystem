@@ -276,7 +276,7 @@ const EventList = () => {
         <div className="flex flex-col gap-6">
           <div className="bg-[#111827]/90 backdrop-blur-xl p-3 rounded-4xl border border-white/5 shadow-2xl">
             <div className="relative w-full text-left">
-              <Search className="absolute left-6 top-9 -translate-y-1/2 text-slate-500" size={20} />
+              <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
               <input 
                 type="text"
                 placeholder="SEARCH Events..."
@@ -343,7 +343,6 @@ const EventList = () => {
                  <p className="text-slate-400 text-sm mb-8 max-w-sm">Your ticket has been secured and sent to your dashboard.</p>
                  <button onClick={() => {
                     setPaymentModal({open: false, event: null});
-                    // ADDED ?autoFlip=true right here:
                     window.location.href = `/student/tickets?autoFlip=true#ticket-${paymentModal.event.id}`;
                  }} className="px-8 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium transition-colors shadow-md">
                    View Ticket
@@ -388,17 +387,7 @@ const EventList = () => {
                   
                   <div className="flex flex-col items-center w-full max-w-sm mx-auto">
                     
-                    <div className="hidden md:flex flex-col items-center mb-6">
-                      <div className="bg-white p-4 rounded-2xl shadow-sm mb-4">
-                        <img 
-                          src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(generateUpiUrl())}`}
-                          alt="Payment QR"
-                          className="w-44 h-44 md:w-48 md:h-48 object-contain"
-                        />
-                      </div>
-                      <p className="text-sm text-slate-400 text-center">Scan QR using any UPI app</p>
-                    </div>
-
+                    {/* Mobile Only: Button & Divider */}
                     <div className="md:hidden flex items-center w-full mb-6">
                       <div className="flex-1 border-t border-slate-700"></div>
                       <span className="px-4 text-xs text-slate-500 uppercase tracking-widest">Select App</span>
@@ -407,13 +396,31 @@ const EventList = () => {
 
                     <button 
                       onClick={handleUpiClick}
-                      className="w-full flex items-center justify-center gap-2 py-3.5 bg-[#1f2937] hover:bg-[#283548] text-white rounded-xl font-medium transition-colors border border-slate-700 shadow-sm"
+                      className="md:hidden w-full flex items-center justify-center gap-2 py-3.5 bg-[#1f2937] hover:bg-[#283548] text-white rounded-xl font-medium transition-colors border border-slate-700 shadow-sm mb-6"
                     >
                       <Zap size={18} className="text-emerald-400" />
                       Pay using UPI App
                     </button>
 
-                    <div className="w-full mt-8 pt-6 border-t border-slate-800">
+                    <div className="md:hidden flex items-center w-full mb-6">
+                      <div className="flex-1 border-t border-slate-700"></div>
+                      <span className="px-4 text-xs text-slate-500 uppercase tracking-widest">Or Scan QR</span>
+                      <div className="flex-1 border-t border-slate-700"></div>
+                    </div>
+
+                    {/* QR Code is now visible on BOTH Desktop and Mobile */}
+                    <div className="flex flex-col items-center mb-6 w-full">
+                      <div className="bg-white p-4 rounded-2xl shadow-sm mb-4">
+                        <img 
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(generateUpiUrl())}`}
+                          alt="Payment QR"
+                          className="w-40 h-40 md:w-48 md:h-48 object-contain"
+                        />
+                      </div>
+                      <p className="text-sm text-slate-400 text-center">Scan QR using any UPI app</p>
+                    </div>
+
+                    <div className="w-full mt-2 pt-6 border-t border-slate-800">
                       <div className="flex items-center gap-2 text-emerald-500 text-sm mb-4">
                           <span className="relative flex h-2 w-2">
                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -428,7 +435,7 @@ const EventList = () => {
                         </button>
                       ) : (
                         <div className="bg-[#1f2937]/30 p-4 sm:p-5 rounded-3xl border border-slate-700 text-left animate-in slide-in-from-bottom-2">
-                          <p className="text-[12px] text-slate-400 uppercase font-black mb-2.5 ml-1 tracking-widest">Enter 12-Digit UPI Ref/ UTR Number if money deducted & ticket not issued.</p>
+                          <p className="text-[9px] text-slate-400 uppercase font-black mb-2.5 ml-1 tracking-widest">Enter 12-Digit UTR Number</p>
                           <input 
                             value={manualUtr}
                             onChange={(e) => setManualUtr(e.target.value.replace(/\D/g, '').slice(0, 12))}
