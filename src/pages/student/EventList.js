@@ -238,7 +238,7 @@ const EventList = () => {
         <div className="flex flex-col gap-6">
           <div className="bg-[#111827]/90 backdrop-blur-xl p-3 rounded-4xl border border-white/5 shadow-2xl">
             <div className="relative w-full text-left">
-              <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
+              <Search className="absolute left-6 top-9 -translate-y-1/2 text-slate-500" size={20} />
               <input 
                 type="text"
                 placeholder="SEARCH Events..."
