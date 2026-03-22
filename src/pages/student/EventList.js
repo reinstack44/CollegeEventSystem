@@ -269,7 +269,7 @@ const EventList = () => {
         <div className="flex flex-col gap-6">
           <div className="bg-[#111827]/90 backdrop-blur-xl p-3 rounded-4xl border border-white/5 shadow-2xl">
             <div className="relative w-full text-left">
-              <Search className="absolute left-6 top-9 -translate-y-1/2 text-slate-500" size={20} />
+              <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
               <input 
                 type="text"
                 placeholder="SEARCH Events..."
@@ -288,7 +288,7 @@ const EventList = () => {
           
           <div className="flex items-center gap-2 p-1.5 bg-[#111827] border border-white/5 rounded-2xl w-fit self-center md:self-start">
             {['all', 'available', 'Booked'].map(s => (
-              <button key={s} onClick={() => setStatusFilter(s)} className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${statusFilter === s ? 'bg-blue-500 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>{s}</button>
+              <button key={s} onClick={() => setStatusFilter(s)} className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${statusFilter === s ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>{s}</button>
             ))}
           </div>
         </div>
@@ -379,8 +379,8 @@ const EventList = () => {
                   <h3 className="text-lg font-medium text-white mb-6 hidden md:block">Pay via UPI</h3>
                   
                   <div className="flex flex-col items-center w-full max-w-sm mx-auto">
-                    
-                    <div className="flex items-center w-full mb-6">
+
+                    <div className="md:hidden flex items-center w-full mb-6">
                       <div className="flex-1 border-t border-slate-700"></div>
                       <span className="px-4 text-xs text-slate-500 uppercase tracking-widest">Select App</span>
                       <div className="flex-1 border-t border-slate-700"></div>
@@ -388,13 +388,13 @@ const EventList = () => {
 
                     <button 
                       onClick={handleUpiClick}
-                      className="w-full flex items-center justify-center gap-2 py-3.5 bg-[#1f2937] hover:bg-[#283548] text-white rounded-xl font-medium transition-colors border border-slate-700 shadow-sm mb-6"
+                      className="md:hidden w-full flex items-center justify-center gap-2 py-3.5 bg-[#1f2937] hover:bg-[#283548] text-white rounded-xl font-medium transition-colors border border-slate-700 shadow-sm mb-6"
                     >
                       <Zap size={18} className="text-emerald-400" />
                       Pay using UPI App
                     </button>
 
-                    <div className="flex items-center w-full mb-6">
+                    <div className="md:hidden flex items-center w-full mb-6">
                       <div className="flex-1 border-t border-slate-700"></div>
                       <span className="px-4 text-xs text-slate-500 uppercase tracking-widest">Or Scan QR</span>
                       <div className="flex-1 border-t border-slate-700"></div>
@@ -405,7 +405,7 @@ const EventList = () => {
                         <img 
                           src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(generateUpiUrl())}`}
                           alt="Payment QR"
-                          className="w-40 h-40 md:w-48 md:h-48 object-contain"
+                          className="w-44 h-44 md:w-48 md:h-48 object-contain"
                         />
                       </div>
                       <p className="text-sm text-slate-400 text-center">Scan QR using any UPI app</p>
