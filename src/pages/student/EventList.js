@@ -3,7 +3,7 @@ import { supabase } from '../../sbclient/supabaseClient';
 import { 
   Calendar, Clock, Search, Zap, 
   CheckCircle, MapPin, Timer, Info,
-  ChevronLeft, ChevronRight, Ticket, X, Loader2
+  ChevronLeft, ChevronRight, Ticket, X
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -222,24 +222,23 @@ const EventList = () => {
   // --- SMART UPI LINK GENERATOR ---
   const generateUpiUrl = () => {
     if (!paymentModal.event || !assignedPrice) return '';
-    const cleanPayeeName = encodeURIComponent("ActiveArch Events"); 
-    // Strictly format the amount to 2 decimal places to prevent app crashes
-    const safeAmount = Number(assignedPrice).toFixed(2); 
-    return `upi://pay?pa=${paymentModal.event.merchant_upi}&pn=${cleanPayeeName}&am=${safeAmount}&cu=INR`;
+    // A single word without spaces is safer for some apps
+    const cleanPayeeName = "ActiveArch"; 
+    // Format strictly to 2 decimal places
+    const safeAmount = Number(assignedPrice).toFixed(2);
+    // Add a Transaction Reference (tr) which strict banks require for Merchant payments
+    const tr = `TRX${Date.now()}`;
+    return `upi://pay?pa=${paymentModal.event.merchant_upi}&pn=${cleanPayeeName}&tr=${tr}&am=${safeAmount}&cu=INR`;
   };
 
   // --- SMART BUTTON CLICK HANDLER ---
   const handleUpiClick = (e) => {
     e.preventDefault();
-    
-    // Check if the user is on a mobile device
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     
     if (isMobile) {
-      // Force the mobile OS to handle the deep link intent
       window.location.href = generateUpiUrl();
     } else {
-      // On a PC/Laptop, deep links don't work. Fallback to showing the QR Code.
       setShowQR(true);
       toast("UPI Apps are only on phones. Please scan the QR code.", {
         icon: '📱',
@@ -258,7 +257,7 @@ const EventList = () => {
         <div className="flex flex-col gap-6">
           <div className="bg-[#111827]/90 backdrop-blur-xl p-3 rounded-4xl border border-white/5 shadow-2xl">
             <div className="relative w-full text-left">
-              <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
+              <Search className="absolute left-6 top-9 -translate-y-1/2 text-slate-500" size={20} />
               <input 
                 type="text"
                 placeholder="SEARCH Events..."
@@ -299,165 +298,143 @@ const EventList = () => {
         </section>
       </div>
 
-      {/* RAZORPAY-STYLE PAYMENT MODAL */}
+      {/* RESTORED CYBERPUNK PAYMENT MODAL */}
       {paymentModal.open && (
-        <div className="fixed inset-0 z-100 flex items-center justify-center p-4 sm:p-6 bg-black/70 backdrop-blur-sm">
+        <div className="fixed inset-0 z-100 flex items-center justify-center p-4 sm:p-6 bg-[#0a0f1d]/80 backdrop-blur-xl">
           
-          <div className="bg-[#111827] border border-white/10 rounded-2xl flex flex-col md:flex-row w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl relative">
+          <div className="bg-[#111827] border-2 border-emerald-500/30 rounded-4xl p-6 sm:p-8 w-full max-w-110 max-h-[90vh] overflow-y-auto custom-scrollbar shadow-[0_20px_60px_-15px_rgba(16,185,129,0.2)] relative flex flex-col my-auto">
             
             <button 
               onClick={() => {
                 setPaymentModal({ open: false, event: null });
                 fetchEvents();
               }} 
-              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white rounded-full hover:bg-white/5 transition-colors z-50"
+              className="absolute top-5 right-5 p-2 bg-white/5 hover:bg-red-500/20 text-slate-400 hover:text-red-400 rounded-full transition-colors border border-white/5 z-50"
             >
-              <X size={20} />
+              <X size={18} />
             </button>
 
             {!assignedPrice ? (
-              <div className="flex-1 flex flex-col items-center justify-center py-24 min-h-100">
-                 <Loader2 className="animate-spin text-blue-500 mb-4" size={40} />
-                 <p className="text-slate-400 font-medium text-sm">Initiating secure checkout...</p>
+              <div className="flex flex-col items-center justify-center py-16 gap-5">
+                 <Zap className="animate-pulse text-emerald-500 fill-emerald-500/20" size={48} />
+                 <p className="text-emerald-400 font-black uppercase tracking-widest text-xs animate-pulse">Establishing Secure Gateway...</p>
               </div>
-              
             ) : isVerified ? (
-              <div className="flex-1 flex flex-col items-center justify-center py-24 min-h-100 animate-in zoom-in duration-300 px-6 text-center">
-                 <div className="w-16 h-16 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-full flex items-center justify-center mb-6 shadow-lg shadow-emerald-500/10">
-                   <CheckCircle size={32} />
+              <div className="flex flex-col items-center text-center gap-6 py-12 animate-in zoom-in duration-500">
+                 <div className="w-24 h-24 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full flex items-center justify-center mb-2 shadow-[0_0_40px_rgba(16,185,129,0.3)]">
+                   <CheckCircle size={48} />
                  </div>
-                 <h3 className="text-2xl font-semibold text-white mb-2">Payment Successful</h3>
-                 <p className="text-slate-400 text-sm mb-8 max-w-sm">Your ticket has been secured and sent to your dashboard.</p>
+                 <div className="space-y-2">
+                   <h3 className="text-3xl sm:text-4xl font-black uppercase italic text-white tracking-tight">Payment Completed</h3>
+                   <p className="text-slate-400 font-bold tracking-widest text-[11px] sm:text-xs">Your pass is secured in your pass vault.</p>
+                 </div>
                  <button onClick={() => {
                     setPaymentModal({open: false, event: null});
                     window.location.href = `/student/tickets#ticket-${paymentModal.event.id}`;
-                 }} className="px-8 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium transition-colors shadow-md">
-                   View Ticket
+                 }} className="w-full mt-4 py-4 sm:py-5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-black uppercase text-xs tracking-widest transition-all shadow-[0_10px_30px_rgba(16,185,129,0.3)] active:scale-95">
+                   View Your Ticket
                  </button>
               </div>
-              
             ) : (
-              <>
-                {/* Left Panel - Order Summary */}
-                <div className="bg-[#0a0f1d] w-full md:w-80 p-6 md:p-8 flex flex-col border-b md:border-b-0 md:border-r border-white/5 shrink-0">
-                  <div className="mb-8 mt-2 md:mt-0">
-                    <div className="w-10 h-10 bg-blue-500/10 rounded-lg flex items-center justify-center text-blue-400 mb-4 border border-blue-500/20">
-                      <Ticket size={20} />
+              <div className="flex flex-col items-center text-center gap-5 sm:gap-6 mt-2 sm:mt-4">
+                
+                <div className="w-full bg-[#1f2937]/80 backdrop-blur-sm rounded-4xl p-5 sm:p-6 border border-slate-700/80 text-left shadow-inner">
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] border-b border-slate-700 pb-3 mb-4 flex items-center gap-2">
+                    <Ticket size={14} className="text-slate-500"/> Transaction Breakdown
+                  </h4>
+                  
+                  <div className="space-y-3 sm:space-y-4">
+                    <div className="flex justify-between items-center text-xs sm:text-sm font-bold text-slate-300">
+                      <span>Event Ticket Price</span>
+                      <span className="text-white">₹{paymentModal.event.price}</span>
                     </div>
-                    <p className="text-slate-400 text-sm mb-1 line-clamp-1">{paymentModal.event.title}</p>
-                    <h2 className="text-3xl font-semibold text-white tracking-tight">₹{assignedPrice}</h2>
-                  </div>
-
-                  <div className="space-y-4 text-sm mt-auto mb-6">
-                    <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Order Summary</h4>
-                    <div className="flex justify-between text-slate-400">
-                      <span>Event Pass</span>
-                      <span className="text-slate-200">₹{paymentModal.event.price}</span>
+                    <div className="flex justify-between items-center text-xs sm:text-sm font-bold text-slate-300">
+                      <span>Transaction Fee</span>
+                      <span className="text-white">₹10</span>
                     </div>
-                    <div className="flex justify-between text-slate-400">
+                    <div className="flex justify-between items-center text-[10px] font-black text-emerald-500/80 uppercase tracking-widest">
                       <span>Platform Fee</span>
-                      <span className="text-slate-200">₹10</span>
-                    </div>
-                    <div className="flex justify-between text-emerald-400/80">
-                      <span>Security Decimal</span>
                       <span>+ ₹{(assignedPrice - paymentModal.event.price - 10).toFixed(2)}</span>
                     </div>
                   </div>
 
-                  <div className="pt-4 border-t border-white/5 text-xs text-slate-500 leading-relaxed">
-                    <span className="text-red-400 font-medium">Important:</span> Pay the exact total amount including decimals to verify your identity automatically.
+                  <div className="flex justify-between items-end text-3xl sm:text-4xl font-black text-emerald-400 border-t border-slate-700 pt-5 mt-5">
+                    <span className="text-[10px] text-slate-400 uppercase tracking-widest mb-1.5 sm:mb-2">Total Payable</span>
+                    <span className="tracking-tighter">₹{assignedPrice}</span>
                   </div>
                 </div>
 
-                {/* Right Panel - Payment Methods */}
-                <div className="flex-1 p-6 md:p-10 bg-[#111827] overflow-y-auto custom-scrollbar flex flex-col">
+                <p className="text-[9px] text-red-400/90 uppercase font-black tracking-[0.2em] px-2 leading-relaxed">
+                  Do not change the decimal amount.<br className="hidden sm:block"/> It verifies your transaction.
+                </p>
+
+                <div className="w-full space-y-3 mt-2">
+                  <button 
+                    onClick={handleUpiClick}
+                    className="w-full flex items-center justify-center gap-3 py-4 sm:py-5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-black uppercase text-xs tracking-widest transition-all shadow-[0_10px_25px_rgba(16,185,129,0.25)] active:scale-95"
+                  >
+                    <Zap size={18} className="fill-white" />
+                    Tap to Pay via UPI App
+                  </button>
                   
-                  <h3 className="text-lg font-medium text-white mb-6">Pay via UPI</h3>
-                  
-                  <div className="flex flex-col items-center w-full max-w-sm mx-auto mt-2">
-                    
-                    {/* Desktop Priority: QR Code */}
-                    <div className="hidden md:flex flex-col items-center mb-8">
-                      <div className="bg-white p-3 rounded-xl shadow-sm mb-4">
-                        <img 
-                          src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(generateUpiUrl())}`}
-                          alt="Payment QR"
-                          className="w-40 h-40"
-                        />
-                      </div>
-                      <p className="text-sm text-slate-400 text-center">Scan QR using any UPI app</p>
-                    </div>
-
-                    {/* Mobile Priority: UPI Button */}
-                    <div className="md:hidden flex items-center w-full mb-6">
-                      <div className="flex-1 border-t border-white/5"></div>
-                      <span className="px-3 text-xs text-slate-500 uppercase tracking-widest">Select App</span>
-                      <div className="flex-1 border-t border-white/5"></div>
-                    </div>
-
-                    {/* SMART BUTTON IMPLEMENTATION */}
-                    <button 
-                      onClick={handleUpiClick}
-                      className="w-full flex items-center justify-center gap-2 py-3.5 bg-[#1f2937] hover:bg-[#283548] text-white rounded-lg font-medium transition-colors border border-white/10 shadow-sm"
-                    >
-                      <Zap size={18} className="text-blue-400" />
-                      Pay using UPI App
-                    </button>
-
-                    <button 
-                      onClick={() => setShowQR(!showQR)}
-                      className="md:hidden w-full mt-4 py-3 text-slate-400 hover:text-white rounded-lg font-medium text-sm transition-colors"
-                    >
-                      {showQR ? "Hide QR Code" : "Show QR Code"}
-                    </button>
-
-                    {showQR && (
-                      <div className="md:hidden mt-2 mb-4 p-3 bg-white rounded-xl shadow-sm animate-in slide-in-from-top-2">
-                        <img 
-                          src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(generateUpiUrl())}`}
-                          alt="Payment QR"
-                          className="w-40 h-40 mx-auto"
-                        />
-                      </div>
-                    )}
-
-                    {/* Live Status & Manual UTR Section */}
-                    <div className="w-full mt-10 pt-6 border-t border-white/5">
-                      <div className="flex items-center gap-2 text-emerald-500 text-sm mb-4">
-                          <span className="relative flex h-2 w-2">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                          </span>
-                          Awaiting automatic confirmation...
-                      </div>
-
-                      {!showManual ? (
-                        <button onClick={() => setShowManual(true)} className="text-sm text-blue-400 hover:text-blue-300 font-medium transition-colors">
-                          Have you paid? Enter UTR manually
-                        </button>
-                      ) : (
-                        <div className="bg-[#1f2937]/50 p-4 rounded-xl border border-white/10 mt-2 animate-in slide-in-from-bottom-2">
-                          <label className="block text-xs font-medium text-slate-400 mb-2">12-Digit UTR Number</label>
-                          <input 
-                            value={manualUtr}
-                            onChange={(e) => setManualUtr(e.target.value.replace(/\D/g, '').slice(0, 12))}
-                            className="w-full p-3 bg-[#0a0f1d] border border-slate-700 rounded-lg text-white text-sm tracking-widest mb-3 outline-none focus:border-blue-500 transition-colors placeholder:text-slate-600"
-                            placeholder="e.g. 312345678901"
-                          />
-                          <button 
-                            onClick={handleManualSubmit}
-                            disabled={manualUtr.length !== 12 || submittingManual}
-                            className="w-full bg-blue-600 hover:bg-blue-500 py-2.5 rounded-lg text-sm text-white font-medium disabled:opacity-50 transition-colors"
-                          >
-                            {submittingManual ? "Verifying..." : "Verify Payment"}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                  </div>
+                  <button 
+                    onClick={() => setShowQR(!showQR)}
+                    className="w-full flex items-center justify-center py-3.5 bg-[#1f2937]/50 hover:bg-[#1f2937] text-slate-300 rounded-2xl font-bold uppercase text-[10px] tracking-widest transition-all border border-slate-700/50"
+                  >
+                    {showQR ? "Hide QR Code" : "Using a PC? Click to Show QR Code"}
+                  </button>
                 </div>
-              </>
+
+                {showQR && (
+                  <div className="p-4 sm:p-5 bg-white rounded-4xl shadow-2xl relative animate-in zoom-in duration-300">
+                    <img 
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(generateUpiUrl())}`}
+                      alt="Payment QR"
+                      className="w-48 h-48 sm:w-56 sm:h-56 object-contain"
+                    />
+                  </div>
+                )}
+
+                <div className="w-full space-y-5 pt-5 border-t border-white/5 mt-2">
+                  <div className="flex items-center justify-center gap-3 text-[10px] font-black uppercase tracking-widest text-emerald-500 bg-emerald-500/10 py-3 rounded-2xl border border-emerald-500/20">
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                      </span>
+                      Awaiting Bank Confirmation...
+                  </div>
+
+                  {!showManual ? (
+                    <button onClick={() => setShowManual(true)} className="text-[9px] text-slate-500 hover:text-white underline uppercase font-bold tracking-widest transition-colors">
+                      Paid but screen stuck? Enter UTR manually
+                    </button>
+                  ) : (
+                    <div className="bg-[#1f2937]/80 p-4 sm:p-5 rounded-3xl border border-slate-700 text-left animate-in slide-in-from-bottom-2">
+                      <p className="text-[9px] text-slate-400 uppercase font-black mb-2.5 ml-1 tracking-widest">Enter 12-Digit UTR Number</p>
+                      <input 
+                        value={manualUtr}
+                        onChange={(e) => setManualUtr(e.target.value.replace(/\D/g, '').slice(0, 12))}
+                        className="w-full p-3.5 bg-[#0a0f1d] border border-slate-700 rounded-xl text-emerald-400 text-center font-mono text-sm tracking-[0.3em] mb-3 outline-none focus:border-emerald-500 transition-colors placeholder:text-slate-600"
+                        placeholder="0000 0000 0000"
+                      />
+                      <button 
+                        onClick={handleManualSubmit}
+                        disabled={manualUtr.length !== 12 || submittingManual}
+                        className="w-full bg-emerald-600 hover:bg-emerald-500 py-3.5 rounded-xl text-[10px] text-white font-black uppercase tracking-widest disabled:opacity-50 transition-all active:scale-95"
+                      >
+                        {submittingManual ? "Submitting..." : "Submit for Verification"}
+                      </button>
+                    </div>
+                  )}
+                  
+                  <button onClick={() => {
+                    setPaymentModal({ open: false, event: null });
+                    fetchEvents();
+                  }} className="w-full text-[9px] font-black text-slate-600 hover:text-red-400 uppercase tracking-widest transition-colors pb-2">
+                    Cancel Transaction
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         </div>
