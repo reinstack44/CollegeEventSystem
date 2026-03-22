@@ -3,7 +3,7 @@ import { supabase } from '../../sbclient/supabaseClient';
 import { 
   Calendar, Clock, Search, Zap, 
   CheckCircle, MapPin, Timer, Info,
-  ChevronLeft, ChevronRight, ShieldCheck
+  ChevronLeft, ChevronRight, ShieldCheck, Ticket
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -22,7 +22,7 @@ const EventList = () => {
   const [showManual, setShowManual] = useState(false);
   const [manualUtr, setManualUtr] = useState('');
   const [submittingManual, setSubmittingManual] = useState(false);
-  const [showQR, setShowQR] = useState(false); // <-- NEW: State to toggle QR visualization
+  const [showQR, setShowQR] = useState(false);
 
   useEffect(() => {
     const ticker = setInterval(() => setNow(new Date()), 60000);
@@ -48,9 +48,7 @@ const EventList = () => {
         const eventBookings = bookingData?.filter(b => b.event_id === event.id) || [];
         const startTime = new Date(event.reg_start_timestamp);
         
-        // Check if user has a confirmed/verified booking
         const isBooked = user && eventBookings.some(b => b.student_email === user.email && (b.status === 'confirmed' || b.status === 'verified'));
-        // Check if user has a pending booking
         const isPending = user && eventBookings.some(b => b.student_email === user.email && b.status === 'pending');
 
         return {
@@ -78,7 +76,6 @@ const EventList = () => {
     setFlippedCards(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
- // --- AUTOMATED LISTENER FOR INSTANT VERIFICATION ---
   const listenForVerification = (eventId, studentEmail) => {
     console.log(`[Realtime] Starting listener for Student: ${studentEmail}`);
     
@@ -89,12 +86,11 @@ const EventList = () => {
         {
           event: 'UPDATE',
           schema: 'public',
-          table: 'bookings' // Removed the strict DB filter, we will filter it securely below!
+          table: 'bookings'
         },
         (payload) => {
           console.log("🔔 REALTIME PING RECEIVED FROM DATABASE:", payload);
           
-          // Securely check if the updated row belongs to THIS user and THIS event
           if (
             payload.new.event_id === eventId && 
             payload.new.student_email === studentEmail && 
@@ -103,8 +99,8 @@ const EventList = () => {
             console.log("✅ MATCH FOUND! Unlocking pass...");
             setIsVerified(true);
             toast.success("Payment Received! Pass Issued.");
-            fetchEvents(); // Refresh data to show green border
-            supabase.removeChannel(channel); // Stop listening
+            fetchEvents(); 
+            supabase.removeChannel(channel); 
           }
         }
       )
@@ -113,7 +109,6 @@ const EventList = () => {
       });
   };
 
-  // --- MAIN BOOKING LOGIC ---
   const handleBook = async (e, event) => {
     e.stopPropagation(); 
     
@@ -124,7 +119,6 @@ const EventList = () => {
     if (event.isBooked) return toast.error("Identity already secured!");
     if (event.isSoldOut) return toast.error("Deployment Full: Sold Out!");
 
-    // PAID EVENT LOGIC
     if (event.event_type === 'paid') {
       if (event.isPending) return toast.error("You have a pending transaction. Please wait.");
 
@@ -133,13 +127,16 @@ const EventList = () => {
       setIsVerified(false);
       setShowManual(false);
       setManualUtr('');
-      setShowQR(false); // Reset QR toggle
+      setShowQR(false); 
 
-      // Call database to get unique decimal price
+      // NEW: Add the ₹10 Platform Fee dynamically
+      const PLATFORM_FEE = 10;
+      const totalBasePrice = event.price + PLATFORM_FEE; 
+
       const { data: uniquePrice, error } = await supabase.rpc('assign_unique_price', {
         p_event_id: event.id,
         p_student_email: user.email,
-        p_base_price: event.price
+        p_base_price: totalBasePrice // Pass the total amount
       });
 
       if (error) {
@@ -153,7 +150,6 @@ const EventList = () => {
       return;
     }
 
-    // FREE EVENT LOGIC
     const { error } = await supabase.from('bookings').insert([{
       event_id: event.id,
       student_email: user.email,
@@ -168,7 +164,6 @@ const EventList = () => {
     }
   };
 
-  // --- MANUAL UTR SUBMISSION LOGIC ---
   const handleManualSubmit = async () => {
     if (manualUtr.length !== 12) return toast.error("Invalid UTR. Must be 12 digits.");
     setSubmittingManual(true);
@@ -206,10 +201,7 @@ const EventList = () => {
     <div className="min-h-screen bg-[#0a0f1d] text-white p-4 md:p-6 pb-24 selection:bg-blue-500/30">
       <div className="max-w-7xl mx-auto space-y-12">
         
-        {/* HEADER SECTION: Search, Logo, and Filters */}
         <div className="flex flex-col gap-6">
-          
-          {/* 1. Search Bar */}
           <div className="bg-[#111827]/90 backdrop-blur-xl p-3 rounded-4xl border border-white/5 shadow-2xl">
             <div className="relative w-full text-left">
               <Search className="absolute left-6 top-9 -translate-y-1/2 text-slate-500" size={20} />
@@ -223,7 +215,6 @@ const EventList = () => {
             </div>
           </div>
 
-          {/* 2. ADYPU LOGO SECTION */}
           <div className="flex justify-center w-full">
             <div className="bg-white rounded-2xl px-20 py-3.5 shadow-[0_10px_40px_rgba(0,0,0,0.4)] border border-white/10 flex items-center justify-center">
               <img 
@@ -234,7 +225,6 @@ const EventList = () => {
             </div>
           </div>
           
-          {/* 3. Status Filters */}
           <div className="flex items-center gap-2 p-1.5 bg-[#111827] border border-white/5 rounded-2xl w-fit self-center md:self-start">
             {['all', 'available', 'Booked'].map(s => (
               <button key={s} onClick={() => setStatusFilter(s)} className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${statusFilter === s ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500'}`}>{s}</button>
@@ -242,7 +232,6 @@ const EventList = () => {
           </div>
         </div>
 
-        {/* EVENTS GRID */}
         <section className="space-y-8 text-left">
           <h2 className="text-2xl font-black uppercase italic flex items-center gap-3"><Zap className="text-yellow-500 fill-yellow-500" size={24}/> Registrations Open</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -259,19 +248,16 @@ const EventList = () => {
         </section>
       </div>
 
-      {/* PAYMENT GATEWAY MODAL */}
       {paymentModal.open && (
         <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-[#0a0f1d]/90 backdrop-blur-md">
           <div className="bg-[#111827] border-2 border-emerald-500/30 rounded-[3rem] p-8 max-w-md w-full shadow-[0_0_50px_rgba(16,185,129,0.1)] relative">
             
             {!assignedPrice ? (
-              // Loading state while assigning the decimal
               <div className="flex flex-col items-center justify-center py-12 gap-4">
                  <Zap className="animate-spin text-emerald-500" size={40} />
                  <p className="text-emerald-400 font-black uppercase tracking-widest text-xs">Generating Secure Gateway...</p>
               </div>
             ) : isVerified ? (
-              // Success State (Ticket Revealed!)
               <div className="flex flex-col items-center text-center gap-6 py-6 animate-in zoom-in">
                  <div className="w-20 h-20 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mb-2">
                    <ShieldCheck size={40} />
@@ -283,16 +269,37 @@ const EventList = () => {
                  </button>
               </div>
             ) : (
-              // The Payment State (DEEP LINK + OPTIONAL QR CODE)
               <div className="flex flex-col items-center text-center gap-6">
                 
-                <div className="space-y-1">
-                  <h3 className="text-2xl font-black uppercase italic text-white">PAY EXACTLY</h3>
-                  <p className="text-emerald-400 font-black text-5xl tracking-widest">₹{assignedPrice}</p>
-                  <p className="text-[9px] text-red-400 uppercase font-black tracking-widest mt-2 px-4">Do not change this amount. It verifies your identity.</p>
+                {/* NEW: PAYMENT BREAKDOWN RECEIPT */}
+                <div className="w-full bg-[#1f2937] rounded-3xl p-6 border border-slate-700 mb-2 text-left shadow-inner">
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] border-b border-slate-700 pb-3 mb-4 flex items-center gap-2">
+                    <Ticket size={12}/> Transaction Breakdown
+                  </h4>
+                  
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center text-sm font-bold text-slate-300">
+                      <span>Event Ticket Price</span>
+                      <span>₹{paymentModal.event.price}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm font-bold text-slate-300">
+                      <span>ActiveArch Platform Fee</span>
+                      <span>₹10</span>
+                    </div>
+                    <div className="flex justify-between items-center text-[10px] font-bold text-emerald-500/70 uppercase tracking-widest">
+                      <span>Security Verification Decimal</span>
+                      <span>+ ₹{(assignedPrice - paymentModal.event.price - 10).toFixed(2)}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between items-end text-2xl font-black text-emerald-400 border-t border-slate-700 pt-4 mt-4">
+                    <span className="text-[10px] text-slate-400 uppercase tracking-widest mb-1">Total Payable</span>
+                    <span>₹{assignedPrice}</span>
+                  </div>
                 </div>
 
-                {/* DEEP LINK BUTTON & QR TOGGLE */}
+                <p className="text-[9px] text-red-400 uppercase font-black tracking-widest px-4 mb-4">Do not change the decimal amount. It verifies your identity.</p>
+
                 <div className="w-full space-y-3">
                   <a 
                     href={`upi://pay?pa=${paymentModal.event.merchant_upi}&pn=Event_Pass&am=${assignedPrice}&cu=INR`}
@@ -310,7 +317,6 @@ const EventList = () => {
                   </button>
                 </div>
 
-                {/* QR CODE VISUALIZATION (Toggled for PC Users) */}
                 {showQR && (
                   <div className="p-4 bg-white rounded-3xl shadow-xl relative animate-in zoom-in duration-300">
                     <img 
@@ -322,13 +328,11 @@ const EventList = () => {
                 )}
 
                 <div className="w-full space-y-4 pt-4 border-t border-white/5">
-                  {/* Auto-Verification Spinner */}
                   <div className="flex items-center justify-center gap-3 text-[10px] font-black uppercase tracking-widest text-emerald-500">
                      <span className="relative flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span></span>
                      Awaiting Bank Confirmation...
                   </div>
 
-                  {/* Manual Claim Fallback */}
                   {!showManual ? (
                     <button onClick={() => setShowManual(true)} className="text-[9px] text-slate-500 hover:text-white underline uppercase font-bold tracking-widest pt-4 transition-colors">
                       Paid but screen stuck? Enter UTR manually
@@ -369,7 +373,6 @@ const EventList = () => {
   );
 };
 
-// Sub-component for individual Event Cards
 const FlipCard = ({ event, onBook, isFlipped, onFlip }) => {
   const [currentImgIndex, setCurrentImgIndex] = useState(0);
 
@@ -379,7 +382,6 @@ const FlipCard = ({ event, onBook, isFlipped, onFlip }) => {
     "https://images.unsplash.com/photo-1505373877841-8d25f7d46678?auto=format&fit=crop&q=80&w=800"
   ];
   
-  // Safety check for images array
   const images = Array.isArray(event.images) && event.images.length > 0 ? event.images : defaultImages;
 
   const nextImage = (e) => {
@@ -428,12 +430,10 @@ const FlipCard = ({ event, onBook, isFlipped, onFlip }) => {
     <div className="perspective-2000 h-132.5 w-full group">
       <div className={`relative w-full h-full transition-transform duration-1000 ease-in-out transform-style-3d ${isFlipped ? 'rotate-y-180' : ''}`}>
         
-        {/* FRONT OF CARD */}
         <div 
           onClick={onFlip} 
           className={`absolute inset-0 backface-hidden bg-[#0f172a] rounded-[2.5rem] border-2 p-6 md:p-7 flex flex-col justify-start cursor-pointer transition-all duration-500 ${glowClass}`}
         >
-          {/* Top Bar */}
           <div className="flex justify-between items-start mb-4 shrink-0">
             <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-400 border border-blue-500/20 truncate max-w-35">{event.school}</span>
             {event.isBooked ? (
@@ -449,16 +449,13 @@ const FlipCard = ({ event, onBook, isFlipped, onFlip }) => {
             )}
           </div>
 
-          {/* IMAGE SLIDER */}
           <div className="relative w-full h-40 rounded-2xl overflow-hidden shrink-0 mb-4 group/slider border border-white/10 shadow-inner bg-slate-900">
             <img 
               src={images[currentImgIndex]} 
               alt="Event Visualization" 
               className="w-full h-full object-cover transition-opacity duration-500 ease-in-out"
             />
-            
             <div className="absolute inset-0 bg-linear-to-t from-[#0f172a] via-transparent to-transparent opacity-80 pointer-events-none"></div>
-            
             <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-md px-2 py-1 rounded-lg text-[8px] font-black text-white uppercase tracking-widest">
               {currentImgIndex + 1} / {images.length} IMAGES
             </div>
@@ -481,7 +478,6 @@ const FlipCard = ({ event, onBook, isFlipped, onFlip }) => {
             </div>
           </div>
 
-          {/* Event Details, Reg Window, & Button container */}
           <div className="grow flex flex-col justify-start text-left gap-3">
             <h3 className={`text-2xl font-black uppercase italic leading-[0.9] line-clamp-2 overflow-hidden shrink-0 ${event.isBooked ? 'text-green-500' : event.isPending ? 'text-yellow-500' : 'text-white'}`}>
               {event.title}
@@ -500,11 +496,11 @@ const FlipCard = ({ event, onBook, isFlipped, onFlip }) => {
               </div>
             </div>
 
-            {/* Registration Window */}
             <div className="pt-3 border-t border-slate-700/50 space-y-2 shrink-0">
               <div className="flex items-center gap-2 text-blue-500 text-[9px] font-black uppercase tracking-widest justify-between">
                 <span className="flex items-center gap-2"><Timer size={12}/> Registration Window</span>
-                {event.event_type === 'paid' && <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">₹{event.price}</span>}
+                {/* NEW: Inform user of Platform Fee addition */}
+                {event.event_type === 'paid' && <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">₹{event.price} + ₹10 Fee</span>}
               </div>
               <div className="flex flex-col gap-1.5 text-[9px] font-bold text-slate-400 uppercase tracking-widest">
                 <div className="flex justify-between bg-[#111827] px-3 py-2 rounded-lg border border-white/5">
@@ -518,7 +514,6 @@ const FlipCard = ({ event, onBook, isFlipped, onFlip }) => {
               </div>
             </div>
 
-            {/* Action Button */}
             <button 
               disabled={event.isBooked || event.isSoldOut || !event.isOpen || event.isPending}
               onClick={(e) => { e.stopPropagation(); onBook(e, event); }}
@@ -535,7 +530,6 @@ const FlipCard = ({ event, onBook, isFlipped, onFlip }) => {
           </div>
         </div>
 
-        {/* BACK OF CARD */}
         <div onClick={onFlip} className={`absolute inset-0 backface-hidden rotate-y-180 bg-[#1e293b] rounded-[2.5rem] border-2 p-8 flex flex-col cursor-pointer ${glowClass}`}>
           <h4 className="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-4 flex items-center gap-2 border-b border-white/5 pb-2"><Zap size={10}/> Event Specification:</h4>
           <div className="grow overflow-y-auto custom-scrollbar pr-2">

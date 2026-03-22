@@ -36,7 +36,6 @@ const AdminBookings = () => {
   useEffect(() => {
     fetchBookings();
     
-    // Realtime listener for immediate UI updates when a user submits a manual claim
     const channel = supabase.channel('bookings_db_changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, fetchBookings)
       .subscribe();
@@ -177,18 +176,31 @@ const AdminBookings = () => {
                         </div>
                       </td>
 
+                      {/* NEW: Financials, UTR & Revenue Split */}
                       <td className="p-5">
                         {booking.events?.event_type === 'free' ? (
                           <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 bg-slate-800/50 px-3 py-1 rounded-lg">Free Entry</span>
                         ) : (
-                          <div className="space-y-1">
-                            <p className="text-xs font-bold text-white">₹{booking.amount_expected}</p>
+                          <div className="space-y-2">
+                            <p className="text-sm font-black text-white">Total: ₹{booking.amount_expected}</p>
+                            
+                            <div className="flex flex-col gap-1 bg-black/40 p-2 rounded-xl border border-white/5 w-fit">
+                              <p className="text-[9px] font-black uppercase tracking-widest text-emerald-400 flex items-center gap-1.5">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                Admin Profit: ₹10
+                              </p>
+                              <p className="text-[9px] font-black uppercase tracking-widest text-blue-400 flex items-center gap-1.5">
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                                Event Due: ₹{(booking.amount_expected - 10).toFixed(2)}
+                              </p>
+                            </div>
+
                             {booking.utr_number ? (
-                              <p className="text-[9px] font-mono font-black uppercase tracking-[0.2em] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 inline-block">
+                              <p className="text-[9px] font-mono font-black uppercase tracking-[0.2em] text-slate-400 mt-1">
                                 UTR: {booking.utr_number}
                               </p>
                             ) : (
-                              <p className="text-[9px] font-black uppercase tracking-widest text-yellow-500">Awaiting UTR</p>
+                              <p className="text-[8px] font-black uppercase tracking-widest text-yellow-500 mt-1">Awaiting UTR</p>
                             )}
                           </div>
                         )}
