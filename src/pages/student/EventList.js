@@ -219,13 +219,13 @@ const EventList = () => {
     return matchesSearch && matchesStatus;
   });
 
-  // --- SAFE UPI LINK GENERATOR ---
-  // Safely encodes the strings so strict apps like CRED don't reject the intent
-  const getSafeUpiLink = () => {
+  // --- CLEAN UPI LINK GENERATOR ---
+  // Safely encodes the strings and REMOVES the locked "Transaction Note" (tn)
+  const generateUpiUrl = () => {
     if (!paymentModal.event || !assignedPrice) return '';
-    const safePayeeName = encodeURIComponent("ActiveArch");
-    const safeNote = encodeURIComponent(`Pass_${paymentModal.event.id}`);
-    return `upi://pay?pa=${paymentModal.event.merchant_upi}&pn=${safePayeeName}&tn=${safeNote}&am=${assignedPrice}&cu=INR`;
+    // Removes underscores from Payee Name which crashes CRED app
+    const cleanPayeeName = encodeURIComponent("ActiveArch Events"); 
+    return `upi://pay?pa=${paymentModal.event.merchant_upi}&pn=${cleanPayeeName}&am=${assignedPrice}&cu=INR`;
   };
 
   if (loading) return <div className="h-screen bg-[#0a0f1d] flex items-center justify-center"><Zap className="animate-pulse text-blue-500" size={48}/></div>;
@@ -283,8 +283,10 @@ const EventList = () => {
       {paymentModal.open && (
         <div className="fixed inset-0 z-100 flex items-center justify-center p-4 sm:p-6 bg-black/70 backdrop-blur-sm">
           
+          {/* Modal Container */}
           <div className="bg-[#111827] border border-white/10 rounded-2xl flex flex-col md:flex-row w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl relative">
             
+            {/* Close Button */}
             <button 
               onClick={() => {
                 setPaymentModal({ open: false, event: null });
@@ -295,12 +297,14 @@ const EventList = () => {
               <X size={20} />
             </button>
 
+            {/* Loading State */}
             {!assignedPrice ? (
               <div className="flex-1 flex flex-col items-center justify-center py-24 min-h-100">
                  <Loader2 className="animate-spin text-blue-500 mb-4" size={40} />
                  <p className="text-slate-400 font-medium text-sm">Initiating secure checkout...</p>
               </div>
               
+            /* Success State */
             ) : isVerified ? (
               <div className="flex-1 flex flex-col items-center justify-center py-24 min-h-100 animate-in zoom-in duration-300 px-6 text-center">
                  <div className="w-16 h-16 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-full flex items-center justify-center mb-6 shadow-lg shadow-emerald-500/10">
@@ -316,6 +320,7 @@ const EventList = () => {
                  </button>
               </div>
               
+            /* Checkout State */
             ) : (
               <>
                 {/* Left Panel - Order Summary */}
@@ -360,7 +365,7 @@ const EventList = () => {
                     <div className="hidden md:flex flex-col items-center mb-8">
                       <div className="bg-white p-3 rounded-xl shadow-sm mb-4">
                         <img 
-                          src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(getSafeUpiLink())}`}
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(generateUpiUrl())}`}
                           alt="Payment QR"
                           className="w-40 h-40"
                         />
@@ -375,14 +380,16 @@ const EventList = () => {
                       <div className="flex-1 border-t border-white/5"></div>
                     </div>
 
+                    {/* Updated Link Call */}
                     <a 
-                      href={getSafeUpiLink()}
+                      href={generateUpiUrl()}
                       className="w-full flex items-center justify-center gap-2 py-3.5 bg-[#1f2937] hover:bg-[#283548] text-white rounded-lg font-medium transition-colors border border-white/10 shadow-sm"
                     >
                       <Zap size={18} className="text-blue-400" />
                       Pay using UPI App
                     </a>
 
+                    {/* Mobile Only: Show QR Toggle */}
                     <button 
                       onClick={() => setShowQR(!showQR)}
                       className="md:hidden w-full mt-4 py-3 text-slate-400 hover:text-white rounded-lg font-medium text-sm transition-colors"
@@ -392,8 +399,9 @@ const EventList = () => {
 
                     {showQR && (
                       <div className="md:hidden mt-2 mb-4 p-3 bg-white rounded-xl shadow-sm animate-in slide-in-from-top-2">
+                        {/* Updated Link Call */}
                         <img 
-                          src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(getSafeUpiLink())}`}
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(generateUpiUrl())}`}
                           alt="Payment QR"
                           className="w-40 h-40 mx-auto"
                         />
