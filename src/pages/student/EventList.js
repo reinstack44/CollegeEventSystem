@@ -133,6 +133,7 @@ const EventList = () => {
       .subscribe();
   };
 
+  // --- DECIMAL ARCHITECTURE RESTORED ---
   const handleBook = async (e, event) => {
     e.stopPropagation(); 
     
@@ -250,21 +251,13 @@ const EventList = () => {
     const safeAmount = Number(assignedPrice).toFixed(2);
     const tr = `TRX${Date.now()}`;
     const note = encodeURIComponent(`Pass_${paymentModal.event.id}`);
-    return `upi://pay?pa=${paymentModal.event.merchant_upi}&pn=${cleanPayeeName}&tr=${tr}&tn=${note}&mc=8999&am=${safeAmount}&cu=INR`;
+    
+    return `upi://pay?pa=${paymentModal.event.merchant_upi}&pn=${cleanPayeeName}&tr=${tr}&tn=${note}&am=${safeAmount}&cu=INR&mode=02&purpose=00`;
   };
 
   const handleUpiClick = (e) => {
     e.preventDefault();
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    
-    if (isMobile) {
-      window.location.href = generateUpiUrl();
-    } else {
-      toast("UPI Apps are usually on phones. Please scan the QR code instead.", {
-        icon: '📱',
-        style: { borderRadius: '10px', background: '#1f2937', color: '#fff' }
-      });
-    }
+    window.location.href = generateUpiUrl();
   };
 
   if (loading) return <div className="h-screen bg-[#0a0f1d] flex items-center justify-center"><Zap className="animate-pulse text-blue-500" size={48}/></div>;
@@ -387,8 +380,7 @@ const EventList = () => {
                   
                   <div className="flex flex-col items-center w-full max-w-sm mx-auto">
                     
-                    {/* Mobile Only: Button & Divider */}
-                    <div className="md:hidden flex items-center w-full mb-6">
+                    <div className="flex items-center w-full mb-6">
                       <div className="flex-1 border-t border-slate-700"></div>
                       <span className="px-4 text-xs text-slate-500 uppercase tracking-widest">Select App</span>
                       <div className="flex-1 border-t border-slate-700"></div>
@@ -396,19 +388,18 @@ const EventList = () => {
 
                     <button 
                       onClick={handleUpiClick}
-                      className="md:hidden w-full flex items-center justify-center gap-2 py-3.5 bg-[#1f2937] hover:bg-[#283548] text-white rounded-xl font-medium transition-colors border border-slate-700 shadow-sm mb-6"
+                      className="w-full flex items-center justify-center gap-2 py-3.5 bg-[#1f2937] hover:bg-[#283548] text-white rounded-xl font-medium transition-colors border border-slate-700 shadow-sm mb-6"
                     >
                       <Zap size={18} className="text-emerald-400" />
                       Pay using UPI App
                     </button>
 
-                    <div className="md:hidden flex items-center w-full mb-6">
+                    <div className="flex items-center w-full mb-6">
                       <div className="flex-1 border-t border-slate-700"></div>
                       <span className="px-4 text-xs text-slate-500 uppercase tracking-widest">Or Scan QR</span>
                       <div className="flex-1 border-t border-slate-700"></div>
                     </div>
 
-                    {/* QR Code is now visible on BOTH Desktop and Mobile */}
                     <div className="flex flex-col items-center mb-6 w-full">
                       <div className="bg-white p-4 rounded-2xl shadow-sm mb-4">
                         <img 
@@ -420,7 +411,7 @@ const EventList = () => {
                       <p className="text-sm text-slate-400 text-center">Scan QR using any UPI app</p>
                     </div>
 
-                    <div className="w-full mt-2 pt-6 border-t border-slate-800">
+                    <div className="w-full mt-8 pt-6 border-t border-slate-800">
                       <div className="flex items-center gap-2 text-emerald-500 text-sm mb-4">
                           <span className="relative flex h-2 w-2">
                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -435,7 +426,7 @@ const EventList = () => {
                         </button>
                       ) : (
                         <div className="bg-[#1f2937]/30 p-4 sm:p-5 rounded-3xl border border-slate-700 text-left animate-in slide-in-from-bottom-2">
-                          <p className="text-[9px] text-slate-400 uppercase font-black mb-2.5 ml-1 tracking-widest">Enter 12-Digit UTR Number</p>
+                          <p className="text-[12px] text-slate-400 uppercase font-black mb-2.5 ml-1 tracking-widest">Enter 12-Digit UPI Ref/ UTR Number if money deducted & ticket not issued.</p>
                           <input 
                             value={manualUtr}
                             onChange={(e) => setManualUtr(e.target.value.replace(/\D/g, '').slice(0, 12))}
