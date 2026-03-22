@@ -3,7 +3,7 @@ import { supabase } from '../../sbclient/supabaseClient';
 import { QRCodeCanvas } from 'qrcode.react'; 
 import { 
   Ticket, Calendar, MapPin, Zap, Clock, 
-  Fingerprint, X, ShieldCheck, Info, CheckCircle2, Trash2, Download, Loader2, History, AlertTriangle
+  Fingerprint, X, ShieldCheck, Info, CheckCircle2, Trash2, Download, Loader2, History, AlertTriangle, CreditCard
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import html2canvas from 'html2canvas';
@@ -43,11 +43,13 @@ const MyTickets = () => {
       
       setStudentName(`${profile?.name || 'Student'} ${profile?.surname || ''}`);
 
+      // UPGRADE: Fetching amount_expected and event_type
       const { data, error } = await supabase
         .from('bookings')
         .select(`
           id, 
-          status, 
+          status,
+          amount_expected,
           events ( 
             title, 
             date, 
@@ -55,7 +57,8 @@ const MyTickets = () => {
             school, 
             start_time, 
             end_time,
-            registration_deadline
+            registration_deadline,
+            event_type
           )
         `)
         .eq('student_email', user.email)
@@ -185,6 +188,13 @@ const MyTickets = () => {
             <p className="flex items-center gap-2 text-[10px] font-bold text-slate-300 uppercase tracking-widest"><Calendar size={12} className={isExpired ? "text-slate-500" : isPending ? "text-yellow-600" : "text-blue-500"}/> {ticket.events?.date}</p>
             <p className="flex items-center gap-2 text-[10px] font-bold text-slate-300 uppercase tracking-widest"><Clock size={12} className={isExpired ? "text-slate-500" : isPending ? "text-yellow-600" : "text-blue-500"}/> {ticket.events?.start_time} — {ticket.events?.end_time || 'End'}</p>
             <p className="flex items-center gap-2 text-[10px] font-bold text-slate-300 uppercase tracking-widest truncate max-w-[90%]"><MapPin size={12} className={isExpired ? "text-slate-500" : isPending ? "text-yellow-600" : "text-blue-500"}/> {ticket.events?.venue}</p>
+            
+            {/* NEW: Display the Paid Amount on the Card */}
+            {ticket.events?.event_type === 'paid' && (
+              <p className={`flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest pt-1 ${isExpired ? "text-slate-500" : isPending ? "text-yellow-500" : "text-emerald-400"}`}>
+                <CreditCard size={12} /> PAID: ₹{ticket.amount_expected}
+              </p>
+            )}
           </div>
         </div>
 
@@ -313,6 +323,17 @@ const MyTickets = () => {
                       <div className="flex items-center gap-5"><Calendar className="text-blue-500" size={24} /><div><p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Pass Valid For</p><p className="text-xl font-bold">{selectedTicket.events?.date}</p></div></div>
                       <div className="flex items-center gap-5"><Clock className="text-blue-500" size={24} /><div><p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Event Time</p><p className="text-xl font-bold">{selectedTicket.events?.start_time}</p></div></div>
                       <div className="flex items-center gap-5"><MapPin className="text-blue-500" size={24} /><div><p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Venue Location</p><p className="text-xl font-bold truncate max-w-62.5">{selectedTicket.events?.venue}</p></div></div>
+                      
+                      {/* NEW: Display Paid Amount in the Modal */}
+                      {selectedTicket.events?.event_type === 'paid' && (
+                        <div className="flex items-center gap-5">
+                          <CreditCard className="text-emerald-500" size={24} />
+                          <div>
+                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Amount Paid</p>
+                            <p className="text-xl font-bold text-emerald-400">₹{selectedTicket.amount_expected}</p>
+                          </div>
+                        </div>
+                      )}
                    </div>
                 </div>
                 <div className="flex flex-col items-center gap-4 py-6 border-t border-white/5"><p className="text-blue-500 font-black text-[10px] uppercase tracking-widest animate-pulse">Preparing Entry Token...</p></div>
@@ -330,7 +351,7 @@ const MyTickets = () => {
         </div>
       )}
 
-      {/* HIDDEN PRINTABLE TICKET */}
+      {/* HIDDEN PRINTABLE TICKET (PDF FORMAT) */}
       {selectedTicket && (
         <div style={{ position: 'absolute', top: '-20000px', left: '-20000px', zIndex: -9999 }}>
           <div ref={printRef} style={{ width: '794px', height: '1123px', backgroundColor: '#0a0f1d', padding: '40px', boxSizing: 'border-box' }}>
@@ -339,7 +360,21 @@ const MyTickets = () => {
                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}><p style={{ margin: 0, fontSize: '18px', fontWeight: 'bold', color: '#3b82f6', letterSpacing: '3px', textTransform: 'uppercase' }}>{selectedTicket.events?.school || 'EVENT'} • SECURITY PASS</p><div style={{ backgroundColor: '#1e293b', color: '#3b82f6', padding: '10px 20px', borderRadius: '12px', fontWeight: '900', fontSize: '14px', border: '1px solid rgba(59,130,246,0.3)' }}>VERIFIED ACCESS</div></div>
                  <div style={{ marginBottom: '30px', width: '100%' }}><h1 style={{ margin: 0, fontSize: selectedTicket.events?.title.length > 30 ? '34px' : '48px', fontWeight: '900', color: '#ffffff', textTransform: 'uppercase', fontStyle: 'italic', lineHeight: '38px', wordWrap: 'break-word', display: 'block' }}>{selectedTicket.events?.title}</h1></div>
                  <div style={{ display: 'flex', marginBottom: '25px', gap: '40px' }}><div style={{ flex: 1 }}><p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Date</p><p style={{ margin: 0, fontSize: '26px', fontWeight: 'bold', color: '#ffffff' }}>{selectedTicket.events?.date}</p></div><div style={{ flex: 1 }}><p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Time</p><p style={{ margin: 0, fontSize: '26px', fontWeight: 'bold', color: '#ffffff' }}>{selectedTicket.events?.start_time}</p></div></div>
-                 <div style={{ marginBottom: '30px' }}><p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Venue Location</p><p style={{ margin: 0, fontSize: '22px', fontWeight: 'bold', color: '#ffffff' }}>{selectedTicket.events?.venue}</p></div>
+                 
+                 {/* NEW: Venue and Payment Status side-by-side in PDF */}
+                 <div style={{ display: 'flex', marginBottom: '30px', gap: '40px' }}>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Venue Location</p>
+                      <p style={{ margin: 0, fontSize: '22px', fontWeight: 'bold', color: '#ffffff' }}>{selectedTicket.events?.venue}</p>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Payment Status</p>
+                      <p style={{ margin: 0, fontSize: '22px', fontWeight: 'bold', color: selectedTicket.events?.event_type === 'paid' ? '#10b981' : '#3b82f6' }}>
+                        {selectedTicket.events?.event_type === 'paid' ? `PAID ₹${selectedTicket.amount_expected}` : 'FREE PASS'}
+                      </p>
+                    </div>
+                 </div>
+
                  <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '20px' }}>
                     <p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Authorized Attendee</p>
                     <p style={{ margin: 0, fontSize: '38px', fontWeight: '900', color: '#ffffff', textTransform: 'uppercase' }}>{studentName}</p>
