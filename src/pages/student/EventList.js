@@ -497,7 +497,7 @@ const FlipCard = ({ event, onBook, isFlipped, onFlip }) => {
   };
 
   return (
-    <div className="perspective-2000 h-132.5 w-full group">
+    <div className="perspective-2000 h-142.5 w-full group">
       <div className={`relative w-full h-full transition-transform duration-1000 ease-in-out transform-style-3d ${isFlipped ? 'rotate-y-180' : ''}`}>
         
         <div 
@@ -505,7 +505,7 @@ const FlipCard = ({ event, onBook, isFlipped, onFlip }) => {
           className={`absolute inset-0 backface-hidden bg-[#0f172a] rounded-[2.5rem] border-2 p-6 md:p-7 flex flex-col justify-start cursor-pointer transition-all duration-500 ${glowClass}`}
         >
           <div className="flex justify-between items-start mb-4 shrink-0">
-            <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-400 border border-blue-500/20 truncate max-w-35">{event.school}</span>
+            <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-400 border border-blue-500/20 truncate max-w-45">{event.school}</span>
             <div className="flex items-center gap-2">
                <Info size={14} className="text-slate-500 hover:text-blue-400 transition-colors" />
                {event.isBooked ? (
@@ -567,10 +567,13 @@ const FlipCard = ({ event, onBook, isFlipped, onFlip }) => {
               </div>
             </div>
 
+            <div className="flex items-center gap-2 text-blue-500 text-[13px] font-black uppercase tracking-widest justify-center bg-center text-center">
+                {event.event_type === 'paid' && <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Entry Fee ₹{event.price}</span>}
+            </div>
+
             <div className="pt-3 border-t border-slate-700/50 space-y-2 shrink-0">
-              <div className="flex items-center gap-2 text-blue-500 text-[9px] font-black uppercase tracking-widest justify-between">
+              <div className="flex items-center gap-2 text-blue-500 text-[13px] font-black uppercase tracking-widest justify-between bg-center text-center">
                 <span className="flex items-center gap-2"><Timer size={12}/> Registration Window</span>
-                {event.event_type === 'paid' && <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">₹{event.price} + ₹10 Fee</span>}
               </div>
               <div className="flex flex-col gap-1.5 text-[9px] font-bold text-slate-400 uppercase tracking-widest">
                 <div className="flex justify-between bg-[#111827] px-3 py-2 rounded-lg border border-white/5">
