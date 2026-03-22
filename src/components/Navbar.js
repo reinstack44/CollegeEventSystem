@@ -110,8 +110,8 @@ const Navbar = ({ session }) => {
                     ) : (
                       <>
                         {/* Admin Routes */}
-                        <MenuLink to="/admin" icon={<Shield size={18} className="text-red-500"/>} label="Mission Control" onClick={() => setIsOpen(false)} />
-                        <MenuLink to="/admin/bookings" icon={<Users size={18} className="text-red-500"/>} label="Student Database" onClick={() => setIsOpen(false)} />
+                        <MenuLink to="/admin" icon={<Shield size={18} className="text-blue-500"/>} label="Admin Control Panel" onClick={() => setIsOpen(false)} />
+                        <MenuLink to="/admin/bookings" icon={<Users size={18} className="text-blue-500"/>} label="Manual Entry Verification" onClick={() => setIsOpen(false)} />
                       </>
                     )}
                     
