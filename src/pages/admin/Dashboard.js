@@ -4,7 +4,7 @@ import { supabase } from '../../sbclient/supabaseClient';
 import { 
   LayoutDashboard, PlusCircle, ScanLine, ShieldAlert, 
   Users, ArrowRight, Trash2, Activity, 
-  Search, Edit3, Zap
+  Search, Edit3, Zap, CheckCircle, ArrowLeft
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -76,7 +76,15 @@ const Dashboard = () => {
   if (loading) return <div className="flex justify-center items-center h-screen bg-[#0a0f1d]"><Zap className="animate-pulse text-blue-600" size={48}/></div>;
 
   return (
-    <div className="container mx-auto p-8 max-w-6xl py-12 text-left">
+    <div className="container mx-auto p-8 max-w-350 py-12 text-left">
+      
+      {/* NEW: TOP NAVIGATION / BACK BUTTON */}
+      <div className="w-full mb-6 flex justify-start">
+        <button onClick={() => navigate('/')} className="flex items-center gap-2 text-slate-500 hover:text-blue-500 transition-all font-black text-[10px] uppercase tracking-widest">
+          <ArrowLeft size={14} /> Back
+        </button>
+      </div>
+
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
         <div className="flex items-center gap-4">
           <div className="p-3.5 bg-blue-600 text-white rounded-2xl shadow-xl"><LayoutDashboard size={28}/></div>
@@ -97,11 +105,12 @@ const Dashboard = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 mb-16">
         <AdminCard to="/admin/create" icon={<PlusCircle size={28} className="text-green-500" />} title="Create" desc="New Event." color="border-green-500" />
         <AdminCard to="/admin/scan" icon={<ScanLine size={28} className="text-blue-500" />} title="Scanner" desc="QR Gate Control." color="border-blue-500" />
         <AdminCard to="/admin/students" icon={<Users size={28} className="text-purple-500" />} title="Students" desc="Attendence Record." color="border-purple-500" /> 
         <AdminCard to="/admin/logs" icon={<ShieldAlert size={28} className="text-red-500" />} title="Terminate Entry" desc="Security Control." color="border-red-500" />
+        <AdminCard to="/admin/bookings" icon={<CheckCircle size={28} className="text-yellow-500" />} title="Manual Entry" desc="Verify UTR Audits." color="border-yellow-500" />
       </div>
 
       <div className="bg-slate-900/50 p-10 rounded-[3.5rem] border border-slate-800">

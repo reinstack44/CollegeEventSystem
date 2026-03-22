@@ -12,11 +12,10 @@ const AdminBookings = () => {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'pending', 'verified', 'confirmed'
+  const [statusFilter, setStatusFilter] = useState('all'); 
 
   const fetchBookings = async () => {
     try {
-      // Fetch all bookings and join with event details
       const { data, error } = await supabase
         .from('bookings')
         .select(`
@@ -37,7 +36,7 @@ const AdminBookings = () => {
   useEffect(() => {
     fetchBookings();
     
-    // Realtime listener for new bookings or manual UTR claims
+    // Realtime listener for immediate UI updates when a user submits a manual claim
     const channel = supabase.channel('bookings_db_changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, fetchBookings)
       .subscribe();
@@ -45,7 +44,6 @@ const AdminBookings = () => {
     return () => supabase.removeChannel(channel);
   }, []);
 
-  // --- ADMIN ACTIONS ---
   const handleApprove = async (bookingId) => {
     const toastId = toast.loading("Verifying Identity...");
     try {
@@ -56,7 +54,6 @@ const AdminBookings = () => {
       
       if (error) throw error;
       toast.success("Pass Authorized!", { id: toastId });
-      fetchBookings(); // Refresh UI
     } catch (error) {
       toast.error("Verification failed.", { id: toastId });
     }
@@ -68,13 +65,11 @@ const AdminBookings = () => {
       const { error } = await supabase.from('bookings').delete().eq('id', bookingId);
       if (error) throw error;
       toast.success("Fraudulent claim rejected & removed.");
-      fetchBookings(); // Refresh UI
     } catch (error) {
       toast.error("Rejection failed.");
     }
   };
 
-  // --- FILTERING ---
   const filteredBookings = bookings.filter(b => {
     const matchesSearch = 
       b.student_email.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -94,22 +89,20 @@ const AdminBookings = () => {
     <div className="min-h-screen bg-[#0a0f1d] p-6 text-white selection:bg-blue-500/30">
       <div className="max-w-7xl mx-auto space-y-8">
         
-        {/* TOP NAVIGATION */}
         <div className="w-full mb-4 flex justify-start">
           <button onClick={() => navigate('/admin')} className="flex items-center gap-2 text-slate-500 hover:text-blue-500 transition-all font-black text-[10px] uppercase tracking-widest">
             <ArrowLeft size={14} /> Back to Dashboard
           </button>
         </div>
 
-        {/* HEADER */}
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
           <div>
             <div className="flex items-center gap-3 mb-2">
               <div className="p-2 bg-blue-600/20 rounded-lg"><Users className="text-blue-500" size={24} /></div>
-              <span className="text-blue-500 font-black uppercase tracking-[0.3em] text-[10px]">Student Database</span>
+              <span className="text-blue-500 font-black uppercase tracking-[0.3em] text-[10px]">Manual Entry Verification</span>
             </div>
             <h2 className="text-4xl font-black uppercase italic tracking-tighter text-white flex items-center gap-4">
-              Mission Roster
+              Students Financials and status
               {pendingCount > 0 && (
                 <span className="text-sm font-black bg-red-500 text-white px-3 py-1 rounded-full animate-pulse not-italic tracking-widest">
                   {pendingCount} Pending Audits
@@ -119,7 +112,7 @@ const AdminBookings = () => {
           </div>
           
           <div className="relative w-full md:w-80">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+            <Search className="absolute left-4 top-7 -translate-y-1/2 text-slate-500" size={16} />
             <input 
               type="text" placeholder="Search Email, Event, or UTR..." 
               value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
@@ -128,7 +121,6 @@ const AdminBookings = () => {
           </div>
         </header>
 
-        {/* FILTERS */}
         <div className="flex flex-wrap gap-2">
           {['all', 'pending', 'verified', 'confirmed'].map(status => (
             <button 
@@ -146,7 +138,6 @@ const AdminBookings = () => {
           ))}
         </div>
 
-        {/* DATABASE TABLE */}
         <div className="bg-[#111827] rounded-4xl border border-slate-800 shadow-2xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
@@ -170,8 +161,6 @@ const AdminBookings = () => {
                 ) : (
                   filteredBookings.map((booking) => (
                     <tr key={booking.id} className="hover:bg-[#1f2937]/30 transition-colors group">
-                      
-                      {/* 1. Student Identity */}
                       <td className="p-5">
                         <p className="text-sm font-bold text-white">{booking.student_email}</p>
                         <p className="text-[9px] font-black uppercase tracking-widest text-slate-500 mt-1">
@@ -179,7 +168,6 @@ const AdminBookings = () => {
                         </p>
                       </td>
 
-                      {/* 2. Event Info */}
                       <td className="p-5">
                         <div className="flex items-center gap-2">
                           <Ticket size={14} className="text-slate-500" />
@@ -189,7 +177,6 @@ const AdminBookings = () => {
                         </div>
                       </td>
 
-                      {/* 3. Financials & UTR */}
                       <td className="p-5">
                         {booking.events?.event_type === 'free' ? (
                           <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 bg-slate-800/50 px-3 py-1 rounded-lg">Free Entry</span>
@@ -207,7 +194,6 @@ const AdminBookings = () => {
                         )}
                       </td>
 
-                      {/* 4. Status Badge */}
                       <td className="p-5">
                         <span className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5 w-fit ${
                           booking.status === 'verified' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' :
@@ -220,7 +206,6 @@ const AdminBookings = () => {
                         </span>
                       </td>
 
-                      {/* 5. Actions */}
                       <td className="p-5 flex items-center justify-end gap-2 opacity-100 lg:opacity-50 group-hover:opacity-100 transition-opacity">
                         {booking.status === 'pending' ? (
                           <>
