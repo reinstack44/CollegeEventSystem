@@ -245,19 +245,38 @@ const EventList = () => {
     return matchesSearch && matchesStatus;
   });
 
-  const generateUpiUrl = () => {
+  const generateUpiUrl = (appPrefix = 'upi') => {
     if (!paymentModal.event || !assignedPrice) return '';
     const cleanPayeeName = encodeURIComponent("ActiveArch"); 
     const safeAmount = Number(assignedPrice).toFixed(2);
     const tr = `TRX${Date.now()}`;
     const note = encodeURIComponent(`Pass_${paymentModal.event.id}`);
     
-    return `upi://pay?pa=${paymentModal.event.merchant_upi}&pn=${cleanPayeeName}&tr=${tr}&tn=${note}&am=${safeAmount}&cu=INR&mode=02&purpose=00`;
+    let prefix = 'upi://pay';
+    if (appPrefix === 'gpay') prefix = 'tez://upi/pay';
+    if (appPrefix === 'phonepe') prefix = 'phonepe://pay';
+    if (appPrefix === 'paytm') prefix = 'paytmmp://pay';
+    if (appPrefix === 'bhim') prefix = 'bhim://pay';
+    
+    return `${prefix}?pa=${paymentModal.event.merchant_upi}&pn=${cleanPayeeName}&tr=${tr}&tn=${note}&am=${safeAmount}&cu=INR&mode=02&purpose=00`;
   };
 
-  const handleUpiClick = (e) => {
+  const handleSpecificAppClick = (e, appPrefix) => {
     e.preventDefault();
-    window.location.href = generateUpiUrl();
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    
+    if (isMobile) {
+      try {
+        window.location.href = generateUpiUrl(appPrefix);
+      } catch (err) {
+        toast.error("App not found or unable to open.");
+      }
+    } else {
+      toast("Please scan the QR code on your phone.", {
+        icon: '📱',
+        style: { borderRadius: '10px', background: '#1f2937', color: '#fff' }
+      });
+    }
   };
 
   if (loading) return <div className="h-screen bg-[#0a0f1d] flex items-center justify-center"><Zap className="animate-pulse text-blue-500" size={48}/></div>;
@@ -288,7 +307,7 @@ const EventList = () => {
           
           <div className="flex items-center gap-2 p-1.5 bg-[#111827] border border-white/5 rounded-2xl w-fit self-center md:self-start">
             {['all', 'available', 'Booked'].map(s => (
-              <button key={s} onClick={() => setStatusFilter(s)} className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${statusFilter === s ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>{s}</button>
+              <button key={s} onClick={() => setStatusFilter(s)} className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${statusFilter === s ? 'bg-blue-500 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>{s}</button>
             ))}
           </div>
         </div>
@@ -380,21 +399,40 @@ const EventList = () => {
                   
                   <div className="flex flex-col items-center w-full max-w-sm mx-auto">
 
-                    <div className="md:hidden flex items-center w-full mb-6">
+                    <div className="md:hidden flex items-center w-full mb-4">
                       <div className="flex-1 border-t border-slate-700"></div>
-                      <span className="px-4 text-xs text-slate-500 uppercase tracking-widest">Select App</span>
+                      <span className="px-4 text-[10px] text-slate-500 uppercase font-black tracking-widest">Tap to Pay</span>
                       <div className="flex-1 border-t border-slate-700"></div>
                     </div>
 
-                    <button 
-                      onClick={handleUpiClick}
-                      className="md:hidden w-full flex items-center justify-center gap-2 py-3.5 bg-[#1f2937] hover:bg-[#283548] text-white rounded-xl font-medium transition-colors border border-slate-700 shadow-sm mb-6"
-                    >
-                      <Zap size={18} className="text-emerald-400" />
-                      Pay using UPI App
-                    </button>
+                    <div className="md:hidden grid grid-cols-2 gap-3 w-full mb-6">
+                      <button 
+                        onClick={(e) => handleSpecificAppClick(e, 'phonepe')}
+                        className="bg-[#5f259f] hover:bg-[#4a1c7c] text-white py-3 rounded-xl font-bold text-[11px] flex items-center justify-center transition-colors active:scale-95 shadow-md"
+                      >
+                        PhonePe
+                      </button>
+                      <button 
+                        onClick={(e) => handleSpecificAppClick(e, 'gpay')}
+                        className="bg-white hover:bg-slate-100 text-slate-800 py-3 rounded-xl font-bold text-[11px] flex items-center justify-center transition-colors active:scale-95 shadow-md"
+                      >
+                        Google Pay
+                      </button>
+                      <button 
+                        onClick={(e) => handleSpecificAppClick(e, 'paytm')}
+                        className="bg-[#00baf2] hover:bg-[#009ac7] text-white py-3 rounded-xl font-bold text-[11px] flex items-center justify-center transition-colors active:scale-95 shadow-md"
+                      >
+                        Paytm
+                      </button>
+                      <button 
+                        onClick={(e) => handleSpecificAppClick(e, 'bhim')}
+                        className="bg-[#ea7c00] hover:bg-[#c96a00] text-white py-3 rounded-xl font-bold text-[11px] flex items-center justify-center transition-colors active:scale-95 shadow-md"
+                      >
+                        BHIM
+                      </button>
+                    </div>
 
-                    <div className="md:hidden flex items-center w-full mb-6">
+                    <div className="flex items-center w-full mb-6">
                       <div className="flex-1 border-t border-slate-700"></div>
                       <span className="px-4 text-xs text-slate-500 uppercase tracking-widest">Or Scan QR</span>
                       <div className="flex-1 border-t border-slate-700"></div>
@@ -403,9 +441,9 @@ const EventList = () => {
                     <div className="flex flex-col items-center mb-6 w-full">
                       <div className="bg-white p-4 rounded-2xl shadow-sm mb-4">
                         <img 
-                          src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(generateUpiUrl())}`}
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(generateUpiUrl('upi'))}`}
                           alt="Payment QR"
-                          className="w-44 h-44 md:w-48 md:h-48 object-contain"
+                          className="w-40 h-40 md:w-48 md:h-48 object-contain"
                         />
                       </div>
                       <p className="text-sm text-slate-400 text-center">Scan QR using any UPI app</p>
