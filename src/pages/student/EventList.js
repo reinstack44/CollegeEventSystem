@@ -3,9 +3,20 @@ import { supabase } from '../../sbclient/supabaseClient';
 import { 
   Calendar, Clock, Search, Zap, 
   CheckCircle, MapPin, Timer, Info,
-  ChevronLeft, ChevronRight, Ticket, X, Loader2
+  ChevronLeft, ChevronRight, X, Loader2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+
+// Utility to load Razorpay SDK dynamically
+const loadRazorpayScript = () => {
+  return new Promise((resolve) => {
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+};
 
 const EventList = () => {
   const [events, setEvents] = useState([]);
@@ -15,17 +26,12 @@ const EventList = () => {
   
   // Modal State & Animation Trigger
   const [poppedEvent, setPoppedEvent] = useState(null);
-  const [isClosing, setIsClosing] = useState(false); // NEW: Controls the exit animation
+  const [isClosing, setIsClosing] = useState(false); 
   
   const [now, setNow] = useState(new Date());
 
-  // Payment Gateway State
-  const [paymentModal, setPaymentModal] = useState({ open: false, event: null });
-  const [assignedPrice, setAssignedPrice] = useState(null);
-  const [isVerified, setIsVerified] = useState(false);
-  const [showManual, setShowManual] = useState(false);
-  const [manualUtr, setManualUtr] = useState('');
-  const [submittingManual, setSubmittingManual] = useState(false);
+  // NEW: Razorpay Loading State
+  const [processingPayment, setProcessingPayment] = useState(false);
 
   useEffect(() => {
     const ticker = setInterval(() => setNow(new Date()), 60000);
@@ -75,65 +81,8 @@ const EventList = () => {
     fetchEvents();
   }, [fetchEvents]);
 
-  // --- BULLETPROOF PAYMENT POLLING ---
-  useEffect(() => {
-    let pollTimer;
-    
-    const checkPaymentStatus = async () => {
-      if (!paymentModal.open || !paymentModal.event || isVerified) return;
-      
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
 
-        const { data } = await supabase
-          .from('bookings')
-          .select('status')
-          .eq('event_id', paymentModal.event.id)
-          .eq('student_email', user.email)
-          .single();
-
-        if (data && data.status === 'verified') {
-          setIsVerified(true);
-          toast.success("Payment Received! Pass Issued.");
-          fetchEvents();
-          clearInterval(pollTimer);
-        }
-      } catch (err) {
-        console.error("Polling error:", err);
-      }
-    };
-
-    if (paymentModal.open && assignedPrice && !isVerified) {
-      pollTimer = setInterval(checkPaymentStatus, 3000);
-    }
-
-    return () => clearInterval(pollTimer);
-  }, [paymentModal, assignedPrice, isVerified, fetchEvents]);
-
-  const listenForVerification = (eventId, studentEmail) => {
-    const channel = supabase
-      .channel(`payment_listener_${studentEmail}`)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'bookings' },
-        (payload) => {
-          if (
-            String(payload.new.event_id) === String(eventId) && 
-            payload.new.student_email === studentEmail && 
-            payload.new.status === 'verified'
-          ) {
-            setIsVerified(true);
-            toast.success("Payment Received! Pass Issued.");
-            fetchEvents(); 
-            supabase.removeChannel(channel); 
-          }
-        }
-      )
-      .subscribe();
-  };
-
-  // --- DECIMAL ARCHITECTURE RESTORED ---
+  // --- NEW: RAZORPAY INTEGRATION ---
   const handleBook = async (e, event) => {
     e.stopPropagation(); 
     
@@ -144,35 +93,87 @@ const EventList = () => {
     if (event.isBooked) return toast.error("Identity already secured!");
     if (event.isSoldOut) return toast.error("Deployment Full: Sold Out!");
 
+    // PAID EVENT LOGIC (RAZORPAY)
     if (event.event_type === 'paid') {
-      if (event.isPending) return toast.error("You have a pending transaction. Please wait.");
+      setProcessingPayment(true);
 
-      setPaymentModal({ open: true, event: event });
-      setAssignedPrice(null);
-      setIsVerified(false);
-      setShowManual(false);
-      setManualUtr('');
+      try {
+        // 1. Load Razorpay Script
+        const res = await loadRazorpayScript();
+        if (!res) {
+          toast.error("Razorpay SDK failed to load. Are you online?");
+          setProcessingPayment(false);
+          return;
+        }
 
-      const PLATFORM_FEE = 10;
-      const totalBasePrice = event.price + PLATFORM_FEE; 
+        // 2. Call your backend to create a Razorpay Order ID securely
+        // NOTE: You will need a Supabase Edge Function to generate this.
+        const PLATFORM_FEE = 10;
+        const totalAmount = event.price + PLATFORM_FEE;
 
-      const { data: uniquePrice, error } = await supabase.rpc('assign_unique_price', {
-        p_event_id: event.id,
-        p_student_email: user.email,
-        p_base_price: totalBasePrice 
-      });
+        const { data: orderData, error: orderError } = await supabase.functions.invoke('create-razorpay-order', {
+          body: { event_id: event.id, amount: totalAmount }
+        });
 
-      if (error) {
-        toast.error(error.message || "High traffic. Try again later.");
-        setPaymentModal({ open: false, event: null });
-        return;
+        if (orderError || !orderData) {
+          throw new Error("Failed to initialize order with server.");
+        }
+
+        // 3. Initialize Razorpay Checkout
+        const options = {
+          key: process.env.REACT_APP_RAZORPAY_KEY_ID || 'YOUR_RAZORPAY_KEY_ID', // Replace with your Key ID
+          amount: orderData.amount, // Amount is in currency subunits. Default currency is INR. Hence, 50000 refers to 50000 paise
+          currency: "INR",
+          name: "ActiveArch Events",
+          description: `Pass for ${event.title}`,
+          order_id: orderData.id, // The order ID generated by your backend
+          handler: async function (response) {
+            // 4. Success Callback: User successfully paid! Verify & create booking.
+            const { error: bookingError } = await supabase.from('bookings').insert([{
+              event_id: event.id,
+              student_email: user.email,
+              status: 'verified', // Directly marking as verified!
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_signature: response.razorpay_signature
+            }]);
+
+            if (!bookingError) {
+              toast.success("Payment Successful! Pass Secured.");
+              fetchEvents();
+              // Redirect to tickets page
+              setTimeout(() => {
+                window.location.href = `/student/tickets?autoFlip=true#ticket-${event.id}`;
+              }, 1500);
+            } else {
+              toast.error("Payment received, but ticket generation failed. Contact Admin.");
+            }
+          },
+          prefill: {
+            email: user.email,
+          },
+          theme: {
+            color: "#10b981" // Emerald 500 to match your UI
+          }
+        };
+
+        const paymentObject = new window.Razorpay(options);
+        paymentObject.on('payment.failed', function (response) {
+          toast.error(`Payment Failed: ${response.error.description}`);
+        });
+        paymentObject.open();
+
+      } catch (error) {
+        console.error(error);
+        toast.error("Could not initiate payment. Please try again.");
+      } finally {
+        setProcessingPayment(false);
       }
-
-      setAssignedPrice(uniquePrice);
-      listenForVerification(event.id, user.email);
+      
       return;
     }
 
+    // FREE EVENT LOGIC (Unchanged)
     const { error } = await supabase.from('bookings').insert([{
       event_id: event.id,
       student_email: user.email,
@@ -187,134 +188,18 @@ const EventList = () => {
     }
   };
 
-  const handleCloseModal = async () => {
-    if (assignedPrice && !isVerified) {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user && paymentModal.event) {
-          await supabase
-            .from('bookings')
-            .delete()
-            .match({ 
-              event_id: paymentModal.event.id, 
-              student_email: user.email,
-              status: 'pending' 
-            });
-        }
-      } catch (err) {
-        console.error("Failed to cancel transaction:", err);
-      }
-    }
-
-    setPaymentModal({ open: false, event: null });
-    setAssignedPrice(null);
-    setIsVerified(false);
-    setShowManual(false);
-    setManualUtr('');
-    fetchEvents();
-  };
-
-  const handleManualSubmit = async () => {
-    if (manualUtr.length !== 12) return toast.error("Invalid UTR. Must be 12 digits.");
-    setSubmittingManual(true);
-    
-    try {
-      const { error } = await supabase.from('bookings')
-        .update({ utr_number: manualUtr })
-        .match({ 
-          event_id: paymentModal.event.id, 
-          amount_expected: assignedPrice, 
-          status: 'pending' 
-        });
-      
-      if (error) throw error;
-      
-      toast.success("UTR Submitted! Admin will verify shortly.");
-      setPaymentModal({ open: false, event: null });
-      fetchEvents();
-    } catch (error) {
-      toast.error(error.message);
-    } finally {
-      setSubmittingManual(false);
-    }
-  };
-
   const filteredEvents = events.filter(e => {
     const matchesSearch = e.title.toLowerCase().includes(searchQuery.toLowerCase());
     let matchesStatus = statusFilter === 'all' || (statusFilter === 'available' ? !e.isBooked : e.isBooked);
     return matchesSearch && matchesStatus;
   });
 
-  const generateUpiUrl = () => {
-    if (!paymentModal.event || !assignedPrice) return '';
-    const cleanPayeeName = encodeURIComponent("ActiveArch"); 
-    const safeAmount = Number(assignedPrice).toFixed(2);
-    const tr = `TRX${Date.now()}`;
-    const note = encodeURIComponent(`Pass_${paymentModal.event.id}`);
-    
-    return `upi://pay?pa=${paymentModal.event.merchant_upi}&pn=${cleanPayeeName}&tr=${tr}&tn=${note}&am=${safeAmount}&cu=INR&mode=02&purpose=00`;
-  };
-
-  // --- ADVANCED INTENT ARCHITECTURE FOR EXACT AMOUNTS ---
-  const handleSpecificAppClick = (e, app) => {
-    e.preventDefault();
-    
-    const isAndroid = /Android/i.test(navigator.userAgent);
-    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-    
-    if (!isAndroid && !isIOS) {
-      toast("Please scan the QR code on your phone.", {
-        icon: '📱',
-        style: { borderRadius: '10px', background: '#1f2937', color: '#fff' }
-      });
-      return;
-    }
-
-    const pa = paymentModal.event.merchant_upi;
-    const pn = encodeURIComponent("ActiveArch");
-    const am = Number(assignedPrice).toFixed(2);
-    const tr = `TRX${Date.now()}`;
-    const tn = encodeURIComponent(`Pass_${paymentModal.event.id}`);
-    
-    const queryParams = `pa=${pa}&pn=${pn}&tr=${tr}&tn=${tn}&am=${am}&cu=INR&mode=02&purpose=00`;
-
-    let url = '';
-
-    if (isAndroid) {
-      const packages = {
-        phonepe: 'com.phonepe.app',
-        gpay: 'com.google.android.apps.nbu.paisa.user',
-        paytm: 'net.one97.paytm',
-        bhim: 'in.org.npci.upiapp'
-      };
-      url = `intent://pay?${queryParams}#Intent;scheme=upi;package=${packages[app]};end;`;
-    } else {
-      const schemes = {
-        phonepe: 'phonepe://pay',
-        gpay: 'tez://upi/pay',
-        paytm: 'paytmmp://pay',
-        bhim: 'bhim://pay'
-      };
-      url = `${schemes[app]}?${queryParams}`;
-    }
-
-    const start = Date.now();
-    window.location.href = url;
-
-    setTimeout(() => {
-      if (Date.now() - start < 1500) {
-        toast.error(`${app.toUpperCase()} app not found or blocked. Please scan the QR code instead.`);
-      }
-    }, 1000);
-  };
-
-  // --- NEW: 2-STEP UNMOUNT FUNCTION ---
   const closePoppedEvent = () => {
-    setIsClosing(true); // Trigger the reverse animation
+    setIsClosing(true); 
     setTimeout(() => {
-      setPoppedEvent(null); // Actually destroy it after animation completes
-      setIsClosing(false);  // Reset for next time
-    }, 400); // 400ms exactly matches our CSS keyframe duration
+      setPoppedEvent(null); 
+      setIsClosing(false);  
+    }, 400); 
   };
 
   if (loading) return <div className="h-screen bg-[#0a0f1d] flex items-center justify-center"><Zap className="animate-pulse text-blue-500" size={48}/></div>;
@@ -365,7 +250,7 @@ const EventList = () => {
         </section>
       </div>
 
-      {/* --- RESPONSIVE FLIP & POP-OUT MODAL WITH REVERSE PHYSICS --- */}
+      {/* --- RESPONSIVE FLIP & POP-OUT MODAL --- */}
       {poppedEvent && (
           <div 
             className="fixed inset-0 z-150 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md" 
@@ -401,172 +286,14 @@ const EventList = () => {
         </div>
       )}
 
-      {paymentModal.open && (
-        <div className="fixed inset-0 z-100 flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-sm">
-          
-          <div className="bg-[#111827] border border-slate-700 rounded-2xl flex flex-col md:flex-row w-full max-w-4xl max-h-[95vh] md:max-h-[85vh] overflow-hidden shadow-2xl relative">
-            
-            <button 
-              onClick={handleCloseModal} 
-              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white rounded-full hover:bg-white/5 transition-colors z-50"
-            >
-              <X size={20} />
-            </button>
-
-            {!assignedPrice ? (
-              <div className="flex-1 flex flex-col items-center justify-center py-24 min-h-100 w-full">
-                 <Loader2 className="animate-spin text-emerald-500 mb-4" size={40} />
-                 <p className="text-slate-400 font-medium text-sm">Initiating secure checkout...</p>
-              </div>
-              
-            ) : isVerified ? (
-              <div className="flex-1 flex flex-col items-center justify-center py-24 min-h-100 w-full animate-in zoom-in duration-300 px-6 text-center">
-                 <div className="w-16 h-16 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-full flex items-center justify-center mb-6 shadow-lg shadow-emerald-500/10">
-                   <CheckCircle size={32} />
-                 </div>
-                 <h3 className="text-2xl font-semibold text-white mb-2">Payment Successful</h3>
-                 <p className="text-slate-400 text-sm mb-8 max-w-sm">Your ticket has been secured and added to Your Tickets.</p>
-                 <button onClick={() => {
-                    setPaymentModal({open: false, event: null});
-                    window.location.href = `/student/tickets?autoFlip=true#ticket-${paymentModal.event.id}`;
-                 }} className="px-8 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium transition-colors shadow-md">
-                   View Ticket
-                 </button>
-              </div>
-              
-            ) : (
-              <>
-                <div className="bg-[#050810] w-full md:w-80 p-6 md:p-8 flex flex-col border-b md:border-b-0 md:border-r border-slate-800 shrink-0">
-                  <div className="mb-6 md:mb-8 mt-2 md:mt-0">
-                    <div className="w-10 h-10 bg-slate-800/50 rounded-lg flex items-center justify-center text-slate-300 mb-4 border border-slate-700">
-                      <Ticket size={20} />
-                    </div>
-                    <p className="text-slate-400 text-sm mb-1 line-clamp-1">{paymentModal.event.title}</p>
-                    <h2 className="text-3xl font-semibold text-white tracking-tight">₹{assignedPrice}</h2>
-                  </div>
-
-                  <div className="space-y-4 text-sm mb-6 md:mt-auto">
-                    <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Order Summary</h4>
-                    <div className="flex justify-between text-slate-400">
-                      <span>Event Pass</span>
-                      <span className="text-slate-200">₹{paymentModal.event.price}</span>
-                    </div>
-                    <div className="flex justify-between text-slate-400">
-                      <span>Transaction Fee</span>
-                      <span className="text-slate-200">₹10</span>
-                    </div>
-                    <div className="flex justify-between text-emerald-400/90 font-medium">
-                      <span>Verification Decimal</span>
-                      <span>+ ₹{(assignedPrice - paymentModal.event.price - 10).toFixed(2)}</span>
-                    </div>
-                  </div>
-
-                  <div className="pt-4 border-t border-slate-800 text-xs text-slate-500 leading-relaxed">
-                    <span className="text-red-400 font-medium">Important:</span> Pay the exact total amount including decimals to verify your identity automatically.
-                  </div>
-                </div>
-
-                <div className="flex-1 p-6 md:p-10 bg-[#111827] overflow-y-auto custom-scrollbar flex flex-col">
-                  
-                  <h3 className="text-lg font-medium text-white mb-6 hidden md:block">Pay via UPI</h3>
-                  
-                  <div className="flex flex-col items-center w-full max-w-sm mx-auto">
-
-                    <div className="md:hidden flex items-center w-full mb-4">
-                      <div className="flex-1 border-t border-slate-700"></div>
-                      <span className="px-4 text-[10px] text-slate-500 uppercase font-black tracking-widest">Tap to Pay</span>
-                      <div className="flex-1 border-t border-slate-700"></div>
-                    </div>
-
-                    <div className="md:hidden grid grid-cols-2 gap-3 w-full mb-6">
-                      <button 
-                        onClick={(e) => handleSpecificAppClick(e, 'phonepe')}
-                        className="bg-[#5f259f] hover:bg-[#4a1c7c] text-white py-3 rounded-xl font-bold text-[11px] flex items-center justify-center transition-colors active:scale-95 shadow-md"
-                      >
-                        PhonePe
-                      </button>
-                      <button 
-                        onClick={(e) => handleSpecificAppClick(e, 'gpay')}
-                        className="bg-white hover:bg-slate-100 text-slate-800 py-3 rounded-xl font-bold text-[11px] flex items-center justify-center transition-colors active:scale-95 shadow-md"
-                      >
-                        Google Pay
-                      </button>
-                      <button 
-                        onClick={(e) => handleSpecificAppClick(e, 'paytm')}
-                        className="bg-[#00baf2] hover:bg-[#009ac7] text-white py-3 rounded-xl font-bold text-[11px] flex items-center justify-center transition-colors active:scale-95 shadow-md"
-                      >
-                        Paytm
-                      </button>
-                      <button 
-                        onClick={(e) => handleSpecificAppClick(e, 'bhim')}
-                        className="bg-[#ea7c00] hover:bg-[#c96a00] text-white py-3 rounded-xl font-bold text-[11px] flex items-center justify-center transition-colors active:scale-95 shadow-md"
-                      >
-                        BHIM
-                      </button>
-                    </div>
-
-                    <div className="flex items-center w-full mb-6">
-                      <div className="flex-1 border-t border-slate-700"></div>
-                      <span className="px-4 text-[10px] text-slate-500 uppercase font-black tracking-widest">Or Scan QR</span>
-                      <div className="flex-1 border-t border-slate-700"></div>
-                    </div>
-
-                    <div className="flex flex-col items-center mb-6 w-full">
-                      <div className="bg-white p-4 rounded-2xl shadow-sm mb-4">
-                        <img 
-                          src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(generateUpiUrl())}`}
-                          alt="Payment QR"
-                          className="w-40 h-40 md:w-48 md:h-48 object-contain"
-                        />
-                      </div>
-                      <p className="text-sm text-slate-400 text-center">Scan QR using any UPI app</p>
-                    </div>
-
-                    <div className="w-full mt-2 pt-6 border-t border-slate-800">
-                      <div className="flex items-center gap-2 text-emerald-500 text-sm mb-4">
-                          <span className="relative flex h-2 w-2">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                          </span>
-                          Awaiting automatic confirmation...
-                      </div>
-
-                      {!showManual ? (
-                        <button onClick={() => setShowManual(true)} className="text-sm text-blue-400 hover:text-blue-300 font-medium transition-colors">
-                          Have you paid? Enter UTR manually
-                        </button>
-                      ) : (
-                        <div className="bg-[#1f2937]/30 p-4 sm:p-5 rounded-3xl border border-slate-700 text-left animate-in slide-in-from-bottom-2">
-                          <p className="text-[12px] text-slate-400 uppercase font-black mb-2.5 ml-1 tracking-widest">Enter 12-Digit UPI Ref/ UTR Number if money deducted & ticket not issued.</p>
-                          <input 
-                            value={manualUtr}
-                            onChange={(e) => setManualUtr(e.target.value.replace(/\D/g, '').slice(0, 12))}
-                            className="w-full p-3.5 bg-[#0a0f1d] border border-slate-700 rounded-xl text-emerald-400 text-center font-mono text-sm tracking-[0.3em] mb-3 outline-none focus:border-emerald-500 transition-colors placeholder:text-slate-600"
-                            placeholder="0000 0000 0000"
-                          />
-                          <button 
-                            onClick={handleManualSubmit}
-                            disabled={manualUtr.length !== 12 || submittingManual}
-                            className="w-full bg-emerald-600 hover:bg-emerald-500 py-3.5 rounded-xl text-[10px] text-white font-black uppercase tracking-widest disabled:opacity-50 transition-all active:scale-95"
-                          >
-                            {submittingManual ? "Submitting..." : "Submit for Verification"}
-                          </button>
-                        </div>
-                      )}
-                      
-                      <button onClick={handleCloseModal} className="w-full text-[9px] font-black text-slate-600 hover:text-red-400 uppercase tracking-widest transition-colors mt-6 pb-2">
-                        Cancel Transaction
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
+      {/* Loading Overlay while talking to Razorpay backend */}
+      {processingPayment && (
+        <div className="fixed inset-0 z-200 flex flex-col items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+           <Loader2 className="animate-spin text-emerald-500 mb-4" size={48} />
+           <p className="text-white font-bold tracking-widest uppercase text-sm">Initiating Secure Checkout...</p>
         </div>
       )}
 
-      {/* --- CSS FOR THE NEW POP-OUT & REVERSE FLIP ANIMATION --- */}
       <style>{`
         @keyframes flipPop {
           0% { transform: perspective(2000px) scale(0.8) rotateY(-90deg); opacity: 0; }
@@ -589,6 +316,16 @@ const EventList = () => {
         .custom-scrollbar::-webkit-scrollbar { width: 4px; } 
         .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.05); border-radius: 10px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(59, 130, 246, 0.6); border-radius: 10px; }
+
+        .event-description p { margin-bottom: 1rem; }
+        .event-description p:last-child { margin-bottom: 0; }
+        .event-description strong, .event-description b { font-weight: 700; color: #ffffff; }
+        .event-description em, .event-description i { font-style: italic; }
+        .event-description ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 1rem; }
+        .event-description ol { list-style-type: decimal; padding-left: 1.5rem; margin-bottom: 1rem; }
+        .event-description h1, .event-description h2, .event-description h3 { font-weight: 800; color: #ffffff; margin-top: 1.5rem; margin-bottom: 0.5rem; line-height: 1.2; }
+        .event-description a { color: #60a5fa; text-decoration: underline; transition: color 0.2s; }
+        .event-description a:hover { color: #3b82f6; }
       `}</style>
     </div>
   );
@@ -661,7 +398,7 @@ const FlipCard = ({ event, onBook, onFlip }) => {
              {event.isBooked ? (
                <div className="flex items-center gap-1 text-green-500 font-black text-[8px] uppercase shrink-0"><CheckCircle size={12}/> Verified</div>
              ) : event.isPending ? (
-               <div className="flex items-center gap-1 text-yellow-500 font-black text-[8px] uppercase shrink-0 animate-pulse"><Timer size={12}/> Pending Verification</div>
+               <div className="flex items-center gap-1 text-yellow-500 font-black text-[8px] uppercase shrink-0 animate-pulse"><Timer size={12}/> Pending</div>
              ) : !event.isOpen && (
                <div className="flex items-center gap-1.5 text-blue-400 font-black text-[8px] uppercase bg-blue-500/10 px-3 py-1 rounded-full shrink-0">
                  <Timer size={12}/> {getTimeRemaining()}
