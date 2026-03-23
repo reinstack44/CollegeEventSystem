@@ -155,7 +155,7 @@ if (orderError) {
             email: user.email,
           },
           theme: {
-            color: "#10b981" // Emerald 500 to match your UI
+            color: "#2563eb" // Emerald 500 to match your UI
           }
         };
 
