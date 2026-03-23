@@ -22,7 +22,7 @@ import CreateEvent from './pages/admin/CreateEvent';
 import Scanner from './pages/admin/Scanner';
 import StudentRecords from './pages/admin/StudentRecords'; 
 import ManageRegistrations from './pages/admin/ManageRegistrations'; 
-import AdminBookings from './pages/admin/AdminBookings'; // <-- NEW: Import the unified bookings database
+import AdminBookings from './pages/admin/AdminBookings'; 
 
 function App() {
   const [session, setSession] = useState(null);
@@ -58,13 +58,14 @@ function App() {
         
         <main className="grow">
           <Routes>
-            {/* 1. THE ROOT PATH: Forces the URL to change to /login */}
+            {/* 1. THE ROOT PATH: Now directly renders <Login /> instead of redirecting */}
             <Route 
               path="/" 
-              element={session ? <Navigate to="/events" replace /> : <Navigate to="/login" replace />} 
+              element={session ? <Navigate to="/events" replace /> : <Login />} 
             />
 
             {/* 2. AUTHENTICATION */}
+            {/* We keep this here just in case any internal links still point to /login */}
             <Route 
               path="/login" 
               element={session ? <Navigate to="/events" replace /> : <Login />} 
@@ -75,10 +76,10 @@ function App() {
             />
             
             {/* 3. PROTECTED STUDENT ROUTES */}
-            <Route path="/events" element={session ? <EventList /> : <Navigate to="/login" replace />} />
-            <Route path="/my-tickets" element={session ? <MyTickets /> : <Navigate to="/login" replace />} />
-            <Route path="/profile" element={session ? <Profile /> : <Navigate to="/login" replace />} />
-            <Route path="/complete-registration" element={session ? <CompleteRegistration /> : <Navigate to="/login" replace />} />
+            <Route path="/events" element={session ? <EventList /> : <Navigate to="/" replace />} />
+            <Route path="/my-tickets" element={session ? <MyTickets /> : <Navigate to="/" replace />} />
+            <Route path="/profile" element={session ? <Profile /> : <Navigate to="/" replace />} />
+            <Route path="/complete-registration" element={session ? <CompleteRegistration /> : <Navigate to="/" replace />} />
             <Route path="/reset-password" element={<ResetPassword />} />
 
             {/* 4. ADMIN ROUTES */}
@@ -88,7 +89,6 @@ function App() {
             <Route path="/admin/scan" element={<ProtectedRoute><Scanner /></ProtectedRoute>} />
             <Route path="/admin/students" element={<ProtectedRoute><StudentRecords /></ProtectedRoute>} /> 
             <Route path="/admin/logs" element={<ProtectedRoute><ManageRegistrations /></ProtectedRoute>} /> 
-            {/* NEW: Secured route for the UTR & Booking verification dashboard */}
             <Route path="/admin/bookings" element={<ProtectedRoute><AdminBookings /></ProtectedRoute>} /> 
 
             {/* 5. GLOBAL CATCH-ALL */}

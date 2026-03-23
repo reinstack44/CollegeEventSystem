@@ -57,14 +57,14 @@ const Navbar = ({ session }) => {
       <div className="container mx-auto px-6 h-18 flex justify-between items-center py-4">
         
         <Link 
-          to={user ? "/events" : "/login"} 
+          to={user ? "/events" : "/"} 
           className="flex items-center gap-3 group transition-all active:scale-95"
         >
-          <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center font-black text-white shadow-lg shadow-blue-500/40 group-hover:shadow-blue-500/60 transition-all italic text-xl">
-            A
+          <div className="w-11 h-10 bg-blue-600 rounded-xl flex items-center justify-center font-black text-white shadow-lg shadow-blue-500/40 group-hover:shadow-blue-500/60 transition-all italic text-xl">
+            NC
           </div>
-          <span className="text-2xl font-black tracking-tighter text-white uppercase group-hover:text-blue-400 transition-colors">
-            Active<span className="text-blue-600">Arch</span>
+          <span className="text-2xl font-black tracking-tighter text-white group-hover:text-blue-400 transition-colors">
+            Nexus<span className="text-blue-600">Circle</span>
           </span>
         </Link>
 
