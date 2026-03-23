@@ -60,12 +60,11 @@ const Navbar = ({ session }) => {
           to={user ? "/events" : "/"} 
           className="flex items-center gap-3 group transition-all active:scale-95"
         >
-          <div className="w-11 h-10 bg-blue-600 rounded-xl flex items-center justify-center font-black text-white shadow-lg shadow-blue-500/40 group-hover:shadow-blue-500/60 transition-all italic text-xl">
-            NC
-          </div>
-          <span className="text-2xl font-black tracking-tighter text-white group-hover:text-blue-400 transition-colors">
+
+          <span className="text-3xl font-black tracking-tighter text-white group-hover:text-blue-400 transition-colors">
             Nexus<span className="text-blue-600">Circle</span>
           </span>
+
         </Link>
 
         <div className="flex items-center gap-4">
