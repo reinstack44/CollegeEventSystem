@@ -103,7 +103,7 @@ const Navbar = ({ session }) => {
                     
                     {!isAdmin ? (
                       <>
-                        <MenuLink to="/my-tickets" icon={<Ticket size={18} className="text-blue-500"/>} label="Your Tickets" onClick={() => setIsOpen(false)} />
+                        <MenuLink to="/my-tickets" icon={<Ticket size={18} className="text-blue-500"/>} label="Your Passes" onClick={() => setIsOpen(false)} />
                         <MenuLink to="/profile" icon={<User size={18} className="text-blue-500"/>} label="My Profile" onClick={() => setIsOpen(false)} />
                       </>
                     ) : (
