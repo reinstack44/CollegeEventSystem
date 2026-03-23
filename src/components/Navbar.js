@@ -35,9 +35,23 @@ const Navbar = ({ session }) => {
 
   const handleInstall = async () => {
     if (deferredPrompt) {
+      // Show the native browser install prompt
       deferredPrompt.prompt();
       const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') setDeferredPrompt(null);
+      if (outcome === 'accepted') {
+        setDeferredPrompt(null);
+      }
+    } else {
+      // Fallback for iOS Safari or if already installed
+      toast("To install: Tap the Share icon (iOS) or Menu (Android) and select 'Add to Home Screen'.", { 
+        icon: '📱',
+        duration: 4000,
+        style: {
+          borderRadius: '10px',
+          background: '#1e293b',
+          color: '#60a5fa',
+        },
+      });
     }
   };
 
@@ -54,33 +68,33 @@ const Navbar = ({ session }) => {
 
   return (
     <nav className="sticky top-0 z-50 backdrop-blur-xl bg-[#0a0f1d]/90 border-b border-white/5 selection:bg-blue-500/30">
-      <div className="container mx-auto px-6 h-18 flex justify-between items-center py-4">
+      <div className="container mx-auto px-4 sm:px-6 h-18 flex justify-between items-center py-4">
         
         <Link 
           to={user ? "/events" : "/"} 
-          className="flex items-center gap-3 group transition-all active:scale-95"
+          className="flex items-center gap-3 group transition-all active:scale-95 shrink-0"
         >
-
-          <span className="text-3xl font-black tracking-tighter text-white group-hover:text-blue-400 transition-colors">
+          <span className="text-xl sm:text-2xl md:text-3xl font-black tracking-tighter text-white group-hover:text-blue-400 transition-colors">
             Nexus<span className="text-blue-600">Circle</span>
           </span>
-
         </Link>
 
-        <div className="flex items-center gap-4">
-          {deferredPrompt && (
-            <button 
-              onClick={handleInstall} 
-              className="hidden lg:flex items-center gap-2 text-blue-400 font-black text-[10px] uppercase tracking-[0.2em] hover:text-white transition-colors mr-2"
-            >
-              <Download size={16} /> Install App
-            </button>
-          )}
+        <div className="flex items-center gap-2 sm:gap-4">
+          
+          {/* UPDATED: Replaced tracking-[0.1em] with tracking-widest */}
+          <button 
+            onClick={handleInstall} 
+            className="flex items-center gap-1.5 sm:gap-2 px-2 py-2 sm:px-3 sm:py-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 rounded-xl font-black text-[9px] sm:text-[10px] uppercase tracking-widest sm:tracking-[0.2em] transition-all active:scale-95 mr-1"
+          >
+            <Download size={14} className="sm:w-4 sm:h-4" /> 
+            <span className="hidden sm:inline">Install App</span>
+            <span className="inline sm:hidden">Install</span>
+          </button>
 
           <div className="relative" ref={menuRef}>
             <button 
               onClick={() => setIsOpen(!isOpen)} 
-              className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all active:scale-95 shadow-xl ${
+              className={`flex items-center justify-center w-10 h-10 sm:w-auto sm:h-auto sm:px-6 sm:py-3 rounded-xl sm:rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all active:scale-95 shadow-xl ${
                 isOpen 
                 ? 'bg-slate-800 text-white border border-white/10' 
                 : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-600/20'
@@ -90,9 +104,9 @@ const Navbar = ({ session }) => {
             </button>
 
             {isOpen && (
-              <div className="absolute right-0 mt-5 w-72 bg-[#111827] rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.5)] py-4 border border-white/5 overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300 backdrop-blur-2xl">
+              <div className="absolute right-0 mt-5 w-64 sm:w-72 bg-[#111827] rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.5)] py-4 border border-white/5 overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300 backdrop-blur-2xl">
                 <div className="px-6 py-3 mb-2 border-b border-white/5">
-                  <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.3em]">
+                  <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.3em] truncate">
                     {user ? `-Welcome-  ${user.email.split('@')[0]}` : "Identity Verification"}
                   </p>
                 </div>
