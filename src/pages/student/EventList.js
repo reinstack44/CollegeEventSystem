@@ -456,7 +456,7 @@ const EventList = () => {
                       <span className="text-slate-200">₹10</span>
                     </div>
                     <div className="flex justify-between text-emerald-400/90 font-medium">
-                      <span>Verification Fee</span>
+                      <span>Verification Decimal</span>
                       <span>+ ₹{(assignedPrice - paymentModal.event.price - 10).toFixed(2)}</span>
                     </div>
                   </div>
