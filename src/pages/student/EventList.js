@@ -12,7 +12,11 @@ const EventList = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [flippedCards, setFlippedCards] = useState({});
+  
+  // Modal State & Animation Trigger
+  const [poppedEvent, setPoppedEvent] = useState(null);
+  const [isClosing, setIsClosing] = useState(false); // NEW: Controls the exit animation
+  
   const [now, setNow] = useState(new Date());
 
   // Payment Gateway State
@@ -106,10 +110,6 @@ const EventList = () => {
 
     return () => clearInterval(pollTimer);
   }, [paymentModal, assignedPrice, isVerified, fetchEvents]);
-
-  const toggleFlip = (id) => {
-    setFlippedCards(prev => ({ ...prev, [id]: !prev[id] }));
-  };
 
   const listenForVerification = (eventId, studentEmail) => {
     const channel = supabase
@@ -255,7 +255,7 @@ const EventList = () => {
     return `upi://pay?pa=${paymentModal.event.merchant_upi}&pn=${cleanPayeeName}&tr=${tr}&tn=${note}&am=${safeAmount}&cu=INR&mode=02&purpose=00`;
   };
 
-  // --- NEW: ADVANCED INTENT ARCHITECTURE FOR EXACT AMOUNTS ---
+  // --- ADVANCED INTENT ARCHITECTURE FOR EXACT AMOUNTS ---
   const handleSpecificAppClick = (e, app) => {
     e.preventDefault();
     
@@ -281,7 +281,6 @@ const EventList = () => {
     let url = '';
 
     if (isAndroid) {
-      // Android uses strict intent:// parsing to bypass Chrome deep-link security
       const packages = {
         phonepe: 'com.phonepe.app',
         gpay: 'com.google.android.apps.nbu.paisa.user',
@@ -290,7 +289,6 @@ const EventList = () => {
       };
       url = `intent://pay?${queryParams}#Intent;scheme=upi;package=${packages[app]};end;`;
     } else {
-      // iOS uses direct custom URL schemes
       const schemes = {
         phonepe: 'phonepe://pay',
         gpay: 'tez://upi/pay',
@@ -303,12 +301,20 @@ const EventList = () => {
     const start = Date.now();
     window.location.href = url;
 
-    // Fallback: If app doesn't launch, show toast
     setTimeout(() => {
       if (Date.now() - start < 1500) {
         toast.error(`${app.toUpperCase()} app not found or blocked. Please scan the QR code instead.`);
       }
     }, 1000);
+  };
+
+  // --- NEW: 2-STEP UNMOUNT FUNCTION ---
+  const closePoppedEvent = () => {
+    setIsClosing(true); // Trigger the reverse animation
+    setTimeout(() => {
+      setPoppedEvent(null); // Actually destroy it after animation completes
+      setIsClosing(false);  // Reset for next time
+    }, 400); // 400ms exactly matches our CSS keyframe duration
   };
 
   if (loading) return <div className="h-screen bg-[#0a0f1d] flex items-center justify-center"><Zap className="animate-pulse text-blue-500" size={48}/></div>;
@@ -352,13 +358,48 @@ const EventList = () => {
                 key={event.id} 
                 event={event} 
                 onBook={handleBook}
-                isFlipped={flippedCards[event.id]} 
-                onFlip={() => toggleFlip(event.id)} 
+                onFlip={() => setPoppedEvent(event)} 
               />
             ))}
           </div>
         </section>
       </div>
+
+      {/* --- RESPONSIVE FLIP & POP-OUT MODAL WITH REVERSE PHYSICS --- */}
+      {poppedEvent && (
+          <div 
+            className="fixed inset-0 z-150 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md" 
+            onClick={closePoppedEvent}
+          >
+          <div 
+            className={`relative w-[95%] sm:w-full max-w-2xl max-h-[90vh] bg-[#1e293b] rounded-3xl md:rounded-[2.5rem] border-2 border-blue-500/40 shadow-[0_0_50px_rgba(59,130,246,0.3)] p-5 md:p-10 flex flex-col overflow-hidden ${isClosing ? 'animate-flip-pop-out' : 'animate-flip-pop'}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button 
+              onClick={closePoppedEvent} 
+              className="absolute top-4 right-4 md:top-5 md:right-5 p-2 text-slate-400 hover:text-white rounded-full hover:bg-white/5 transition-colors z-10"
+            >
+              <X size={20} className="md:w-6 md:h-6" />
+            </button>
+
+            <h4 className="text-[11px] md:text-[14px] font-black text-blue-400 uppercase tracking-widest mb-4 md:mb-5 flex items-center gap-2 border-b border-white/10 pb-3 md:pb-4 pr-8">
+              <Zap size={14} className="md:w-4 md:h-4" /> Event Specification
+            </h4>
+            
+            <div className="grow overflow-y-auto custom-scrollbar pr-2 md:pr-3">
+              <div className="event-description text-slate-300 text-[13px] md:text-[16px] leading-relaxed md:leading-[1.8] font-normal text-left tracking-wide"
+              dangerouslySetInnerHTML={{ __html: poppedEvent.description }}
+              />
+            </div>
+            
+            <div className="mt-4 md:mt-6 pt-4 md:pt-5 border-t border-white/5 flex justify-center shrink-0">
+               <button onClick={closePoppedEvent} className="px-6 py-2.5 md:px-8 md:py-3 bg-[#0f172a] hover:bg-blue-600 text-white rounded-lg md:rounded-xl font-bold uppercase tracking-widest text-[9px] md:text-[10px] transition-all border border-white/10 hover:border-blue-500 shadow-lg active:scale-95">
+                  Flip Back
+               </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {paymentModal.open && (
         <div className="fixed inset-0 z-100 flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-sm">
@@ -431,14 +472,12 @@ const EventList = () => {
                   
                   <div className="flex flex-col items-center w-full max-w-sm mx-auto">
 
-                    {/* Mobile Only: App Grid & Divider */}
                     <div className="md:hidden flex items-center w-full mb-4">
                       <div className="flex-1 border-t border-slate-700"></div>
                       <span className="px-4 text-[10px] text-slate-500 uppercase font-black tracking-widest">Tap to Pay</span>
                       <div className="flex-1 border-t border-slate-700"></div>
                     </div>
 
-                    {/* APP GRID USING ADVANCED INTENT ROUTING */}
                     <div className="md:hidden grid grid-cols-2 gap-3 w-full mb-6">
                       <button 
                         onClick={(e) => handleSpecificAppClick(e, 'phonepe')}
@@ -466,14 +505,12 @@ const EventList = () => {
                       </button>
                     </div>
 
-                    {/* Divider for QR */}
                     <div className="flex items-center w-full mb-6">
                       <div className="flex-1 border-t border-slate-700"></div>
                       <span className="px-4 text-[10px] text-slate-500 uppercase font-black tracking-widest">Or Scan QR</span>
                       <div className="flex-1 border-t border-slate-700"></div>
                     </div>
 
-                    {/* QR Code - Visible on ALL devices */}
                     <div className="flex flex-col items-center mb-6 w-full">
                       <div className="bg-white p-4 rounded-2xl shadow-sm mb-4">
                         <img 
@@ -528,11 +565,36 @@ const EventList = () => {
           </div>
         </div>
       )}
+
+      {/* --- CSS FOR THE NEW POP-OUT & REVERSE FLIP ANIMATION --- */}
+      <style>{`
+        @keyframes flipPop {
+          0% { transform: perspective(2000px) scale(0.8) rotateY(-90deg); opacity: 0; }
+          100% { transform: perspective(2000px) scale(1) rotateY(0deg); opacity: 1; }
+        }
+        @keyframes flipPopOut {
+          0% { transform: perspective(2000px) scale(1) rotateY(0deg); opacity: 1; }
+          100% { transform: perspective(2000px) scale(0.8) rotateY(90deg); opacity: 0; }
+        }
+        
+        .animate-flip-pop {
+          animation: flipPop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+        .animate-flip-pop-out {
+          animation: flipPopOut 0.4s cubic-bezier(0.6, -0.28, 0.735, 0.045) forwards;
+        }
+
+        .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; } 
+        
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; } 
+        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.05); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(59, 130, 246, 0.6); border-radius: 10px; }
+      `}</style>
     </div>
   );
 };
 
-const FlipCard = ({ event, onBook, isFlipped, onFlip }) => {
+const FlipCard = ({ event, onBook, onFlip }) => {
   const [currentImgIndex, setCurrentImgIndex] = useState(0);
 
   const defaultImages = [
@@ -557,7 +619,7 @@ const FlipCard = ({ event, onBook, isFlipped, onFlip }) => {
     ? 'border-green-500 shadow-[0_0_25px_rgba(34,197,94,0.25)]' 
     : event.isPending 
     ? 'border-yellow-500 shadow-[0_0_25px_rgba(234,179,8,0.25)]'
-    : 'border-blue-500/40 group-hover:border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.15)]';
+    : 'border-blue-500/40 hover:border-blue-500 hover:shadow-[0_0_30px_rgba(59,130,246,0.3)] shadow-[0_0_20px_rgba(59,130,246,0.15)]';
 
   const getTimeRemaining = () => {
     const diff = new Date(event.reg_start_timestamp) - new Date();
@@ -586,134 +648,110 @@ const FlipCard = ({ event, onBook, isFlipped, onFlip }) => {
   };
 
   return (
-    <div className="perspective-2000 h-142.5 w-full group">
-      <div className={`relative w-full h-full transition-transform duration-1000 ease-in-out transform-style-3d ${isFlipped ? 'rotate-y-180' : ''}`}>
-        
-        <div 
-          onClick={onFlip} 
-          className={`absolute inset-0 backface-hidden bg-[#0f172a] rounded-[2.5rem] border-2 p-6 md:p-7 flex flex-col justify-start cursor-pointer transition-all duration-500 ${glowClass}`}
-        >
-          <div className="flex justify-between items-start mb-4 shrink-0">
-            <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-400 border border-blue-500/20 truncate max-w-45">{event.school}</span>
-            <div className="flex items-center gap-2">
-               <Info size={14} className="text-slate-500 hover:text-blue-400 transition-colors"/> 
-               {event.isBooked ? (
-                 <div className="flex items-center gap-1 text-green-500 font-black text-[8px] uppercase shrink-0"><CheckCircle size={12}/> Verified</div>
-               ) : event.isPending ? (
-                 <div className="flex items-center gap-1 text-yellow-500 font-black text-[8px] uppercase shrink-0 animate-pulse"><Timer size={12}/> Pending Verification</div>
-               ) : !event.isOpen && (
-                 <div className="flex items-center gap-1.5 text-blue-400 font-black text-[8px] uppercase bg-blue-500/10 px-3 py-1 rounded-full shrink-0">
-                   <Timer size={12}/> {getTimeRemaining()}
-                 </div>
-               )}
-            </div>
-          </div>
-
-          <div className="relative w-full h-40 rounded-2xl overflow-hidden shrink-0 mb-4 group/slider border border-white/10 shadow-inner bg-slate-900">
-            <img 
-              src={images[currentImgIndex]} 
-              alt="Event Visualization" 
-              className="w-full h-full object-cover transition-opacity duration-500 ease-in-out"
-            />
-            <div className="absolute inset-0 bg-linear-to-t from-[#0f172a] via-transparent to-transparent opacity-80 pointer-events-none"></div>
-            <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-md px-2 py-1 rounded-lg text-[8px] font-black text-white uppercase tracking-widest">
-              {currentImgIndex + 1} / {images.length} IMAGES
-            </div>
-
-            {images.length > 1 && (
-              <>
-                <button onClick={prevImage} className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-blue-600 text-white p-1.5 rounded-full opacity-0 group-hover/slider:opacity-100 transition-all backdrop-blur-sm">
-                  <ChevronLeft size={16} />
-                </button>
-                <button onClick={nextImage} className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-blue-600 text-white p-1.5 rounded-full opacity-0 group-hover/slider:opacity-100 transition-all backdrop-blur-sm">
-                  <ChevronRight size={16} />
-                </button>
-              </>
-            )}
-
-            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
-              {images.map((_, idx) => (
-                <div key={idx} className={`h-1.5 rounded-full transition-all duration-300 ${idx === currentImgIndex ? 'bg-blue-500 w-4' : 'bg-white/40 w-1.5'}`} />
-              ))}
-            </div>
-          </div>
-
-          <div className="grow flex flex-col justify-start text-left gap-3">
-            <h3 className={`text-2xl font-black uppercase italic leading-[0.9] line-clamp-2 overflow-hidden shrink-0 ${event.isBooked ? 'text-green-500' : event.isPending ? 'text-yellow-500' : 'text-white'}`}>
-              {event.title}
-            </h3>
-            
-            <div className="space-y-1 shrink-0">
-              <div className="flex items-center gap-2 text-slate-400 text-[9px] font-bold uppercase">
-                <Calendar size={12} className="text-blue-500"/> {event.date}
-              </div>
-              <div className="flex items-center gap-2 text-slate-400 text-[9px] font-bold uppercase">
-                <Clock size={12} className="text-blue-500"/> 
-                {formatEventTime(event.start_time)} - {formatEventTime(event.end_time)}
-              </div>
-              <div className="flex items-center gap-2 text-slate-400 text-[9px] font-bold uppercase truncate max-w-[95%]">
-                <MapPin size={12} className="text-blue-500"/> {event.venue}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 text-blue-500 text-[13px] font-black uppercase tracking-widest justify-center bg-center text-center">
-                {event.event_type === 'paid' && <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Entry Fee ₹{event.price}</span>}
-            </div>
-
-            <div className="pt-3 border-t border-slate-700/50 space-y-2 shrink-0">
-              <div className="flex items-center gap-2 text-blue-500 text-[13px] font-black uppercase tracking-widest justify-between bg-center text-center">
-                <span className="flex items-center gap-2"><Timer size={12}/> Registration Window</span>
-              </div>
-              <div className="flex flex-col gap-1.5 text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                <div className="flex justify-between bg-[#111827] px-3 py-2 rounded-lg border border-white/5">
-                  <span className="text-slate-500">Opens</span>
-                  <span className="text-white">{formatDateTime(event.reg_start_timestamp)}</span>
-                </div>
-                <div className="flex justify-between bg-[#111827] px-3 py-2 rounded-lg border border-white/5">
-                  <span className="text-slate-500">Closes</span>
-                  <span className="text-white">{formatDateTime(event.reg_end_timestamp)}</span>
-                </div>
-              </div>
-            </div>
-
-            <button 
-              disabled={event.isBooked || event.isSoldOut || !event.isOpen || event.isPending}
-              onClick={(e) => { e.stopPropagation(); onBook(e, event); }}
-              className={`w-full py-3.5 mt-auto rounded-2xl font-black uppercase text-[9px] transition-all tracking-widest shrink-0 ${
-                event.isBooked ? 'bg-green-600/20 text-green-500 border border-green-500/30' : 
-                event.isPending ? 'bg-yellow-600/20 text-yellow-500 border border-yellow-500/30' :
-                !event.isOpen ? 'bg-slate-900 text-slate-700 border border-white/5' :
-                event.event_type === 'paid' ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg active:scale-95' :
-                'bg-blue-600 hover:bg-blue-700 text-white shadow-lg active:scale-95'
-              }`}
-            >
-              {event.isBooked ? "Pass Secured" : event.isPending ? "Awaiting Verification" : !event.isOpen ? "Opening Soon" : "Book Your Pass"}
-            </button>
+    <div className="h-142.5 w-full group">
+      
+      <div 
+        onClick={onFlip} 
+        className={`relative w-full h-full bg-[#0f172a] rounded-[2.5rem] border-2 p-6 md:p-7 flex flex-col justify-start cursor-pointer transition-all duration-500 ${glowClass} hover:-translate-y-2`}
+      >
+        <div className="flex justify-between items-start mb-4 shrink-0">
+          <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-400 border border-blue-500/20 truncate max-w-45">{event.school}</span>
+          <div className="flex items-center gap-2">
+             <Info size={14} className="text-slate-500 hover:text-blue-400 transition-colors"/> 
+             {event.isBooked ? (
+               <div className="flex items-center gap-1 text-green-500 font-black text-[8px] uppercase shrink-0"><CheckCircle size={12}/> Verified</div>
+             ) : event.isPending ? (
+               <div className="flex items-center gap-1 text-yellow-500 font-black text-[8px] uppercase shrink-0 animate-pulse"><Timer size={12}/> Pending Verification</div>
+             ) : !event.isOpen && (
+               <div className="flex items-center gap-1.5 text-blue-400 font-black text-[8px] uppercase bg-blue-500/10 px-3 py-1 rounded-full shrink-0">
+                 <Timer size={12}/> {getTimeRemaining()}
+               </div>
+             )}
           </div>
         </div>
 
-        <div onClick={onFlip} className={`absolute inset-0 backface-hidden rotate-y-180 bg-[#1e293b] rounded-[2.5rem] border-2 p-8 flex flex-col cursor-pointer ${glowClass}`}>
-          <h4 className="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-4 flex items-center gap-2 border-b border-white/5 pb-2"><Zap size={10}/> Event Specification:</h4>
-          <div className="grow overflow-y-auto custom-scrollbar pr-2">
-            <p className="text-slate-300 text-[12px] leading-relaxed font-medium text-left italic whitespace-pre-line"
-               dangerouslySetInnerHTML={{ __html: event.description }}
-            />
+        <div className="relative w-full h-40 rounded-2xl overflow-hidden shrink-0 mb-4 group/slider border border-white/10 shadow-inner bg-slate-900">
+          <img 
+            src={images[currentImgIndex]} 
+            alt="Event Visualization" 
+            className="w-full h-full object-cover transition-opacity duration-500 ease-in-out"
+          />
+          <div className="absolute inset-0 bg-linear-to-t from-[#0f172a] via-transparent to-transparent opacity-80 pointer-events-none"></div>
+          <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-md px-2 py-1 rounded-lg text-[8px] font-black text-white uppercase tracking-widest">
+            {currentImgIndex + 1} / {images.length} IMAGES
           </div>
-          <p className="mt-4 text-[8px] font-black text-slate-500 uppercase tracking-widest text-center">Tap to flip back</p>
+
+          {images.length > 1 && (
+            <>
+              <button onClick={prevImage} className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-blue-600 text-white p-1.5 rounded-full opacity-0 group-hover/slider:opacity-100 transition-all backdrop-blur-sm">
+                <ChevronLeft size={16} />
+              </button>
+              <button onClick={nextImage} className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-blue-600 text-white p-1.5 rounded-full opacity-0 group-hover/slider:opacity-100 transition-all backdrop-blur-sm">
+                <ChevronRight size={16} />
+              </button>
+            </>
+          )}
+
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
+            {images.map((_, idx) => (
+              <div key={idx} className={`h-1.5 rounded-full transition-all duration-300 ${idx === currentImgIndex ? 'bg-blue-500 w-4' : 'bg-white/40 w-1.5'}`} />
+            ))}
+          </div>
+        </div>
+
+        <div className="grow flex flex-col justify-start text-left gap-3">
+          <h3 className={`text-2xl font-black uppercase italic leading-[0.9] line-clamp-2 overflow-hidden shrink-0 ${event.isBooked ? 'text-green-500' : event.isPending ? 'text-yellow-500' : 'text-white'}`}>
+            {event.title}
+          </h3>
+          
+          <div className="space-y-1 shrink-0">
+            <div className="flex items-center gap-2 text-slate-400 text-[9px] font-bold uppercase">
+              <Calendar size={12} className="text-blue-500"/> {event.date}
+            </div>
+            <div className="flex items-center gap-2 text-slate-400 text-[9px] font-bold uppercase">
+              <Clock size={12} className="text-blue-500"/> 
+              {formatEventTime(event.start_time)} - {formatEventTime(event.end_time)}
+            </div>
+            <div className="flex items-center gap-2 text-slate-400 text-[9px] font-bold uppercase truncate max-w-[95%]">
+              <MapPin size={12} className="text-blue-500"/> {event.venue}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 text-blue-500 text-[13px] font-black uppercase tracking-widest justify-center bg-center text-center">
+              {event.event_type === 'paid' && <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Entry Fee ₹{event.price}</span>}
+          </div>
+
+          <div className="pt-3 border-t border-slate-700/50 space-y-2 shrink-0">
+            <div className="flex items-center gap-2 text-blue-500 text-[13px] font-black uppercase tracking-widest justify-between bg-center text-center">
+              <span className="flex items-center gap-2"><Timer size={12}/> Registration Window</span>
+            </div>
+            <div className="flex flex-col gap-1.5 text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+              <div className="flex justify-between bg-[#111827] px-3 py-2 rounded-lg border border-white/5">
+                <span className="text-slate-500">Opens</span>
+                <span className="text-white">{formatDateTime(event.reg_start_timestamp)}</span>
+              </div>
+              <div className="flex justify-between bg-[#111827] px-3 py-2 rounded-lg border border-white/5">
+                <span className="text-slate-500">Closes</span>
+                <span className="text-white">{formatDateTime(event.reg_end_timestamp)}</span>
+              </div>
+            </div>
+          </div>
+
+          <button 
+            disabled={event.isBooked || event.isSoldOut || !event.isOpen || event.isPending}
+            onClick={(e) => { e.stopPropagation(); onBook(e, event); }}
+            className={`w-full py-3.5 mt-auto rounded-2xl font-black uppercase text-[9px] transition-all tracking-widest shrink-0 ${
+              event.isBooked ? 'bg-green-600/20 text-green-500 border border-green-500/30' : 
+              event.isPending ? 'bg-yellow-600/20 text-yellow-500 border border-yellow-500/30' :
+              !event.isOpen ? 'bg-slate-900 text-slate-700 border border-white/5' :
+              event.event_type === 'paid' ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg active:scale-95' :
+              'bg-blue-600 hover:bg-blue-700 text-white shadow-lg active:scale-95'
+            }`}
+          >
+            {event.isBooked ? "Pass Secured" : event.isPending ? "Awaiting Verification" : !event.isOpen ? "Opening Soon" : "Book Your Pass"}
+          </button>
         </div>
       </div>
-
-      <style>{`
-        .perspective-2000 { perspective: 2000px; } 
-        .transform-style-3d { transform-style: preserve-3d; } 
-        .backface-hidden { backface-visibility: hidden; } 
-        .rotate-y-180 { transform: rotateY(180deg); } 
-        .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; } 
-        
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; } 
-        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.05); border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(59, 130, 246, 0.6); border-radius: 10px; }
-      `}</style>
     </div>
   );
 };
