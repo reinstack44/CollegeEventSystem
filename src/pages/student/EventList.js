@@ -425,7 +425,7 @@ const EventList = () => {
                    <CheckCircle size={32} />
                  </div>
                  <h3 className="text-2xl font-semibold text-white mb-2">Payment Successful</h3>
-                 <p className="text-slate-400 text-sm mb-8 max-w-sm">Your ticket has been secured and sent to your dashboard.</p>
+                 <p className="text-slate-400 text-sm mb-8 max-w-sm">Your ticket has been secured and added to Your Tickets.</p>
                  <button onClick={() => {
                     setPaymentModal({open: false, event: null});
                     window.location.href = `/student/tickets?autoFlip=true#ticket-${paymentModal.event.id}`;
@@ -452,11 +452,11 @@ const EventList = () => {
                       <span className="text-slate-200">₹{paymentModal.event.price}</span>
                     </div>
                     <div className="flex justify-between text-slate-400">
-                      <span>Platform Fee</span>
+                      <span>Transaction Fee</span>
                       <span className="text-slate-200">₹10</span>
                     </div>
                     <div className="flex justify-between text-emerald-400/90 font-medium">
-                      <span>Security Decimal</span>
+                      <span>Verification Fee</span>
                       <span>+ ₹{(assignedPrice - paymentModal.event.price - 10).toFixed(2)}</span>
                     </div>
                   </div>
