@@ -25,14 +25,36 @@ const MyTickets = () => {
 
   const printRef = useRef(null);
 
+  // --- EXACT MATH HELPER ---
+  // Always calculates the exact amount based on the event price, ignoring old DB values
+  const getDisplayAmount = (ticket) => {
+    if (ticket.events?.event_type === 'paid') {
+      const ticketFee = Number(ticket.events?.price || 0);
+      const platformFee = 5;
+      const gatewayFee = Number(((ticketFee + platformFee) * 0.025).toFixed(2));
+      return (ticketFee + platformFee + gatewayFee).toFixed(2);
+    }
+    return "0.00";
+  };
+
+  // --- TIME FORMATTING HELPER (12-Hour AM/PM) ---
+  const formatTime = (timeStr) => {
+    if (!timeStr) return '';
+    if (timeStr.toLowerCase().includes('m')) return timeStr; 
+    const [hours, minutes] = timeStr.split(':');
+    let h = parseInt(hours, 10);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12;
+    const formattedH = h < 10 ? `0${h}` : h;
+    return `${formattedH}:${minutes} ${ampm}`;
+  };
+
   useEffect(() => {
     fetchUserTickets();
   }, []);
 
-  // --- BULLETPROOF AUTO-FLIP LOGIC ---
   useEffect(() => {
     if (!loading && tickets.length > 0) {
-      // Use raw href and regex to bypass any React Router stripping quirks
       const currentHref = window.location.href;
       const hasAutoFlip = currentHref.includes('autoFlip=true');
       const ticketMatch = currentHref.match(/#ticket-([a-zA-Z0-9-]+)/);
@@ -45,16 +67,13 @@ const MyTickets = () => {
           if (targetTicket.status === 'pending') {
             toast.error("Ticket is still pending verification.");
           } else {
-            // 1. Instantly open the modal
             setSelectedTicket(targetTicket);
             setIsFlipping(false);
             
-            // 2. If it came from the payment page, flip it after modal animation finishes
             if (hasAutoFlip) {
               setTimeout(() => setIsFlipping(true), 700); 
             }
             
-            // 3. Clean the URL so it doesn't auto-open again on page refresh
             window.history.replaceState(null, '', window.location.pathname);
           }
         }
@@ -90,7 +109,8 @@ const MyTickets = () => {
             start_time, 
             end_time,
             registration_deadline,
-            event_type
+            event_type,
+            price
           )
         `)
         .eq('student_email', user.email)
@@ -136,7 +156,6 @@ const MyTickets = () => {
     }
   };
 
-  // Regular function for manual clicks on grid cards
   const openTicket = (ticket, shouldFlip = true) => {
     setSelectedTicket(ticket);
     setIsFlipping(false);
@@ -221,12 +240,12 @@ const MyTickets = () => {
           </h3>
           <div className="space-y-2">
             <p className="flex items-center gap-2 text-[10px] font-bold text-slate-300 uppercase tracking-widest"><Calendar size={12} className={isExpired ? "text-slate-500" : isPending ? "text-yellow-600" : "text-blue-500"}/> {ticket.events?.date}</p>
-            <p className="flex items-center gap-2 text-[10px] font-bold text-slate-300 uppercase tracking-widest"><Clock size={12} className={isExpired ? "text-slate-500" : isPending ? "text-yellow-600" : "text-blue-500"}/> {ticket.events?.start_time} — {ticket.events?.end_time || 'End'}</p>
+            <p className="flex items-center gap-2 text-[10px] font-bold text-slate-300 uppercase tracking-widest"><Clock size={12} className={isExpired ? "text-slate-500" : isPending ? "text-yellow-600" : "text-blue-500"}/> {formatTime(ticket.events?.start_time)} — {ticket.events?.end_time ? formatTime(ticket.events?.end_time) : 'End'}</p>
             <p className="flex items-center gap-2 text-[10px] font-bold text-slate-300 uppercase tracking-widest truncate max-w-[90%]"><MapPin size={12} className={isExpired ? "text-slate-500" : isPending ? "text-yellow-600" : "text-blue-500"}/> {ticket.events?.venue}</p>
             
             {ticket.events?.event_type === 'paid' && (
               <p className={`flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest pt-1 ${isExpired ? "text-slate-500" : isPending ? "text-yellow-500" : "text-emerald-400"}`}>
-                <CreditCard size={12} /> PAID: ₹{ticket.amount_expected}
+                <CreditCard size={12} /> PAID: ₹{getDisplayAmount(ticket)}
               </p>
             )}
           </div>
@@ -358,14 +377,14 @@ const MyTickets = () => {
                    <h4 className="text-4xl md:text-5xl font-black uppercase tracking-tighter leading-none mb-12 text-white italic">{selectedTicket.events?.title}</h4>
                    <div className="space-y-6">
                       <div className="flex items-center gap-5"><Calendar className="text-blue-500" size={24} /><div><p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Pass Valid For</p><p className="text-xl font-bold">{selectedTicket.events?.date}</p></div></div>
-                      <div className="flex items-center gap-5"><Clock className="text-blue-500" size={24} /><div><p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Event Time</p><p className="text-xl font-bold">{selectedTicket.events?.start_time}</p></div></div>
+                      <div className="flex items-center gap-5"><Clock className="text-blue-500" size={24} /><div><p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Event Time</p><p className="text-xl font-bold">{formatTime(selectedTicket.events?.start_time)} — {selectedTicket.events?.end_time ? formatTime(selectedTicket.events?.end_time) : 'End'}</p></div></div>
                       <div className="flex items-center gap-5"><MapPin className="text-blue-500" size={24} /><div><p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Venue Location</p><p className="text-xl font-bold truncate max-w-62.5">{selectedTicket.events?.venue}</p></div></div>
                       {selectedTicket.events?.event_type === 'paid' && (
                         <div className="flex items-center gap-5">
                           <CreditCard className="text-emerald-500" size={24} />
                           <div>
                             <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Amount Paid</p>
-                            <p className="text-xl font-bold text-emerald-400">₹{selectedTicket.amount_expected}</p>
+                            <p className="text-xl font-bold text-emerald-400">₹{getDisplayAmount(selectedTicket)}</p>
                           </div>
                         </div>
                       )}
@@ -398,7 +417,7 @@ const MyTickets = () => {
               <div style={{ flex: '0 0 auto', padding: '50px 60px 30px 60px', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}><p style={{ margin: 0, fontSize: '18px', fontWeight: 'bold', color: '#3b82f6', letterSpacing: '3px', textTransform: 'uppercase' }}>{selectedTicket.events?.school || 'EVENT'} • SECURITY PASS</p><div style={{ backgroundColor: '#1e293b', color: '#3b82f6', padding: '10px 20px', borderRadius: '12px', fontWeight: '900', fontSize: '14px', border: '1px solid rgba(59,130,246,0.3)' }}>VERIFIED ACCESS</div></div>
                  <div style={{ marginBottom: '30px', width: '100%' }}><h1 style={{ margin: 0, fontSize: selectedTicket.events?.title.length > 30 ? '34px' : '48px', fontWeight: '900', color: '#ffffff', textTransform: 'uppercase', fontStyle: 'italic', lineHeight: '38px', wordWrap: 'break-word', display: 'block' }}>{selectedTicket.events?.title}</h1></div>
-                 <div style={{ display: 'flex', marginBottom: '25px', gap: '40px' }}><div style={{ flex: 1 }}><p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Date</p><p style={{ margin: 0, fontSize: '26px', fontWeight: 'bold', color: '#ffffff' }}>{selectedTicket.events?.date}</p></div><div style={{ flex: 1 }}><p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Time</p><p style={{ margin: 0, fontSize: '26px', fontWeight: 'bold', color: '#ffffff' }}>{selectedTicket.events?.start_time}</p></div></div>
+                 <div style={{ display: 'flex', marginBottom: '25px', gap: '40px' }}><div style={{ flex: 1 }}><p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Date</p><p style={{ margin: 0, fontSize: '26px', fontWeight: 'bold', color: '#ffffff' }}>{selectedTicket.events?.date}</p></div><div style={{ flex: 1 }}><p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Time</p><p style={{ margin: 0, fontSize: '26px', fontWeight: 'bold', color: '#ffffff' }}>{formatTime(selectedTicket.events?.start_time)} - {selectedTicket.events?.end_time ? formatTime(selectedTicket.events?.end_time) : 'End'}</p></div></div>
                  
                  <div style={{ display: 'flex', marginBottom: '30px', gap: '40px' }}>
                     <div style={{ flex: 1 }}>
@@ -408,7 +427,7 @@ const MyTickets = () => {
                     <div style={{ flex: 1 }}>
                       <p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Payment Status</p>
                       <p style={{ margin: 0, fontSize: '22px', fontWeight: 'bold', color: selectedTicket.events?.event_type === 'paid' ? '#10b981' : '#3b82f6' }}>
-                        {selectedTicket.events?.event_type === 'paid' ? `PAID ₹${selectedTicket.amount_expected}` : 'FREE PASS'}
+                        {selectedTicket.events?.event_type === 'paid' ? `PAID ₹${getDisplayAmount(selectedTicket)}` : 'FREE PASS'}
                       </p>
                     </div>
                  </div>
