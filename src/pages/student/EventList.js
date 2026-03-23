@@ -394,7 +394,7 @@ const EventList = () => {
             
             <div className="mt-4 md:mt-6 pt-4 md:pt-5 border-t border-white/5 flex justify-center shrink-0">
                <button onClick={closePoppedEvent} className="px-6 py-2.5 md:px-8 md:py-3 bg-[#0f172a] hover:bg-blue-600 text-white rounded-lg md:rounded-xl font-bold uppercase tracking-widest text-[9px] md:text-[10px] transition-all border border-white/10 hover:border-blue-500 shadow-lg active:scale-95">
-                  Flip Back
+                  Close
                </button>
             </div>
           </div>
