@@ -39,7 +39,7 @@ const ResetPassword = () => {
              <KeyRound size={28} />
           </div>
           <h2 className="text-2xl font-black text-white mb-1">Secure Reset</h2>
-          <p className="text-slate-500 font-medium text-[10px] uppercase tracking-widest">Update your ADYPU account password</p>
+          <p className="text-slate-500 font-medium text-[10px] uppercase tracking-widest">Update your account password</p>
         </div>
 
         <form onSubmit={handlePasswordUpdate} className="space-y-5">

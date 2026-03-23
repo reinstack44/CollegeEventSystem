@@ -23,7 +23,7 @@ const AdminLogin = () => {
 
       if (error) throw error;
 
-      const authorizedAdmins = ['admin@activearch.in'];
+      const authorizedAdmins = ['admin@nexuscircle.in'];
 
       if (!authorizedAdmins.includes(data.user.email)) {
         await supabase.auth.signOut();

@@ -32,7 +32,7 @@ const Signup = () => {
 
       if (error) throw error;
 
-      toast.success("Verification link sent! Check your university inbox.", { id: loadToast });
+      toast.success("Verification link sent! Check your university mail inbox.", { id: loadToast });
       
       // UTILIZING NAVIGATE: Redirect to Login after successful email trigger
       // This solves the 'unused-vars' error and improves user flow
@@ -58,7 +58,7 @@ const Signup = () => {
             <Sparkles size={32} />
           </div>
           <h2 className="text-3xl font-black text-white mb-2 tracking-tight uppercase italic">Get Started</h2>
-          <p className="text-slate-500 font-bold text-[10px] uppercase tracking-[0.3em]">Verify ADYPU Credentials</p>
+          <p className="text-slate-500 font-bold text-[10px] uppercase tracking-[0.3em]">Verify Login Credentials</p>
         </div>
 
         <form onSubmit={handleVerify} className="space-y-6">

@@ -11,7 +11,7 @@ const ProtectedRoute = ({ children }) => {
     const checkAdmin = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       // Authorized Admin/Staff Emails
-      const adminEmails = ['admin@activearch.in', 'staff@adypu.edu.in', 'prathamesh@adypu.edu.in'];
+      const adminEmails = ['admin@nexuscircle.in', 'staff@adypu.edu.in', 'prathamesh@adypu.edu.in'];
       
       if (user && adminEmails.includes(user.email)) {
         setAuthorized(true);
