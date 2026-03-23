@@ -35,14 +35,12 @@ const Navbar = ({ session }) => {
 
   const handleInstall = async () => {
     if (deferredPrompt) {
-      // Show the native browser install prompt
       deferredPrompt.prompt();
       const { outcome } = await deferredPrompt.userChoice;
       if (outcome === 'accepted') {
         setDeferredPrompt(null);
       }
     } else {
-      // Fallback for iOS Safari or if already installed
       toast("To install: Tap the Share icon (iOS) or Menu (Android) and select 'Add to Home Screen'.", { 
         icon: '📱',
         duration: 4000,
@@ -74,14 +72,15 @@ const Navbar = ({ session }) => {
           to={user ? "/events" : "/"} 
           className="flex items-center gap-3 group transition-all active:scale-95 shrink-0"
         >
-          <span className="text-xl sm:text-2xl md:text-3xl font-black tracking-tighter text-white group-hover:text-blue-400 transition-colors">
+          {/* RESTORED: Strictly back to original text-3xl */}
+          <span className="text-3xl font-black tracking-tighter text-white group-hover:text-blue-400 transition-colors">
             Nexus<span className="text-blue-600">Circle</span>
           </span>
         </Link>
 
-        <div className="flex items-center gap-2 sm:gap-4">
+        {/* TIGHTENED: Gap reduced slightly on mobile to fit the large logo */}
+        <div className="flex items-center gap-1.5 sm:gap-4">
           
-          {/* UPDATED: Replaced tracking-[0.1em] with tracking-widest */}
           <button 
             onClick={handleInstall} 
             className="flex items-center gap-1.5 sm:gap-2 px-2 py-2 sm:px-3 sm:py-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 rounded-xl font-black text-[9px] sm:text-[10px] uppercase tracking-widest sm:tracking-[0.2em] transition-all active:scale-95 mr-1"
