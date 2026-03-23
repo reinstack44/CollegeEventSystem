@@ -74,7 +74,7 @@ const ResetPassword = () => {
              Cybersecurity Protocol Active
            </div>
            <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest">
-              © ActiveArch {new Date().getFullYear()}
+              © NexusCircle {new Date().getFullYear()}
            </p>
         </div>
       </div>

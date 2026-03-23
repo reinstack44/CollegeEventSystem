@@ -127,7 +127,7 @@ const CompleteRegistration = () => {
           </button>
           
           <p className="text-[9px] text-center font-black text-slate-600 uppercase tracking-widest mt-6">
-            © ActiveArch {new Date().getFullYear()}
+            © NexusCircle {new Date().getFullYear()}
           </p>
         </div>
       </form>
