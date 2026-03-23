@@ -245,38 +245,70 @@ const EventList = () => {
     return matchesSearch && matchesStatus;
   });
 
-  const generateUpiUrl = (appPrefix = 'upi') => {
+  const generateUpiUrl = () => {
     if (!paymentModal.event || !assignedPrice) return '';
     const cleanPayeeName = encodeURIComponent("ActiveArch"); 
     const safeAmount = Number(assignedPrice).toFixed(2);
     const tr = `TRX${Date.now()}`;
     const note = encodeURIComponent(`Pass_${paymentModal.event.id}`);
     
-    let prefix = 'upi://pay';
-    if (appPrefix === 'gpay') prefix = 'tez://upi/pay';
-    if (appPrefix === 'phonepe') prefix = 'phonepe://pay';
-    if (appPrefix === 'paytm') prefix = 'paytmmp://pay';
-    if (appPrefix === 'bhim') prefix = 'bhim://pay';
-    
-    return `${prefix}?pa=${paymentModal.event.merchant_upi}&pn=${cleanPayeeName}&tr=${tr}&tn=${note}&am=${safeAmount}&cu=INR&mode=02&purpose=00`;
+    return `upi://pay?pa=${paymentModal.event.merchant_upi}&pn=${cleanPayeeName}&tr=${tr}&tn=${note}&am=${safeAmount}&cu=INR&mode=02&purpose=00`;
   };
 
-  const handleSpecificAppClick = (e, appPrefix) => {
+  // --- NEW: ADVANCED INTENT ARCHITECTURE FOR EXACT AMOUNTS ---
+  const handleSpecificAppClick = (e, app) => {
     e.preventDefault();
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     
-    if (isMobile) {
-      try {
-        window.location.href = generateUpiUrl(appPrefix);
-      } catch (err) {
-        toast.error("App not found or unable to open.");
-      }
-    } else {
+    const isAndroid = /Android/i.test(navigator.userAgent);
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    
+    if (!isAndroid && !isIOS) {
       toast("Please scan the QR code on your phone.", {
         icon: '📱',
         style: { borderRadius: '10px', background: '#1f2937', color: '#fff' }
       });
+      return;
     }
+
+    const pa = paymentModal.event.merchant_upi;
+    const pn = encodeURIComponent("ActiveArch");
+    const am = Number(assignedPrice).toFixed(2);
+    const tr = `TRX${Date.now()}`;
+    const tn = encodeURIComponent(`Pass_${paymentModal.event.id}`);
+    
+    const queryParams = `pa=${pa}&pn=${pn}&tr=${tr}&tn=${tn}&am=${am}&cu=INR&mode=02&purpose=00`;
+
+    let url = '';
+
+    if (isAndroid) {
+      // Android uses strict intent:// parsing to bypass Chrome deep-link security
+      const packages = {
+        phonepe: 'com.phonepe.app',
+        gpay: 'com.google.android.apps.nbu.paisa.user',
+        paytm: 'net.one97.paytm',
+        bhim: 'in.org.npci.upiapp'
+      };
+      url = `intent://pay?${queryParams}#Intent;scheme=upi;package=${packages[app]};end;`;
+    } else {
+      // iOS uses direct custom URL schemes
+      const schemes = {
+        phonepe: 'phonepe://pay',
+        gpay: 'tez://upi/pay',
+        paytm: 'paytmmp://pay',
+        bhim: 'bhim://pay'
+      };
+      url = `${schemes[app]}?${queryParams}`;
+    }
+
+    const start = Date.now();
+    window.location.href = url;
+
+    // Fallback: If app doesn't launch, show toast
+    setTimeout(() => {
+      if (Date.now() - start < 1500) {
+        toast.error(`${app.toUpperCase()} app not found or blocked. Please scan the QR code instead.`);
+      }
+    }, 1000);
   };
 
   if (loading) return <div className="h-screen bg-[#0a0f1d] flex items-center justify-center"><Zap className="animate-pulse text-blue-500" size={48}/></div>;
@@ -288,7 +320,7 @@ const EventList = () => {
         <div className="flex flex-col gap-6">
           <div className="bg-[#111827]/90 backdrop-blur-xl p-3 rounded-4xl border border-white/5 shadow-2xl">
             <div className="relative w-full text-left">
-              <Search className="absolute left-6 top-9 -translate-y-1/2 text-slate-500" size={20} />
+              <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
               <input 
                 type="text"
                 placeholder="SEARCH Events..."
@@ -307,7 +339,7 @@ const EventList = () => {
           
           <div className="flex items-center gap-2 p-1.5 bg-[#111827] border border-white/5 rounded-2xl w-fit self-center md:self-start">
             {['all', 'available', 'Booked'].map(s => (
-              <button key={s} onClick={() => setStatusFilter(s)} className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${statusFilter === s ? 'bg-blue-500 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>{s}</button>
+              <button key={s} onClick={() => setStatusFilter(s)} className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${statusFilter === s ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>{s}</button>
             ))}
           </div>
         </div>
@@ -399,12 +431,14 @@ const EventList = () => {
                   
                   <div className="flex flex-col items-center w-full max-w-sm mx-auto">
 
+                    {/* Mobile Only: App Grid & Divider */}
                     <div className="md:hidden flex items-center w-full mb-4">
                       <div className="flex-1 border-t border-slate-700"></div>
                       <span className="px-4 text-[10px] text-slate-500 uppercase font-black tracking-widest">Tap to Pay</span>
                       <div className="flex-1 border-t border-slate-700"></div>
                     </div>
 
+                    {/* APP GRID USING ADVANCED INTENT ROUTING */}
                     <div className="md:hidden grid grid-cols-2 gap-3 w-full mb-6">
                       <button 
                         onClick={(e) => handleSpecificAppClick(e, 'phonepe')}
@@ -432,16 +466,18 @@ const EventList = () => {
                       </button>
                     </div>
 
+                    {/* Divider for QR */}
                     <div className="flex items-center w-full mb-6">
                       <div className="flex-1 border-t border-slate-700"></div>
-                      <span className="px-4 text-xs text-slate-500 uppercase tracking-widest">Or Scan QR</span>
+                      <span className="px-4 text-[10px] text-slate-500 uppercase font-black tracking-widest">Or Scan QR</span>
                       <div className="flex-1 border-t border-slate-700"></div>
                     </div>
 
+                    {/* QR Code - Visible on ALL devices */}
                     <div className="flex flex-col items-center mb-6 w-full">
                       <div className="bg-white p-4 rounded-2xl shadow-sm mb-4">
                         <img 
-                          src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(generateUpiUrl('upi'))}`}
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(generateUpiUrl())}`}
                           alt="Payment QR"
                           className="w-40 h-40 md:w-48 md:h-48 object-contain"
                         />
@@ -449,7 +485,7 @@ const EventList = () => {
                       <p className="text-sm text-slate-400 text-center">Scan QR using any UPI app</p>
                     </div>
 
-                    <div className="w-full mt-8 pt-6 border-t border-slate-800">
+                    <div className="w-full mt-2 pt-6 border-t border-slate-800">
                       <div className="flex items-center gap-2 text-emerald-500 text-sm mb-4">
                           <span className="relative flex h-2 w-2">
                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
