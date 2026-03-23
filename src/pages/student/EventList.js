@@ -109,15 +109,17 @@ const EventList = () => {
         // 2. Call your backend to create a Razorpay Order ID securely
         // NOTE: You will need a Supabase Edge Function to generate this.
         const PLATFORM_FEE = 10;
-        const totalAmount = event.price + PLATFORM_FEE;
+        const totalAmount = Number(event.price || 0) + PLATFORM_FEE;  
 
         const { data: orderData, error: orderError } = await supabase.functions.invoke('create-razorpay-order', {
-          body: { event_id: event.id, amount: totalAmount }
-        });
+  body: { event_id: event.id, amount: totalAmount }
+});
 
-        if (orderError || !orderData) {
-          throw new Error("Failed to initialize order with server.");
-        }
+// THIS WILL PRINT THE EXACT BACKEND ERROR TO YOUR CONSOLE
+if (orderError) {
+  console.error("🚨 BACKEND CRASH DETAILS:", orderError);
+  throw new Error("Failed to initialize order with server.");
+}
 
         // 3. Initialize Razorpay Checkout
         const options = {
