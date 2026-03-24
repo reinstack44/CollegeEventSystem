@@ -180,7 +180,7 @@ const MyTickets = () => {
       const imgData = canvas.toDataURL('image/png', 1.0);
       const pdf = new jsPDF('p', 'px', [794, 1123]);
       pdf.addImage(imgData, 'PNG', 0, 0, 794, 1123);
-      pdf.save(`ActiveArch_Pass_${selectedTicket.events?.title.replace(/\s+/g, '_')}.pdf`);
+      pdf.save(`NexusCircle_Pass_${selectedTicket.events?.title.replace(/\s+/g, '_')}.pdf`);
       toast.success("PDF Download Complete!", { id: toastId });
     } catch (error) {
       toast.error("Failed to generate PDF.", { id: toastId });
