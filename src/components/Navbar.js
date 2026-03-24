@@ -4,9 +4,17 @@ import { supabase } from '../sbclient/supabaseClient';
 import { Menu, X, LogOut, Ticket, User, Calendar, Download, Shield, Share, PlusSquare } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+// --- NEW: GLOBAL CATCHER ---
+// This catches the install prompt instantly, even if React hasn't finished loading the Navbar yet!
+let globalDeferredPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  globalDeferredPrompt = e;
+});
+
 const Navbar = ({ session }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [deferredPrompt, setDeferredPrompt] = useState(globalDeferredPrompt); // Initialize with global
   const [showIOSModal, setShowIOSModal] = useState(false); 
   const menuRef = useRef(null);
   const navigate = useNavigate();
@@ -15,10 +23,13 @@ const Navbar = ({ session }) => {
   const isAdmin = user?.email?.includes('admin') || user?.email?.includes('staff@adypu.edu.in');
 
   useEffect(() => {
+    // If it fires late, catch it here
     const handleInstallPrompt = (e) => {
       e.preventDefault();
       setDeferredPrompt(e);
+      globalDeferredPrompt = e; 
     };
+    
     window.addEventListener('beforeinstallprompt', handleInstallPrompt);
 
     const handleClickOutside = (event) => {
@@ -43,20 +54,32 @@ const Navbar = ({ session }) => {
   };
 
   const handleInstall = async () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
+    const promptToUse = deferredPrompt || globalDeferredPrompt;
+    
+    if (promptToUse) {
+      promptToUse.prompt();
+      const { outcome } = await promptToUse.userChoice;
       if (outcome === 'accepted') {
         setDeferredPrompt(null);
+        globalDeferredPrompt = null;
       }
     } else if (isIOS() && !isStandalone()) {
       setShowIOSModal(true);
     } else {
-      // UPDATED: A much friendlier message explaining why it isn't popping up
-      toast("App is likely already installed! Check your home screen, or look for the screen icon in your browser's URL bar.", {
-        duration: 5000,
-        style: { borderRadius: '10px', background: '#1e293b', color: '#60a5fa' }
-      });
+      // UPDATED: Now explicitly tells PC users about chrome://apps
+      toast(
+        "App is already installed! \n\n📱 Phone: Check your home screen.\n💻 PC: Open a new tab and type 'chrome://apps' to find it.", 
+        { 
+          icon: '✅',
+          duration: 6000,
+          style: { 
+            borderRadius: '10px', 
+            background: '#1e293b', 
+            color: '#60a5fa',
+            textAlign: 'left'
+          }
+        }
+      );
     }
   };
 
