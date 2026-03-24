@@ -89,7 +89,7 @@ function App() {
             <Route path="/admin/events" element={<ProtectedRoute><ManageEvents /></ProtectedRoute>} />
             
             {/* NEW: Replaced the 3 old routes with our unified Master Database route */}
-            <Route path="/admin/master" element={<ProtectedRoute><MasterManagement /></ProtectedRoute>} />
+            <Route path="/admin/master-registry" element={<MasterManagement />} />
 
             {/* 5. GLOBAL CATCH-ALL */}
             <Route path="*" element={<Navigate to="/" replace />} />
