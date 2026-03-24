@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../../sbclient/supabaseClient';
 import { 
-  LayoutDashboard, PlusCircle, ScanLine, ShieldAlert, 
-  ArrowRight, Zap, ArrowLeft, Edit3
+  LayoutDashboard, PlusCircle, ScanLine, 
+  ArrowRight, Zap, ArrowLeft, Edit3,
+  Database
 } from 'lucide-react';
 
 const Dashboard = () => {
@@ -52,7 +53,7 @@ const Dashboard = () => {
         <AdminCard to="/admin/events" icon={<Edit3 className="text-orange-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Manage Events" desc="Modify & Delete." color="border-orange-500" />
         <AdminCard to="/admin/scan" icon={<ScanLine className="text-blue-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Scanner" desc="QR Gate Control." color="border-blue-500" />
         {/* FIXED NAVIGATION PATH BELOW */}
-        <AdminCard to="/admin/master-registry" icon={<ShieldAlert className="text-purple-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Master DB" desc="Students & UTRs." color="border-purple-500" /> 
+        <AdminCard to="/admin/master-registry" icon={<Database className="text-purple-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Database" desc="Control System." color="border-purple-500" /> 
       </div>
 
     </div>

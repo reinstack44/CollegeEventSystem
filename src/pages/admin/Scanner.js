@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { supabase } from '../../sbclient/supabaseClient';
-import { useNavigate } from 'react-router-dom'; // Added for navigation
+import { useNavigate } from 'react-router-dom';
 import { 
-  History, Radio, Flashlight, FlashlightOff, Activity, RefreshCw, ArrowLeft 
+  History, ScanLine, Flashlight, FlashlightOff, ShieldCheck, 
+  RefreshCw, ArrowLeft, Users, CheckCircle2, AlertCircle 
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const Scanner = () => {
-  const navigate = useNavigate(); // Hook for back navigation
+  const navigate = useNavigate();
   const [isVerifying, setIsVerifying] = useState(false);
   const [scanResult, setScanResult] = useState(null);
   const [history, setHistory] = useState([]);
@@ -18,6 +19,8 @@ const Scanner = () => {
   const audioCtx = useRef(null);
   const scannerRef = useRef(null);
   const isComponentMounted = useRef(true);
+
+  // --- LOGIC SECTION ---
 
   const fetchInitialCount = async () => {
     const today = new Date().toISOString().split('T')[0];
@@ -37,15 +40,15 @@ const Scanner = () => {
       gainNode.connect(audioCtx.current.destination);
 
       if (type === 'success') {
-        oscillator.type = 'square';
-        oscillator.frequency.setValueAtTime(1200, audioCtx.current.currentTime);
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(880, audioCtx.current.currentTime);
         gainNode.gain.setValueAtTime(0.05, audioCtx.current.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.current.currentTime + 0.1);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.current.currentTime + 0.2);
       } else {
-        oscillator.type = 'sawtooth';
-        oscillator.frequency.setValueAtTime(100, audioCtx.current.currentTime);
+        oscillator.type = 'triangle';
+        oscillator.frequency.setValueAtTime(110, audioCtx.current.currentTime);
         gainNode.gain.setValueAtTime(0.1, audioCtx.current.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.current.currentTime + 0.5);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.current.currentTime + 0.4);
       }
       oscillator.start();
       oscillator.stop(audioCtx.current.currentTime + 0.5);
@@ -65,10 +68,10 @@ const Scanner = () => {
 
       if (error || !data) {
         triggerFeedback('error'); 
-        setScanResult({ type: 'error', message: 'CRITICAL ERROR: ID INVALID' });
+        setScanResult({ type: 'error', message: 'INVALID CREDENTIALS' });
       } else if (data.status === 'checked_in') {
         triggerFeedback('error'); 
-        setScanResult({ type: 'warning', message: 'ACCESS VOID: DUPLICATE' });
+        setScanResult({ type: 'warning', message: 'ALREADY VERIFIED' });
       } else {
         const { error: updateError } = await supabase
           .from('bookings')
@@ -84,11 +87,11 @@ const Scanner = () => {
         const newEntry = {
           id: data.id,
           name: `${data.students?.name || 'Unknown'} ${data.students?.surname || ''}`,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           event: data.events?.title
         };
         if (isComponentMounted.current) setHistory(prev => [newEntry, ...prev].slice(0, 5));
-        toast.success(`SYSTEM: ${data.students?.name} AUTHORIZED`, { position: "bottom-center" });
+        toast.success(`Verified: ${data.students?.name}`, { position: "top-center" });
       }
     } catch (err) {
       triggerFeedback('error');
@@ -106,7 +109,7 @@ const Scanner = () => {
         await scannerRef.current.stop();
         scannerRef.current.clear();
       } catch (err) {
-        console.warn("Cleanup Warning: Scanner already stopped", err);
+        console.warn("Scanner Cleanup Info:", err);
       }
     }
   }, []);
@@ -114,24 +117,16 @@ const Scanner = () => {
   const startAutomatedScanner = useCallback(async () => {
     try {
       await stopScanner(); 
-
       const html5QrCode = new Html5Qrcode("reader");
       scannerRef.current = html5QrCode;
-
-      const config = { 
-        fps: 30, 
-        qrbox: { width: 250, height: 250 }, 
-      };
-
+      const config = { fps: 30, qrbox: { width: 250, height: 250 } };
       await html5QrCode.start(
         { facingMode: "environment" }, 
         config,
         (decodedText) => processCheckIn(decodedText)
       );
     } catch (err) {
-      if (isComponentMounted.current) {
-        console.error("Scanner Error:", err);
-      }
+      console.error("Scanner Error:", err);
     }
   }, [processCheckIn, stopScanner]);
 
@@ -139,9 +134,7 @@ const Scanner = () => {
     isComponentMounted.current = true;
     fetchInitialCount();
     audioCtx.current = new (window.AudioContext || window.webkitAudioContext)();
-    
     startAutomatedScanner();
-
     return () => { 
       isComponentMounted.current = false;
       stopScanner(); 
@@ -149,120 +142,135 @@ const Scanner = () => {
   }, [startAutomatedScanner, stopScanner]);
 
   const handleReScan = () => {
-    toast.loading("Re-Initializing Sensor...", { duration: 1000 });
+    toast.loading("Re-calibrating...", { duration: 1000 });
     startAutomatedScanner();
   };
 
+  // --- UI SECTION ---
+
   return (
-    <div className="min-h-screen bg-[#02040a] text-blue-500 p-6 pb-32 flex flex-col items-center font-mono">
+    <div className="min-h-screen bg-[#0B1120] text-slate-200 p-4 pb-20 flex flex-col items-center font-sans">
       
-      {/* BACK NAVIGATION */}
-      <div className="w-full max-w-md mb-6 flex justify-start">
+      {/* TOP NAVIGATION */}
+      <div className="w-full max-w-lg flex items-center justify-between py-4 mb-6">
         <button 
           onClick={() => navigate('/admin')} 
-          className="flex items-center gap-2 text-slate-500 hover:text-blue-500 transition-all font-black text-[10px] uppercase tracking-widest"
+          className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-xs font-semibold tracking-wide uppercase"
         >
-          <ArrowLeft size={14} /> Back to Dashboard
+          <ArrowLeft size={18} /> Exit Scanner
         </button>
-      </div>
-
-      {/* HUD HEADER - THEMED BLUE */}
-      <div className="w-full max-w-md flex items-center justify-between mb-8 bg-[#050914] border-l-4 border-l-red-600 border-white/5 p-6 rounded-r-3xl shadow-[0_0_30px_rgba(37,99,235,0.1)]">
-        <div className="text-left">
-           <div className="flex items-center gap-2 mb-1">
-             <Radio className="text-red-600 animate-pulse" size={12} />
-             <p className="text-slate-500 font-black uppercase tracking-[0.4em] text-[8px]">Netrunner Protocol v.2.6</p>
-           </div>
-           <h2 className="text-4xl font-black italic tracking-tighter leading-none text-white">
-             {totalScanned.toString().padStart(3, '0')} <span className="text-blue-500 text-xs not-italic tracking-[0.3em] uppercase ml-2">Verified</span>
-           </h2>
-        </div>
-        <div className="flex flex-col items-end gap-1">
-           <Activity size={20} className="text-blue-500/30 animate-pulse" />
+        <div className="flex items-center gap-2 bg-blue-500/10 px-3 py-1 rounded-full border border-blue-500/20">
+          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+          <span className="text-[10px] font-bold text-blue-400 tracking-widest uppercase">System Online</span>
         </div>
       </div>
 
-      {/* CENTERED BLUE THEMED SCANNER */}
-      <div className={`relative w-full max-w-md aspect-square rounded-4xl border-2 transition-all duration-300 overflow-hidden shadow-2xl flex items-center justify-center ${
-        scanResult?.type === 'success' ? 'border-green-500 shadow-[0_0_50px_rgba(34,197,94,0.4)]' : 
-        scanResult?.type === 'error' ? 'border-red-600 shadow-[0_0_50px_rgba(220,38,38,0.4)]' :
-        'border-blue-500/30 shadow-[0_0_30px_rgba(37,99,235,0.1)]'
+      {/* STATS OVERVIEW */}
+      <div className="w-full max-w-md grid grid-cols-2 gap-4 mb-8">
+        <div className="bg-[#161E2E] p-4 rounded-2xl border border-white/5 shadow-xl">
+          <div className="flex items-center gap-2 text-slate-400 mb-1">
+            <Users size={14} />
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Attendance</span>
+          </div>
+          <h2 className="text-3xl font-bold text-white tracking-tight">
+            {totalScanned.toString().padStart(2, '0')}
+          </h2>
+        </div>
+        <div className="bg-[#161E2E] p-4 rounded-2xl border border-white/5 shadow-xl">
+          <div className="flex items-center gap-2 text-slate-400 mb-1">
+            <ShieldCheck size={14} />
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Security</span>
+          </div>
+          <h2 className="text-xl font-bold text-blue-400 tracking-tight leading-tight">Identity Check</h2>
+        </div>
+      </div>
+
+      {/* SCANNER VIEWPORT */}
+      <div className={`relative w-full max-w-md aspect-square rounded-[2.5rem] border-4 transition-all duration-500 overflow-hidden bg-black shadow-2xl ${
+        scanResult?.type === 'success' ? 'border-green-500 shadow-green-500/20' : 
+        scanResult?.type === 'error' ? 'border-red-500 shadow-red-500/20' :
+        'border-[#1E293B] shadow-blue-900/20'
       }`}>
         
-        <div id="reader" className="w-full h-full scanner-container"></div>
+        <div id="reader" className="w-full h-full"></div>
         
-        <button 
-          onClick={handleReScan}
-          className="absolute top-6 left-6 z-30 p-4 bg-black/60 border border-blue-500/20 rounded-xl text-blue-500 hover:bg-blue-500/20 transition-all active:scale-90"
-          title="Re-Sync Sensor"
-        >
-          <RefreshCw size={20} />
-        </button>
-
-        <div className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center">
-            <div className="w-62.5 h-62.5 relative">
-                <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-blue-500"></div>
-                <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-blue-500"></div>
-                <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-blue-500"></div>
-                <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-blue-500"></div>
-                <div className="absolute top-0 left-0 w-full h-0.5 bg-blue-500 shadow-[0_0_15px_#2563eb] animate-cyber-scan"></div>
-            </div>
+        {/* SCANNER OVERLAY (Fixed to bg-linear-to-r) */}
+        <div className="absolute inset-0 pointer-events-none z-10">
+          <div className="absolute inset-12 border-2 border-white/10 rounded-3xl"></div>
+          <div className="absolute top-24 left-1/2 -translate-x-1/2 w-48 h-0.5 bg-linear-to-r from-transparent via-blue-400 to-transparent shadow-[0_0_15px_#60a5fa] animate-scan-line"></div>
         </div>
 
+        {/* CONTROLS */}
+        <div className="absolute bottom-6 left-0 right-0 px-8 flex justify-between items-center z-30">
+          <button onClick={handleReScan} className="p-3 bg-black/40 backdrop-blur-md border border-white/10 rounded-full text-white hover:bg-white/10 transition-all">
+            <RefreshCw size={20} />
+          </button>
+          <button 
+            onClick={() => {
+              if (scannerRef.current) {
+                const newState = !isTorchOn;
+                scannerRef.current.applyVideoConstraints({ advanced: [{ torch: newState }] });
+                setIsTorchOn(newState);
+              }
+            }}
+            className={`p-3 backdrop-blur-md border border-white/10 rounded-full transition-all ${isTorchOn ? 'bg-yellow-500 text-black' : 'bg-black/40 text-white'}`}
+          >
+            {isTorchOn ? <Flashlight size={20} /> : <FlashlightOff size={20} />}
+          </button>
+        </div>
+
+        {/* VERIFICATION OVERLAY */}
         {isVerifying && (
-          <div className="absolute inset-0 bg-[#02040a]/80 backdrop-blur-sm flex flex-col items-center justify-center z-20">
-            <div className="h-12 w-12 border-4 border-t-red-600 border-white/10 rounded-full animate-spin"></div>
-            <p className="text-[10px] font-black uppercase tracking-[0.5em] text-red-600 mt-4">Decrypting ID...</p>
+          <div className="absolute inset-0 bg-[#0B1120]/90 backdrop-blur-md flex flex-col items-center justify-center z-40 transition-all">
+            <div className="relative">
+               <div className="h-16 w-16 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
+               <ScanLine className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-blue-500 animate-pulse" size={24} />
+            </div>
+            <p className="text-xs font-bold uppercase tracking-[0.3em] text-blue-400 mt-6 animate-pulse">Validating...</p>
           </div>
         )}
-
-        <button 
-          onClick={() => {
-            if (scannerRef.current) {
-              const newState = !isTorchOn;
-              scannerRef.current.applyVideoConstraints({ advanced: [{ torch: newState }] });
-              setIsTorchOn(newState);
-            }
-          }}
-          className="absolute top-6 right-6 z-30 p-4 bg-black/60 border border-blue-500/20 rounded-xl text-blue-500"
-        >
-          {isTorchOn ? <FlashlightOff size={20} /> : <Flashlight size={20} />}
-        </button>
       </div>
 
-      <div className="mt-8 h-16 flex items-center justify-center w-full text-center">
+      {/* STATUS INDICATOR */}
+      <div className="mt-8 h-20 flex items-center justify-center w-full px-4">
         {scanResult ? (
-          <div className="px-10 py-3 border-2 -skew-x-12 flex items-center bg-[#050914]">
-             <span className={`text-2xl font-black italic tracking-tighter uppercase ${
-               scanResult.type === 'success' ? 'text-green-500' : 'text-red-600'
-             }`}>
-               {scanResult.message}
-             </span>
+          <div className={`flex items-center gap-3 px-6 py-4 rounded-2xl border-2 animate-in fade-in zoom-in duration-300 ${
+            scanResult.type === 'success' ? 'bg-green-500/10 border-green-500/50 text-green-400' : 'bg-red-500/10 border-red-500/50 text-red-400'
+          }`}>
+            {scanResult.type === 'success' ? <CheckCircle2 size={24} /> : <AlertCircle size={24} />}
+            <span className="text-lg font-bold tracking-tight uppercase">
+              {scanResult.message}
+            </span>
           </div>
         ) : (
-          <p className="text-[10px] font-black uppercase tracking-[0.5em] text-blue-500 opacity-50">Awaiting Cyber-Link...</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.4em] text-slate-600">Scan QR Code To Check-In</p>
         )}
       </div>
 
-      <div className="mt-8 w-full max-w-md space-y-4 pb-20">
-        <div className="flex items-center px-4 border-b border-blue-500/10 pb-4">
-          <History size={14} className="mr-2" />
-          <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-500">Session_Log</h3>
+      {/* SESSION LOG */}
+      <div className="mt-4 w-full max-w-md space-y-4">
+        <div className="flex items-center justify-between px-2">
+          <div className="flex items-center gap-2 text-slate-400">
+            <History size={16} />
+            <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500">Session_Log</h3>
+          </div>
+          <span className="text-[10px] text-slate-500 font-medium">Last 5 Verified</span>
         </div>
-        <div className="space-y-3">
+
+        <div className="space-y-2">
           {history.length === 0 ? (
-             <div className="py-10 text-center border border-dashed border-blue-500/10 rounded-2xl opacity-20">
-               <p className="text-[9px] font-black uppercase tracking-[0.5em]">Log Empty</p>
-             </div>
+            <div className="py-8 text-center border border-dashed border-white/5 rounded-3xl opacity-30">
+              <p className="text-xs text-slate-500 font-medium italic uppercase tracking-tighter">Waiting for data...</p>
+            </div>
           ) : (
             history.map((entry, idx) => (
-              <div key={idx} className="bg-[#050914] p-5 rounded-2xl border-l-2 border-blue-500/30 flex items-center justify-between">
-                <div className="text-left">
-                  <p className="text-sm font-black uppercase italic tracking-tight text-white">{entry.name}</p>
-                  <p className="text-[9px] text-blue-500/50 font-bold uppercase">{entry.event}</p>
+              <div key={idx} className="bg-[#161E2E] p-4 rounded-2xl border border-white/5 flex items-center justify-between hover:bg-[#1C2537] transition-colors group">
+                <div className="flex flex-col">
+                  <span className="text-sm font-bold text-white group-hover:text-blue-400 transition-colors uppercase">{entry.name}</span>
+                  <span className="text-[10px] text-slate-500 uppercase font-semibold">{entry.event}</span>
                 </div>
-                <div className="text-right">
-                  <p className="text-blue-500 font-black text-[10px]">{entry.time}</p>
+                <div className="bg-black/20 px-3 py-1 rounded-lg border border-white/5">
+                  <span className="text-blue-400 font-mono text-xs font-bold">{entry.time}</span>
                 </div>
               </div>
             ))
@@ -271,16 +279,16 @@ const Scanner = () => {
       </div>
 
       <style>{`
-        @keyframes cyber-scan {
-          0%, 100% { top: 0%; opacity: 0.5; }
-          50% { top: 100%; opacity: 1; }
+        @keyframes scan-line {
+          0% { top: 20%; opacity: 0; }
+          50% { opacity: 1; }
+          100% { top: 80%; opacity: 0; }
         }
-        .animate-cyber-scan { animation: cyber-scan 2.5s ease-in-out infinite; }
+        .animate-scan-line { animation: scan-line 3s linear infinite; }
         #reader video {
           width: 100% !important;
           height: 100% !important;
           object-fit: cover !important;
-          border-radius: 2rem !important;
         }
         #reader__dashboard { display: none !important; }
         #reader__scan_region { background: transparent !important; }
