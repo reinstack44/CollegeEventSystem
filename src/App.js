@@ -20,9 +20,8 @@ import AdminDashboard from './pages/admin/Dashboard';
 import AdminLogin from './pages/admin/AdminLogin'; 
 import CreateEvent from './pages/admin/CreateEvent';
 import Scanner from './pages/admin/Scanner';
-import StudentRecords from './pages/admin/StudentRecords'; 
-import ManageRegistrations from './pages/admin/ManageRegistrations'; 
-import AdminBookings from './pages/admin/AdminBookings'; 
+import MasterManagement from './pages/admin/MasterManagement'; // NEW: Unified Admin Component
+import ManageEvents from './pages/admin/ManageEvents';
 
 function App() {
   const [session, setSession] = useState(null);
@@ -87,9 +86,10 @@ function App() {
             <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
             <Route path="/admin/create" element={<ProtectedRoute><CreateEvent /></ProtectedRoute>} />
             <Route path="/admin/scan" element={<ProtectedRoute><Scanner /></ProtectedRoute>} />
-            <Route path="/admin/students" element={<ProtectedRoute><StudentRecords /></ProtectedRoute>} /> 
-            <Route path="/admin/logs" element={<ProtectedRoute><ManageRegistrations /></ProtectedRoute>} /> 
-            <Route path="/admin/bookings" element={<ProtectedRoute><AdminBookings /></ProtectedRoute>} /> 
+            <Route path="/admin/events" element={<ProtectedRoute><ManageEvents /></ProtectedRoute>} />
+            
+            {/* NEW: Replaced the 3 old routes with our unified Master Database route */}
+            <Route path="/admin/master" element={<ProtectedRoute><MasterManagement /></ProtectedRoute>} />
 
             {/* 5. GLOBAL CATCH-ALL */}
             <Route path="*" element={<Navigate to="/" replace />} />
