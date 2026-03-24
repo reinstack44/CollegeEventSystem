@@ -51,7 +51,8 @@ const Dashboard = () => {
         <AdminCard to="/admin/create" icon={<PlusCircle className="text-green-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Create" desc="New Event." color="border-green-500" />
         <AdminCard to="/admin/events" icon={<Edit3 className="text-orange-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Manage Events" desc="Modify & Delete." color="border-orange-500" />
         <AdminCard to="/admin/scan" icon={<ScanLine className="text-blue-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Scanner" desc="QR Gate Control." color="border-blue-500" />
-        <AdminCard to="/admin/master" icon={<ShieldAlert className="text-purple-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Master DB" desc="Students & UTRs." color="border-purple-500" /> 
+        {/* FIXED NAVIGATION PATH BELOW */}
+        <AdminCard to="/admin/master-registry" icon={<ShieldAlert className="text-purple-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Master DB" desc="Students & UTRs." color="border-purple-500" /> 
       </div>
 
     </div>

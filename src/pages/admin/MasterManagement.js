@@ -108,15 +108,11 @@ const MasterManagement = () => {
   const getTxnId = (item) => item.utr_number || item.transaction_id || item.payment_id || item.razorpay_payment_id;
   const getAmount = (item) => item.amount_expected || item.amount || item.events?.price || 0;
 
-  // --- UPDATED FEE CALCULATOR (2.5% Transaction Fee) ---
   const getFeeBreakdown = (item) => {
     const base = parseFloat(item.events?.price || item.amount_expected || 0);
-    
     if (base === 0) return { base: "0.00", platform: "0.00", transaction: "0.00", total: "0.00" };
 
-    // Explicitly sets Platform Fee to ₹5
     const platform = parseFloat(item.platform_fee ?? 5.00); 
-    // Updated to 2.5%
     const transaction = parseFloat(item.transaction_fee ?? item.razorpay_fee ?? ((base + platform) * 0.025).toFixed(2));
     const total = parseFloat(item.total_amount ?? item.amount ?? (base + platform + transaction).toFixed(2));
 
@@ -133,7 +129,6 @@ const MasterManagement = () => {
     const toastId = toast.loading("Packaging Database...");
     
     const eventName = events.find(e => e.id === selectedEventId)?.title || "Event";
-    // Updated CSV Headers
     const headers = "Name,Surname,Email,Phone,URN,Status,Transaction ID,Ticket Fee,Platform Fee,Transaction Fee,Total Paid\n";
     const rows = attendees.map(item => {
       const txn = getTxnId(item) || 'N/A';
@@ -228,9 +223,7 @@ const MasterManagement = () => {
           />
         </div>
 
-        {/* --- RESPONSIVE UNIFIED TABLE/CARDS --- */}
         <div className="bg-[#111827] rounded-3xl sm:rounded-[3rem] border border-white/5 overflow-hidden shadow-2xl relative z-10">
-          
           {loading ? (
             <div className="py-32 flex justify-center"><Zap className="animate-pulse text-blue-500" size={48} /></div>
           ) : filteredList.length === 0 ? (
@@ -240,7 +233,6 @@ const MasterManagement = () => {
             </div>
           ) : (
             <>
-              {/* DESKTOP TABLE VIEW */}
               <div className="hidden lg:block overflow-x-auto">
                 <table className="w-full text-left border-collapse whitespace-nowrap">
                   <thead>
@@ -255,7 +247,6 @@ const MasterManagement = () => {
                     {filteredList.map((item) => {
                       const txn = getTxnId(item);
                       const fees = getFeeBreakdown(item);
-                      
                       return (
                       <tr key={item.id} className="hover:bg-blue-600/5 transition-colors group">
                         <td className="px-8 py-5">
@@ -314,7 +305,6 @@ const MasterManagement = () => {
                 </table>
               </div>
 
-              {/* MOBILE CARD VIEW */}
               <div className="flex flex-col lg:hidden divide-y divide-white/5">
                 {filteredList.map((item) => {
                   const txn = getTxnId(item);
@@ -358,7 +348,6 @@ const MasterManagement = () => {
                       <button onClick={() => setSelectedDossier(item)} className="flex-1 flex justify-center items-center gap-2 py-3 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white rounded-xl border border-white/5 transition-all font-black text-[10px] uppercase tracking-widest active:scale-95 shadow-md">
                         <Eye size={16} /> Inspect Details
                       </button>
-                      
                       <button onClick={() => handleTerminate(item.id, item.status === 'pending')} className="flex-1 flex justify-center items-center gap-2 py-3 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl border border-red-500/20 transition-all font-black text-[10px] uppercase tracking-widest active:scale-95 shadow-md">
                         {item.status === 'pending' ? <XCircle size={16} /> : <Trash2 size={16} />} 
                         {item.status === 'pending' ? 'Reject' : 'Revoke'}
@@ -372,12 +361,9 @@ const MasterManagement = () => {
         </div>
       </div>
 
-      {/* --- POP-OUT DOSSIER MODAL --- */}
       {selectedDossier && (
         <div className="fixed inset-0 z-100 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
           <div className="bg-[#0a0f1d] border border-white/10 rounded-[2.5rem] w-full max-w-lg shadow-[0_0_50px_rgba(0,0,0,0.8)] overflow-hidden animate-in slide-in-from-bottom-10 sm:zoom-in-95 duration-300 relative flex flex-col max-h-[90vh]">
-            
-            {/* Header / Close */}
             <div className="flex justify-between items-center p-6 border-b border-white/5 bg-[#111827] shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-blue-500/10 text-blue-500 rounded-2xl flex items-center justify-center font-black text-xl border border-blue-500/20 uppercase">
@@ -392,7 +378,7 @@ const MasterManagement = () => {
                     selectedDossier.status === 'verified' ? 'text-blue-400 border-blue-500/20 bg-blue-500/10' : 
                     'text-yellow-500 border-yellow-500/20 bg-yellow-500/10'
                   }`}>
-                    {selectedDossier.status === 'verified' ? 'PAYMENT VERIFIED + Confirmed Ticket' : selectedDossier.status.replace('_', ' ')}
+                    {selectedDossier.status.replace('_', ' ')}
                   </span>
                 </div>
               </div>
@@ -401,11 +387,8 @@ const MasterManagement = () => {
               </button>
             </div>
 
-            {/* Scrollable Content Grid */}
             <div className="p-6 space-y-4 overflow-y-auto custom-scrollbar">
               <div className="bg-slate-900/50 rounded-3xl p-4 border border-white/5 space-y-4">
-                
-                {/* Contact Info */}
                 <div className="grid grid-cols-1 gap-4 pb-4 border-b border-white/5">
                   <div className="flex items-center gap-3">
                     <Mail size={16} className="text-slate-500 shrink-0" />
@@ -423,7 +406,6 @@ const MasterManagement = () => {
                   </div>
                 </div>
 
-                {/* DB Info */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="flex flex-col">
                     <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1">Gate Status</span>
@@ -438,10 +420,8 @@ const MasterManagement = () => {
                     </span>
                   </div>
                 </div>
-
               </div>
 
-              {/* --- DETAILED RECEIPT VIEW --- */}
               <div className="bg-blue-500/5 rounded-3xl p-5 border border-blue-500/20">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
@@ -467,9 +447,7 @@ const MasterManagement = () => {
                       <span className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">Transaction Fee (2.5%)</span>
                       <span className="text-white font-mono font-bold">₹{getFeeBreakdown(selectedDossier).transaction}</span>
                     </div>
-                    
                     <div className="border-t border-dashed border-white/20 my-3"></div>
-                    
                     <div className="flex justify-between items-center">
                       <span className="text-white font-black text-xs uppercase tracking-widest">Total Paid</span>
                       <span className="text-emerald-400 font-black text-xl italic tracking-tight">₹{getFeeBreakdown(selectedDossier).total}</span>
@@ -484,7 +462,6 @@ const MasterManagement = () => {
               </div>
             </div>
 
-            {/* Modal Actions */}
             <div className="p-6 bg-[#111827] border-t border-white/5 flex gap-3 shrink-0">
               {selectedDossier.status === 'pending' && getTxnId(selectedDossier) && (
                 <button onClick={() => handleVerifyUTR(selectedDossier.id)} className="flex-1 flex justify-center items-center gap-2 py-4 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white rounded-2xl border border-emerald-500/20 transition-all font-black text-[10px] uppercase tracking-widest shadow-lg">
@@ -496,7 +473,6 @@ const MasterManagement = () => {
                 {selectedDossier.status === 'pending' ? 'Reject Fraud' : 'Revoke Access'}
               </button>
             </div>
-
           </div>
         </div>
       )}
