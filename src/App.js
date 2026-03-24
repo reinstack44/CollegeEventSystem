@@ -16,11 +16,11 @@ import Profile from './pages/student/Profile';
 import ResetPassword from './pages/student/ResetPassword';
 
 // Admin Pages
-import AdminDashboard from './pages/admin/Dashboard';
+import Dashboard from './pages/admin/Dashboard';
 import AdminLogin from './pages/admin/AdminLogin'; 
 import CreateEvent from './pages/admin/CreateEvent';
 import Scanner from './pages/admin/Scanner';
-import MasterManagement from './pages/admin/MasterManagement'; // NEW: Unified Admin Component
+import MasterManagement from './pages/admin/MasterManagement'; 
 import ManageEvents from './pages/admin/ManageEvents';
 
 function App() {
@@ -57,14 +57,10 @@ function App() {
         
         <main className="grow">
           <Routes>
-            {/* 1. THE ROOT PATH: Now directly renders <Login /> instead of redirecting */}
             <Route 
               path="/" 
               element={session ? <Navigate to="/events" replace /> : <Login />} 
             />
-
-            {/* 2. AUTHENTICATION */}
-            {/* We keep this here just in case any internal links still point to /login */}
             <Route 
               path="/login" 
               element={session ? <Navigate to="/events" replace /> : <Login />} 
@@ -74,24 +70,22 @@ function App() {
               element={session ? <Navigate to="/events" replace /> : <Signup />} 
             />
             
-            {/* 3. PROTECTED STUDENT ROUTES */}
             <Route path="/events" element={session ? <EventList /> : <Navigate to="/" replace />} />
             <Route path="/my-tickets" element={session ? <MyTickets /> : <Navigate to="/" replace />} />
             <Route path="/profile" element={session ? <Profile /> : <Navigate to="/" replace />} />
             <Route path="/complete-registration" element={session ? <CompleteRegistration /> : <Navigate to="/" replace />} />
             <Route path="/reset-password" element={<ResetPassword />} />
 
-            {/* 4. ADMIN ROUTES */}
+            {/* ADMIN ROUTES */}
             <Route path="/adminlogin" element={<AdminLogin />} />
-            <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
+            <Route path="/admin" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/admin/create" element={<ProtectedRoute><CreateEvent /></ProtectedRoute>} />
             <Route path="/admin/scan" element={<ProtectedRoute><Scanner /></ProtectedRoute>} />
             <Route path="/admin/events" element={<ProtectedRoute><ManageEvents /></ProtectedRoute>} />
             
-            {/* NEW: Replaced the 3 old routes with our unified Master Database route */}
-            <Route path="/admin/master-registry" element={<MasterManagement />} />
+            {/* Unified Master Database route */}
+            <Route path="/admin/master-registry" element={<ProtectedRoute><MasterManagement /></ProtectedRoute>} />
 
-            {/* 5. GLOBAL CATCH-ALL */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
