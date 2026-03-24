@@ -477,7 +477,7 @@ const MasterManagement = () => {
                   </div>
                 ) : (
                    <div className="flex flex-col items-center justify-center py-2 opacity-70">
-                     <span className="text-slate-400 font-black text-[10px] uppercase tracking-widest">Total Amoun</span>
+                     <span className="text-slate-400 font-black text-[10px] uppercase tracking-widest">Total Amount</span>
                      <span className="text-white font-black text-2xl italic">₹0.00</span>
                    </div>
                 )}
