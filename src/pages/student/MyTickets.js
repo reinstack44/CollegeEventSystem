@@ -26,7 +26,6 @@ const MyTickets = () => {
   const printRef = useRef(null);
 
   // --- EXACT MATH HELPER ---
-  // Always calculates the exact amount based on the event price, ignoring old DB values
   const getDisplayAmount = (ticket) => {
     if (ticket.events?.event_type === 'paid') {
       const ticketFee = Number(ticket.events?.price || 0);
@@ -51,6 +50,7 @@ const MyTickets = () => {
 
   useEffect(() => {
     fetchUserTickets();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -358,50 +358,100 @@ const MyTickets = () => {
         </div>
       )}
 
-      {/* TICKET DETAIL MODAL WITH FLIP */}
+      {/* TICKET DETAIL MODAL WITH RESPONSIVE FLIP */}
       {selectedTicket && (
-        <div className="fixed inset-0 z-100 bg-black/95 backdrop-blur-3xl flex items-center justify-center p-4">
-          <button onClick={() => setSelectedTicket(null)} className="absolute top-8 right-8 p-3 bg-white/10 hover:bg-white/20 rounded-full transition-colors text-white z-110 border border-white/10 shadow-xl"><X size={32} /></button>
+        <div className="fixed inset-0 z-100 bg-black/95 backdrop-blur-3xl flex items-center justify-center p-4 overflow-hidden">
+          <button onClick={() => setSelectedTicket(null)} className="absolute top-6 right-6 md:top-8 md:right-8 p-2.5 md:p-3 bg-white/10 hover:bg-white/20 rounded-full transition-colors text-white z-110 border border-white/10 shadow-xl"><X size={24} className="md:w-8 md:h-8" /></button>
           
-          <div className="perspective-2000 w-full max-w-lg h-150 md:h-162.5 cursor-pointer" onClick={() => setIsFlipping(!isFlipping)}>
+          <div className="perspective-2000 w-[90vw] max-w-85 md:max-w-md h-120 md:h-155 cursor-pointer" onClick={() => setIsFlipping(!isFlipping)}>
             <div className={`relative w-full h-full transition-transform duration-1000 ease-in-out transform-style-3d ${isFlipping ? 'rotate-y-180' : ''}`}>
               
               {/* FRONT OF TICKET */}
-              <div className="absolute inset-0 backface-hidden bg-[#0f172a] rounded-[3.5rem] border border-blue-500/40 p-10 flex flex-col justify-between shadow-[0_0_100px_rgba(37,99,235,0.2)]">
+              <div className="absolute inset-0 backface-hidden bg-[#0f172a] rounded-[2.5rem] md:rounded-[3.5rem] border border-blue-500/40 p-6 md:p-10 flex flex-col justify-between shadow-[0_0_100px_rgba(37,99,235,0.2)]">
                 <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-transparent via-blue-500 to-transparent" />
-                <div className="text-left">
-                   <div className="flex items-center justify-between mb-10">
-                     <div className="flex items-center gap-3"><ShieldCheck className="text-blue-500" size={28} /><p className="text-[11px] font-black uppercase tracking-[0.4em] text-blue-400">Security Pass Verified</p></div>
-                     <div className={`px-4 py-1.5 rounded-xl border text-[9px] font-black uppercase tracking-widest ${selectedTicket.status === 'checked_in' ? 'text-green-500 border-green-500/20' : 'text-blue-500 border-blue-500/20'}`}>{selectedTicket.status.replace('_', ' ')}</div>
+                
+                <div className="text-left flex flex-col h-full">
+                   <div className="flex items-center justify-between mb-6 md:mb-10">
+                     <div className="flex items-center gap-2 md:gap-3">
+                       <ShieldCheck className="text-blue-500 w-6 h-6 md:w-7 md:h-7" />
+                       <p className="text-[8px] md:text-[11px] font-black uppercase tracking-[0.2em] md:tracking-[0.4em] text-blue-400 leading-tight">Security<br className="md:hidden"/> Pass</p>
+                     </div>
+                     <div className={`px-3 py-1 md:px-4 md:py-1.5 rounded-lg md:rounded-xl border text-[8px] md:text-[9px] font-black uppercase tracking-widest ${selectedTicket.status === 'checked_in' ? 'text-green-500 border-green-500/20' : 'text-blue-500 border-blue-500/20'}`}>
+                       {selectedTicket.status.replace('_', ' ')}
+                     </div>
                    </div>
-                   <h4 className="text-4xl md:text-5xl font-black uppercase tracking-tighter leading-none mb-12 text-white italic">{selectedTicket.events?.title}</h4>
-                   <div className="space-y-6">
-                      <div className="flex items-center gap-5"><Calendar className="text-blue-500" size={24} /><div><p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Pass Valid For</p><p className="text-xl font-bold">{selectedTicket.events?.date}</p></div></div>
-                      <div className="flex items-center gap-5"><Clock className="text-blue-500" size={24} /><div><p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Event Time</p><p className="text-xl font-bold">{formatTime(selectedTicket.events?.start_time)} — {selectedTicket.events?.end_time ? formatTime(selectedTicket.events?.end_time) : 'End'}</p></div></div>
-                      <div className="flex items-center gap-5"><MapPin className="text-blue-500" size={24} /><div><p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Venue Location</p><p className="text-xl font-bold truncate max-w-62.5">{selectedTicket.events?.venue}</p></div></div>
+                   
+                   <h4 className="text-2xl sm:text-3xl md:text-5xl font-black uppercase tracking-tighter leading-none mb-6 md:mb-12 text-white italic line-clamp-3">
+                     {selectedTicket.events?.title}
+                   </h4>
+                   
+                   <div className="space-y-4 md:space-y-6 grow">
+                      <div className="flex items-center gap-3 md:gap-5">
+                        <Calendar className="text-blue-500 w-5 h-5 md:w-6 md:h-6 shrink-0" />
+                        <div>
+                          <p className="text-[8px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest mb-0.5 md:mb-1">Pass Valid For</p>
+                          <p className="text-sm md:text-xl font-bold leading-none">{selectedTicket.events?.date}</p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-3 md:gap-5">
+                        <Clock className="text-blue-500 w-5 h-5 md:w-6 md:h-6 shrink-0" />
+                        <div>
+                          <p className="text-[8px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest mb-0.5 md:mb-1">Event Time</p>
+                          <p className="text-sm md:text-xl font-bold leading-none">{formatTime(selectedTicket.events?.start_time)} — {selectedTicket.events?.end_time ? formatTime(selectedTicket.events?.end_time) : 'End'}</p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-3 md:gap-5">
+                        <MapPin className="text-blue-500 w-5 h-5 md:w-6 md:h-6 shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-[8px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest mb-0.5 md:mb-1">Venue Location</p>
+                          <p className="text-sm md:text-xl font-bold truncate leading-none">{selectedTicket.events?.venue}</p>
+                        </div>
+                      </div>
+                      
                       {selectedTicket.events?.event_type === 'paid' && (
-                        <div className="flex items-center gap-5">
-                          <CreditCard className="text-emerald-500" size={24} />
+                        <div className="flex items-center gap-3 md:gap-5">
+                          <CreditCard className="text-emerald-500 w-5 h-5 md:w-6 md:h-6 shrink-0" />
                           <div>
-                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Amount Paid</p>
-                            <p className="text-xl font-bold text-emerald-400">₹{getDisplayAmount(selectedTicket)}</p>
+                            <p className="text-[8px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest mb-0.5 md:mb-1">Amount Paid</p>
+                            <p className="text-sm md:text-xl font-bold text-emerald-400 leading-none">₹{getDisplayAmount(selectedTicket)}</p>
                           </div>
                         </div>
                       )}
                    </div>
                 </div>
-                <div className="flex flex-col items-center gap-4 py-6 border-t border-white/5"><p className="text-blue-500 font-black text-[10px] uppercase tracking-widest animate-pulse">Tap Card to View Entry QR</p></div>
+
+                <div className="flex flex-col items-center gap-4 pt-4 md:py-6 border-t border-white/5 mt-auto">
+                  <p className="text-blue-500 font-black text-[8px] md:text-[10px] uppercase tracking-widest animate-pulse">Tap Card to View Entry QR</p>
+                </div>
               </div>
 
               {/* BACK OF TICKET (QR CODE) */}
-              <div className="absolute inset-0 backface-hidden rotate-y-180 bg-white rounded-[3.5rem] flex flex-col items-center p-8 text-slate-900">
-                <div className="text-center mb-6"><p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mb-1">Authorized For</p><h4 className="text-2xl font-black uppercase tracking-tighter text-blue-600 italic">{studentName}</h4></div>
-                <div className="bg-[#f8fafc] p-6 rounded-[3rem] border-2 border-slate-100 mb-6"><QRCodeCanvas value={selectedTicket.id} size={220} level="H" /></div>
-                <div className="w-full space-y-4">
-                  <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex items-center justify-between"><p className="font-mono text-[11px] text-slate-400 uppercase font-bold truncate max-w-62.5">ID: {selectedTicket.id}</p><Fingerprint size={18} className="text-blue-500" /></div>
-                  <button onClick={(e) => { e.stopPropagation(); downloadPDF(); }} disabled={isDownloading} className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 text-white rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-blue-700 transition-all z-50">{isDownloading ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}{isDownloading ? 'Generating...' : 'Download PDF'}</button>
+              <div className="absolute inset-0 backface-hidden rotate-y-180 bg-white rounded-[2.5rem] md:rounded-[3.5rem] flex flex-col items-center p-6 md:p-8 text-slate-900">
+                <div className="text-center mb-4 md:mb-6 mt-2 md:mt-0">
+                  <p className="text-[8px] md:text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] md:tracking-[0.4em] mb-1">Authorized For</p>
+                  <h4 className="text-lg md:text-2xl font-black uppercase tracking-tighter text-blue-600 italic line-clamp-1">{studentName}</h4>
                 </div>
-                <p className="mt-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Tap anywhere to flip back</p>
+                
+                <div className="bg-[#f8fafc] p-4 md:p-6 rounded-4xl border-2 border-slate-100 mb-4 md:mb-6 flex items-center justify-center">
+                  <div className="scale-75 md:scale-100 origin-center flex items-center justify-center">
+                     <QRCodeCanvas value={selectedTicket.id} size={200} level="H" />
+                  </div>
+                </div>
+                
+                <div className="w-full space-y-3 md:space-y-4">
+                  <div className="bg-slate-50 p-3 md:p-4 rounded-xl md:rounded-2xl border border-slate-100 flex items-center justify-between">
+                    <p className="font-mono text-[9px] md:text-[11px] text-slate-400 uppercase font-bold truncate mr-2">ID: {selectedTicket.id}</p>
+                    <Fingerprint className="text-blue-500 w-4 h-4 md:w-5 md:h-5 shrink-0" />
+                  </div>
+                  <button onClick={(e) => { e.stopPropagation(); downloadPDF(); }} disabled={isDownloading} className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 text-white rounded-xl md:rounded-2xl font-black uppercase text-[9px] md:text-[10px] tracking-widest hover:bg-blue-700 transition-all z-50">
+                    {isDownloading ? <Loader2 className="animate-spin" size={14} /> : <Download size={14} />}
+                    {isDownloading ? 'Generating...' : 'Download PDF'}
+                  </button>
+                </div>
+                
+                <p className="mt-auto pt-2 text-[8px] md:text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Tap anywhere to flip back</p>
               </div>
 
             </div>

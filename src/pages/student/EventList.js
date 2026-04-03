@@ -1,11 +1,15 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '../../sbclient/supabaseClient';
+import { QRCodeCanvas } from 'qrcode.react'; 
 import { 
   Calendar, Clock, Search, Zap, 
   CheckCircle, MapPin, Timer, Info,
-  ChevronLeft, ChevronRight, X, Loader2, Ticket, ShieldCheck
+  ChevronLeft, ChevronRight, X, Loader2, Ticket, ShieldCheck,
+  CreditCard, Fingerprint, Download
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 
 const loadRazorpayScript = () => {
   return new Promise((resolve) => {
@@ -22,6 +26,7 @@ const EventList = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [studentName, setStudentName] = useState("");
   
   const [poppedEvent, setPoppedEvent] = useState(null);
   const [isClosing, setIsClosing] = useState(false); 
@@ -30,9 +35,13 @@ const EventList = () => {
   // MODAL & RAZORPAY STATE
   const [paymentModal, setPaymentModal] = useState({ open: false, event: null });
   const [processingPayment, setProcessingPayment] = useState(false);
-  
-  // CELEBRATION STATE
   const [paymentSuccess, setPaymentSuccess] = useState(false);
+
+  // TICKET OVERLAY STATE
+  const [selectedTicket, setSelectedTicket] = useState(null);
+  const [isFlipping, setIsFlipping] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const printRef = useRef(null);
 
   useEffect(() => {
     const ticker = setInterval(() => setNow(new Date()), 60000);
@@ -42,6 +51,12 @@ const EventList = () => {
   const fetchEvents = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        const { data: profile } = await supabase.from('students').select('name, surname').eq('email', user.email).single();
+        if (profile) setStudentName(`${profile.name || 'Student'} ${profile.surname || ''}`);
+      }
+
       const currentIso = now.toISOString();
 
       const { data: eventData, error: eventError } = await supabase
@@ -52,20 +67,28 @@ const EventList = () => {
 
       if (eventError) throw eventError;
 
-      const { data: bookingData } = await supabase.from('bookings').select('event_id, student_email, status');
+      const { data: bookingData } = await supabase.from('bookings').select('id, event_id, student_email, status');
 
       const eventsWithMeta = (eventData || []).map(event => {
         const eventBookings = bookingData?.filter(b => b.event_id === event.id) || [];
         const startTime = new Date(event.reg_start_timestamp);
         
-        const isBooked = user && eventBookings.some(b => b.student_email === user.email && (b.status === 'confirmed' || b.status === 'verified'));
-        const isPending = user && eventBookings.some(b => b.student_email === user.email && b.status === 'pending');
+        const userBooking = user ? eventBookings.find(b => b.student_email === user.email) : null;
+        
+        const isPending = userBooking?.status === 'pending';
+        const isCheckedIn = userBooking?.status === 'checked_in';
+        const isBooked = userBooking && ['confirmed', 'verified'].includes(userBooking.status);
+        const hasAnyBooking = !!userBooking; 
 
         return {
           ...event,
+          bookingId: userBooking?.id,
+          bookingStatus: userBooking?.status,
           isSoldOut: event.ticket_limit && eventBookings.length >= event.ticket_limit,
           isBooked: isBooked,
           isPending: isPending,
+          isCheckedIn: isCheckedIn,
+          hasAnyBooking: hasAnyBooking,
           isOpen: now >= startTime
         };
       });
@@ -82,6 +105,45 @@ const EventList = () => {
     fetchEvents();
   }, [fetchEvents]);
 
+  // --- EXACT MATH HELPER ---
+  const getDisplayAmount = (ticket) => {
+    if (ticket.event_type === 'paid') {
+      const ticketFee = Number(ticket.price || 0);
+      const platformFee = 5;
+      const gatewayFee = Number(((ticketFee + platformFee) * 0.025).toFixed(2));
+      return (ticketFee + platformFee + gatewayFee).toFixed(2);
+    }
+    return "0.00";
+  };
+
+  const formatTime = (timeStr) => {
+    if (!timeStr) return '';
+    if (timeStr.toLowerCase().includes('m')) return timeStr; 
+    const [hours, minutes] = timeStr.split(':');
+    let h = parseInt(hours, 10);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12;
+    const formattedH = h < 10 ? `0${h}` : h;
+    return `${formattedH}:${minutes} ${ampm}`;
+  };
+
+  const downloadPDF = async () => {
+    if (!printRef.current || !selectedTicket) return;
+    setIsDownloading(true);
+    const toastId = toast.loading("Generating Secure PDF Pass...");
+    try {
+      const canvas = await html2canvas(printRef.current, { scale: 3, useCORS: true, backgroundColor: '#0a0f1d', windowWidth: 794, logging: false });
+      const imgData = canvas.toDataURL('image/png', 1.0);
+      const pdf = new jsPDF('p', 'px', [794, 1123]);
+      pdf.addImage(imgData, 'PNG', 0, 0, 794, 1123);
+      pdf.save(`NexusCircle_Pass_${selectedTicket.title.replace(/\s+/g, '_')}.pdf`);
+      toast.success("PDF Download Complete!", { id: toastId });
+    } catch (error) {
+      toast.error("Failed to generate PDF.", { id: toastId });
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   const handleBook = async (e, event) => {
     e.stopPropagation(); 
@@ -90,7 +152,7 @@ const EventList = () => {
     if (!user) return toast.error("Login Required");
 
     if (!event.isOpen) return toast.error("Registration not yet open!");
-    if (event.isBooked) return toast.error("Identity already secured!");
+    if (event.hasAnyBooking) return toast.error("Identity already secured!");
     if (event.isSoldOut) return toast.error("Deployment Full: Sold Out!");
 
     if (event.event_type === 'paid') {
@@ -98,23 +160,24 @@ const EventList = () => {
       return;
     }
 
-    const { error } = await supabase.from('bookings').insert([{
+    const { data, error } = await supabase.from('bookings').insert([{
       event_id: event.id,
       student_email: user.email,
       status: 'confirmed'
-    }]);
+    }]).select().single();
 
     if (!error) {
       setPaymentSuccess(true);
       fetchEvents(); 
       setTimeout(() => {
-        window.location.href = `/student/tickets?autoFlip=true#ticket-${event.id}`;
+        setPaymentSuccess(false);
+        setSelectedTicket({ ...event, bookingId: data.id, bookingStatus: 'confirmed' });
+        setTimeout(() => setIsFlipping(true), 300);
       }, 3500);
     } else {
       toast.error("Booking failed: " + error.message);
     }
   };
-
 
   const processRazorpayCheckout = async () => {
     setProcessingPayment(true);
@@ -135,10 +198,7 @@ const EventList = () => {
         body: { event_id: paymentModal.event.id, amount: totalAmount }
       });
 
-      if (orderError || !orderData) {
-        console.error("🚨 BACKEND CRASH DETAILS:", orderError);
-        throw new Error("Failed to initialize order with server.");
-      }
+      if (orderError || !orderData) throw new Error("Failed to initialize order with server.");
 
       const options = {
         key: process.env.REACT_APP_RAZORPAY_KEY_ID, 
@@ -147,29 +207,16 @@ const EventList = () => {
         name: "Nexus Circle", 
         description: `Pass for ${paymentModal.event.title}`,
         order_id: orderData.id, 
-        config: {
-          display: {
-            blocks: {
-              upi: {
-                name: "Pay via UPI",
-                instruments: [
-                  { method: "upi", flows: ["intent"] }, // Forces Apps (GPay/PhonePe) on mobile
-                  { method: "upi", flows: ["qr"] }      // Fallback to QR
-                ]
-              }
-            },
-            sequence: ["block.upi", "block.cards", "block.wallets"]
-          }
-        },
+        config: { display: { blocks: { upi: { name: "Pay via UPI", instruments: [{ method: "upi", flows: ["intent"] }, { method: "upi", flows: ["qr"] }] } }, sequence: ["block.upi", "block.cards", "block.wallets"] } },
         handler: async function (response) {
-          const { error: bookingError } = await supabase.from('bookings').insert([{
+          const { data, error: bookingError } = await supabase.from('bookings').insert([{
             event_id: paymentModal.event.id,
             student_email: user.email,
             status: 'verified',
             razorpay_payment_id: response.razorpay_payment_id,
             razorpay_order_id: response.razorpay_order_id,
             razorpay_signature: response.razorpay_signature
-          }]);
+          }]).select().single();
 
           if (!bookingError) {
             setPaymentModal({ open: false, event: null });
@@ -177,7 +224,9 @@ const EventList = () => {
             fetchEvents();
             
             setTimeout(() => {
-              window.location.href = `/student/tickets?autoFlip=true#ticket-${paymentModal.event.id}`;
+              setPaymentSuccess(false);
+              setSelectedTicket({ ...paymentModal.event, bookingId: data.id, bookingStatus: 'verified' });
+              setTimeout(() => setIsFlipping(true), 300);
             }, 3500); 
             
           } else {
@@ -189,23 +238,25 @@ const EventList = () => {
       };
 
       const paymentObject = new window.Razorpay(options);
-      paymentObject.on('payment.failed', function (response) {
-        toast.error(`Payment Failed: ${response.error.description}`);
-      });
+      paymentObject.on('payment.failed', function (response) { toast.error(`Payment Failed: ${response.error.description}`); });
       paymentObject.open();
 
     } catch (error) {
-      console.error(error);
       toast.error(error.message || "Could not initiate payment. Please try again.");
     } finally {
       setProcessingPayment(false);
     }
   };
 
+  const handleViewTicket = (eventObj) => {
+    setSelectedTicket(eventObj);
+    setIsFlipping(false);
+    setTimeout(() => setIsFlipping(true), 300);
+  };
 
   const filteredEvents = events.filter(e => {
     const matchesSearch = e.title.toLowerCase().includes(searchQuery.toLowerCase());
-    let matchesStatus = statusFilter === 'all' || (statusFilter === 'available' ? !e.isBooked : e.isBooked);
+    let matchesStatus = statusFilter === 'all' || (statusFilter === 'available' ? !e.hasAnyBooking : e.hasAnyBooking);
     return matchesSearch && matchesStatus;
   });
 
@@ -225,17 +276,161 @@ const EventList = () => {
       {/* --- FULL SCREEN CELEBRATION OVERLAY --- */}
       {paymentSuccess && (
         <div className="fixed inset-0 z-500 flex items-center justify-center bg-[#0a0f1d] overflow-hidden">
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-75 h-75 bg-emerald-500/20 rounded-full animate-ping-slow"></div>
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-125 h-125 bg-emerald-500/10 rounded-full animate-ping-slow" style={{ animationDelay: '0.2s' }}></div>
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 md:w-75 md:h-75 bg-emerald-500/20 rounded-full animate-ping-slow"></div>
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 md:w-125 md:h-125 bg-emerald-500/10 rounded-full animate-ping-slow" style={{ animationDelay: '0.2s' }}></div>
           
-          <div className="relative z-10 flex flex-col items-center animate-success-pop">
-            <div className="w-28 h-28 bg-emerald-500 rounded-full flex items-center justify-center mb-8 shadow-[0_0_80px_rgba(16,185,129,0.8)] border-4 border-emerald-400">
-              <CheckCircle size={60} className="text-white" />
+          <div className="relative z-10 flex flex-col items-center animate-success-pop px-4">
+            <div className="w-20 h-20 md:w-28 md:h-28 bg-emerald-500 rounded-full flex items-center justify-center mb-6 md:mb-8 shadow-[0_0_50px_rgba(16,185,129,0.5)] md:shadow-[0_0_80px_rgba(16,185,129,0.8)] border-4 border-emerald-400 shrink-0">
+              <CheckCircle size={40} className="text-white md:w-15 md:h-15" />
             </div>
-            <h1 className="text-4xl md:text-5xl font-black text-white uppercase tracking-widest mb-4 text-center drop-shadow-lg">Ticket Confirmed!</h1>
-            <div className="flex items-center gap-3 bg-white/10 px-6 py-3 rounded-full backdrop-blur-md border border-white/20">
-              <Loader2 className="animate-spin text-emerald-400" size={20} />
-              <p className="text-emerald-400 font-bold tracking-widest uppercase text-sm">Generating Digital Pass...</p>
+            
+            <h1 className="text-2xl sm:text-3xl md:text-5xl font-black text-white uppercase tracking-widest mb-4 text-center drop-shadow-lg leading-tight">
+              Ticket Confirmed!
+            </h1>
+            
+            <div className="flex items-center gap-2 md:gap-3 bg-white/10 px-4 md:px-6 py-2.5 md:py-3 rounded-full backdrop-blur-md border border-white/20">
+              <Loader2 className="animate-spin text-emerald-400 w-4 h-4 md:w-5 md:h-5" />
+              <p className="text-emerald-400 font-bold tracking-widest uppercase text-[10px] md:text-sm">Generating Digital Pass...</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- IN-PAGE TICKET MODAL (NO REDIRECT NEEDED) --- */}
+      {selectedTicket && (
+        <div className="fixed inset-0 z-600 bg-black/95 backdrop-blur-3xl flex items-center justify-center p-4 overflow-hidden">
+          <button onClick={() => setSelectedTicket(null)} className="absolute top-6 right-6 md:top-8 md:right-8 p-2.5 md:p-3 bg-white/10 hover:bg-white/20 rounded-full transition-colors text-white z-610 border border-white/10 shadow-xl"><X size={24} className="md:w-8 md:h-8" /></button>
+          
+          <div className="perspective-2000 w-[90vw] max-w-85 md:max-w-md h-120 md:h-155 cursor-pointer" onClick={() => setIsFlipping(!isFlipping)}>
+            <div className={`relative w-full h-full transition-transform duration-1000 ease-in-out transform-style-3d ${isFlipping ? 'rotate-y-180' : ''}`}>
+              
+              {/* FRONT OF TICKET */}
+              <div className="absolute inset-0 backface-hidden bg-[#0f172a] rounded-[2.5rem] md:rounded-[3.5rem] border border-blue-500/40 p-6 md:p-10 flex flex-col justify-between shadow-[0_0_100px_rgba(37,99,235,0.2)]">
+                <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-transparent via-blue-500 to-transparent" />
+                
+                <div className="text-left flex flex-col h-full">
+                   <div className="flex items-center justify-between mb-6 md:mb-10">
+                     <div className="flex items-center gap-2 md:gap-3">
+                       <ShieldCheck className="text-blue-500 w-6 h-6 md:w-7 md:h-7" />
+                       <p className="text-[8px] md:text-[11px] font-black uppercase tracking-[0.2em] md:tracking-[0.4em] text-blue-400 leading-tight">Security<br className="md:hidden"/> Pass</p>
+                     </div>
+                     <div className={`px-3 py-1 md:px-4 md:py-1.5 rounded-lg md:rounded-xl border text-[8px] md:text-[9px] font-black uppercase tracking-widest ${selectedTicket.bookingStatus === 'checked_in' ? 'text-green-500 border-green-500/20' : 'text-blue-500 border-blue-500/20'}`}>
+                       {(selectedTicket.bookingStatus || 'Verified').replace('_', ' ')}
+                     </div>
+                   </div>
+                   
+                   <h4 className="text-2xl sm:text-3xl md:text-5xl font-black uppercase tracking-tighter leading-none mb-6 md:mb-12 text-white italic line-clamp-3">
+                     {selectedTicket.title}
+                   </h4>
+                   
+                   <div className="space-y-4 md:space-y-6 grow">
+                      <div className="flex items-center gap-3 md:gap-5">
+                        <Calendar className="text-blue-500 w-5 h-5 md:w-6 md:h-6 shrink-0" />
+                        <div>
+                          <p className="text-[8px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest mb-0.5 md:mb-1">Pass Valid For</p>
+                          <p className="text-sm md:text-xl font-bold leading-none">{selectedTicket.date}</p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-3 md:gap-5">
+                        <Clock className="text-blue-500 w-5 h-5 md:w-6 md:h-6 shrink-0" />
+                        <div>
+                          <p className="text-[8px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest mb-0.5 md:mb-1">Event Time</p>
+                          <p className="text-sm md:text-xl font-bold leading-none">{formatTime(selectedTicket.start_time)} — {selectedTicket.end_time ? formatTime(selectedTicket.end_time) : 'End'}</p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-3 md:gap-5">
+                        <MapPin className="text-blue-500 w-5 h-5 md:w-6 md:h-6 shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-[8px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest mb-0.5 md:mb-1">Venue Location</p>
+                          <p className="text-sm md:text-xl font-bold truncate leading-none">{selectedTicket.venue}</p>
+                        </div>
+                      </div>
+                      
+                      {selectedTicket.event_type === 'paid' && (
+                        <div className="flex items-center gap-3 md:gap-5">
+                          <CreditCard className="text-emerald-500 w-5 h-5 md:w-6 md:h-6 shrink-0" />
+                          <div>
+                            <p className="text-[8px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest mb-0.5 md:mb-1">Amount Paid</p>
+                            <p className="text-sm md:text-xl font-bold text-emerald-400 leading-none">₹{getDisplayAmount(selectedTicket)}</p>
+                          </div>
+                        </div>
+                      )}
+                   </div>
+                </div>
+
+                <div className="flex flex-col items-center gap-4 pt-4 md:py-6 border-t border-white/5 mt-auto">
+                  <p className="text-blue-500 font-black text-[8px] md:text-[10px] uppercase tracking-widest animate-pulse">Tap Card to View Entry QR</p>
+                </div>
+              </div>
+
+              {/* BACK OF TICKET (QR CODE) */}
+              <div className="absolute inset-0 backface-hidden rotate-y-180 bg-white rounded-[2.5rem] md:rounded-[3.5rem] flex flex-col items-center p-6 md:p-8 text-slate-900">
+                <div className="text-center mb-4 md:mb-6 mt-2 md:mt-0">
+                  <p className="text-[8px] md:text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] md:tracking-[0.4em] mb-1">Authorized For</p>
+                  <h4 className="text-lg md:text-2xl font-black uppercase tracking-tighter text-blue-600 italic line-clamp-1">{studentName}</h4>
+                </div>
+                
+                <div className="bg-[#f8fafc] p-4 md:p-6 rounded-4xl border-2 border-slate-100 mb-4 md:mb-6 flex items-center justify-center">
+                  <div className="scale-75 md:scale-100 origin-center flex items-center justify-center">
+                     <QRCodeCanvas value={selectedTicket.bookingId || "error"} size={200} level="H" />
+                  </div>
+                </div>
+                
+                <div className="w-full space-y-3 md:space-y-4">
+                  <div className="bg-slate-50 p-3 md:p-4 rounded-xl md:rounded-2xl border border-slate-100 flex items-center justify-between">
+                    <p className="font-mono text-[9px] md:text-[11px] text-slate-400 uppercase font-bold truncate mr-2">ID: {selectedTicket.bookingId}</p>
+                    <Fingerprint className="text-blue-500 w-4 h-4 md:w-5 md:h-5 shrink-0" />
+                  </div>
+                  <button onClick={(e) => { e.stopPropagation(); downloadPDF(); }} disabled={isDownloading} className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 text-white rounded-xl md:rounded-2xl font-black uppercase text-[9px] md:text-[10px] tracking-widest hover:bg-blue-700 transition-all z-50">
+                    {isDownloading ? <Loader2 className="animate-spin" size={14} /> : <Download size={14} />}
+                    {isDownloading ? 'Generating...' : 'Download PDF'}
+                  </button>
+                </div>
+                
+                <p className="mt-auto pt-2 text-[8px] md:text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Tap anywhere to flip back</p>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* HIDDEN PRINTABLE TICKET */}
+      {selectedTicket && (
+        <div style={{ position: 'absolute', top: '-20000px', left: '-20000px', zIndex: -9999 }}>
+          <div ref={printRef} style={{ width: '794px', height: '1123px', backgroundColor: '#0a0f1d', padding: '40px', boxSizing: 'border-box' }}>
+            <div style={{ width: '714px', height: '1043px', border: '4px solid #3b82f6', borderRadius: '32px', display: 'flex', flexDirection: 'column', backgroundColor: '#0a0f1d', boxSizing: 'border-box' }}>
+              <div style={{ flex: '0 0 auto', padding: '50px 60px 30px 60px', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
+                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}><p style={{ margin: 0, fontSize: '18px', fontWeight: 'bold', color: '#3b82f6', letterSpacing: '3px', textTransform: 'uppercase' }}>{selectedTicket.school || 'EVENT'} • SECURITY PASS</p><div style={{ backgroundColor: '#1e293b', color: '#3b82f6', padding: '10px 20px', borderRadius: '12px', fontWeight: '900', fontSize: '14px', border: '1px solid rgba(59,130,246,0.3)' }}>VERIFIED ACCESS</div></div>
+                 <div style={{ marginBottom: '30px', width: '100%' }}><h1 style={{ margin: 0, fontSize: selectedTicket.title.length > 30 ? '34px' : '48px', fontWeight: '900', color: '#ffffff', textTransform: 'uppercase', fontStyle: 'italic', lineHeight: '38px', wordWrap: 'break-word', display: 'block' }}>{selectedTicket.title}</h1></div>
+                 <div style={{ display: 'flex', marginBottom: '25px', gap: '40px' }}><div style={{ flex: 1 }}><p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Date</p><p style={{ margin: 0, fontSize: '26px', fontWeight: 'bold', color: '#ffffff' }}>{selectedTicket.date}</p></div><div style={{ flex: 1 }}><p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Time</p><p style={{ margin: 0, fontSize: '26px', fontWeight: 'bold', color: '#ffffff' }}>{formatTime(selectedTicket.start_time)} - {selectedTicket.end_time ? formatTime(selectedTicket.end_time) : 'End'}</p></div></div>
+                 
+                 <div style={{ display: 'flex', marginBottom: '30px', gap: '40px' }}>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Venue Location</p>
+                      <p style={{ margin: 0, fontSize: '22px', fontWeight: 'bold', color: '#ffffff' }}>{selectedTicket.venue}</p>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Payment Status</p>
+                      <p style={{ margin: 0, fontSize: '22px', fontWeight: 'bold', color: selectedTicket.event_type === 'paid' ? '#10b981' : '#3b82f6' }}>
+                        {selectedTicket.event_type === 'paid' ? `PAID ₹${getDisplayAmount(selectedTicket)}` : 'FREE PASS'}
+                      </p>
+                    </div>
+                 </div>
+
+                 <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '20px' }}>
+                    <p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Authorized Attendee</p>
+                    <p style={{ margin: 0, fontSize: '38px', fontWeight: '900', color: '#ffffff', textTransform: 'uppercase' }}>{studentName}</p>
+                 </div>
+              </div>
+              <div style={{ height: '0', borderBottom: '4px dashed #3b82f6', margin: '0 40px' }}></div>
+              <div style={{ flex: '1 1 auto', backgroundColor: '#ffffff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px', boxSizing: 'border-box' }}>
+                 <p style={{ margin: '0 0 10px 0', fontSize: '20px', fontWeight: '900', color: '#0a0f1d', textTransform: 'uppercase', letterSpacing: '8px' }}>ADMIT ONE</p>
+                 <div style={{ backgroundColor: '#ffffff', padding: '10px', borderRadius: '15px', border: '1px solid #e2e8f0' }}><QRCodeCanvas value={selectedTicket.bookingId || "error"} size={170} level="H" /></div>
+                 <div style={{ marginTop: '10px', textAlign: 'center' }}><p style={{ margin: '0 0 2px 0', fontSize: '11px', fontWeight: 'bold', color: '#94a3b8', textTransform: 'uppercase' }}>Secure Token ID</p><p style={{ margin: 0, fontSize: '12px', fontWeight: 'bold', color: '#0a0f1d', fontFamily: 'monospace' }}>{selectedTicket.bookingId}</p></div>
+              </div>
             </div>
           </div>
         </div>
@@ -277,7 +472,8 @@ const EventList = () => {
                 key={event.id} 
                 event={event} 
                 onBook={handleBook}
-                onFlip={() => setPoppedEvent(event)} 
+                onFlip={() => setPoppedEvent(event)}
+                onViewTicket={handleViewTicket}
               />
             ))}
           </div>
@@ -313,7 +509,7 @@ const EventList = () => {
             
             <div className="mt-4 md:mt-6 pt-4 md:pt-5 border-t border-white/5 flex justify-center shrink-0">
                <button onClick={closePoppedEvent} className="px-6 py-2.5 md:px-8 md:py-3 bg-[#0f172a] hover:bg-blue-600 text-white rounded-lg md:rounded-xl font-bold uppercase tracking-widest text-[9px] md:text-[10px] transition-all border border-white/10 hover:border-blue-500 shadow-lg active:scale-95">
-                  Close
+                 Close
                </button>
             </div>
           </div>
@@ -429,6 +625,11 @@ const EventList = () => {
 
         .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; } 
         
+        .perspective-2000 { perspective: 2000px; }
+        .transform-style-3d { transform-style: preserve-3d; }
+        .backface-hidden { backface-visibility: hidden; }
+        .rotate-y-180 { transform: rotateY(180deg); }
+
         .custom-scrollbar::-webkit-scrollbar { width: 4px; } 
         .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.05); border-radius: 10px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(59, 130, 246, 0.6); border-radius: 10px; }
@@ -447,7 +648,7 @@ const EventList = () => {
   );
 };
 
-const FlipCard = ({ event, onBook, onFlip }) => {
+const FlipCard = ({ event, onBook, onFlip, onViewTicket }) => {
   const [currentImgIndex, setCurrentImgIndex] = useState(0);
 
   const defaultImages = [
@@ -468,7 +669,9 @@ const FlipCard = ({ event, onBook, onFlip }) => {
     setCurrentImgIndex((prev) => (prev === 0 ? images.length - 1 : prev - 1));
   };
 
-  const glowClass = event.isBooked 
+  const glowClass = event.isCheckedIn
+    ? 'border-indigo-500 shadow-[0_0_25px_rgba(99,102,241,0.25)]' 
+    : event.isBooked 
     ? 'border-green-500 shadow-[0_0_25px_rgba(34,197,94,0.25)]' 
     : event.isPending 
     ? 'border-yellow-500 shadow-[0_0_25px_rgba(234,179,8,0.25)]'
@@ -511,7 +714,9 @@ const FlipCard = ({ event, onBook, onFlip }) => {
           <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-400 border border-blue-500/20 truncate max-w-45">{event.school}</span>
           <div className="flex items-center gap-2">
              <Info size={14} className="text-slate-500 hover:text-blue-400 transition-colors"/> 
-             {event.isBooked ? (
+             {event.isCheckedIn ? (
+               <div className="flex items-center gap-1 text-indigo-400 font-black text-[8px] uppercase shrink-0"><CheckCircle size={12}/> Checked In</div>
+             ) : event.isBooked ? (
                <div className="flex items-center gap-1 text-green-500 font-black text-[8px] uppercase shrink-0"><CheckCircle size={12}/> Verified</div>
              ) : event.isPending ? (
                <div className="flex items-center gap-1 text-yellow-500 font-black text-[8px] uppercase shrink-0 animate-pulse"><Timer size={12}/> Pending</div>
@@ -553,7 +758,12 @@ const FlipCard = ({ event, onBook, onFlip }) => {
         </div>
 
         <div className="grow flex flex-col justify-start text-left gap-3">
-          <h3 className={`text-2xl font-black uppercase italic leading-[0.9] line-clamp-2 overflow-hidden shrink-0 ${event.isBooked ? 'text-green-500' : event.isPending ? 'text-yellow-500' : 'text-white'}`}>
+          <h3 className={`text-2xl font-black uppercase italic leading-[0.9] line-clamp-2 overflow-hidden shrink-0 ${
+            event.isCheckedIn ? 'text-indigo-400' :
+            event.isBooked ? 'text-green-500' : 
+            event.isPending ? 'text-yellow-500' : 
+            'text-white'
+          }`}>
             {event.title}
           </h3>
           
@@ -591,17 +801,25 @@ const FlipCard = ({ event, onBook, onFlip }) => {
           </div>
 
           <button 
-            disabled={event.isBooked || event.isSoldOut || !event.isOpen || event.isPending}
-            onClick={(e) => { e.stopPropagation(); onBook(e, event); }}
+            disabled={(event.isSoldOut && !event.hasAnyBooking) || (!event.isOpen && !event.hasAnyBooking) || event.isPending}
+            onClick={(e) => { 
+              e.stopPropagation(); 
+              if (event.isBooked || event.isCheckedIn) {
+                onViewTicket(event);
+              } else {
+                onBook(e, event); 
+              }
+            }}
             className={`w-full py-3.5 mt-auto rounded-2xl font-black uppercase text-[9px] transition-all tracking-widest shrink-0 ${
-              event.isBooked ? 'bg-green-600/20 text-green-500 border border-green-500/30' : 
+              event.isCheckedIn ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 hover:bg-indigo-600/30 hover:text-indigo-300' :
+              event.isBooked ? 'bg-green-600/20 text-green-500 border border-green-500/30 hover:bg-green-600/30 hover:text-green-400' : 
               event.isPending ? 'bg-yellow-600/20 text-yellow-500 border border-yellow-500/30' :
               !event.isOpen ? 'bg-slate-900 text-slate-700 border border-white/5' :
               event.event_type === 'paid' ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg active:scale-95' :
               'bg-blue-600 hover:bg-blue-700 text-white shadow-lg active:scale-95'
             }`}
           >
-            {event.isBooked ? "Pass Secured" : event.isPending ? "Awaiting Verification" : !event.isOpen ? "Opening Soon" : "Book Your Pass"}
+            {event.isCheckedIn ? "Pass Used - View Record" : event.isBooked ? "Pass Secured - View Ticket" : event.isPending ? "Awaiting Verification" : !event.isOpen ? "Opening Soon" : "Book Your Pass"}
           </button>
         </div>
       </div>
