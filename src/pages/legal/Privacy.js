@@ -18,7 +18,7 @@ const Privacy = () => {
         </button>
 
         <div className="flex items-center gap-4 mb-8 border-b border-white/5 pb-8">
-          <div className="p-4 bg-emerald-500/10 rounded-2xl border border-emerald-500/20"><FileText className="text-emerald-500" size={32} /></div>
+          <div className="p-4 bg-blue-500/10 rounded-2xl border border-blue-500/20"><FileText className="text-blue-500" size={32} /></div>
           <div>
             <h1 className="text-3xl md:text-5xl font-black uppercase italic tracking-tighter text-white">Privacy Policy</h1>
             <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mt-2">Data Protection & Privacy</p>

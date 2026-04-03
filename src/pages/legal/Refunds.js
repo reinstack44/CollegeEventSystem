@@ -11,14 +11,14 @@ const Refunds = () => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#0a0f1d] text-slate-300 p-6 md:p-12 selection:bg-red-500/30">
+    <div className="min-h-screen bg-[#0a0f1d] text-slate-300 p-6 md:p-12 selection:bg-blue-500/30">
       <div className="max-w-4xl mx-auto">
-        <button onClick={() => navigate('/')} className="flex items-center gap-2 text-slate-500 hover:text-red-500 transition-all font-black text-[10px] uppercase tracking-widest mb-10">
+        <button onClick={() => navigate('/')} className="flex items-center gap-2 text-slate-500 hover:text-blue-500 transition-all font-black text-[10px] uppercase tracking-widest mb-10">
           <ArrowLeft size={14} /> Back to Events
         </button>
 
         <div className="flex items-center gap-4 mb-8 border-b border-white/5 pb-8">
-          <div className="p-4 bg-red-500/10 rounded-2xl border border-red-500/20"><RefreshCcw className="text-red-500" size={32} /></div>
+          <div className="p-4 bg-blue-500/10 rounded-2xl border border-blue-500/20"><RefreshCcw className="text-blue-500" size={32} /></div>
           <div>
             <h1 className="text-3xl md:text-5xl font-black uppercase italic tracking-tighter text-white">Refund Policy</h1>
             <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mt-2">Strict Non-Refundable Agreement</p>
@@ -27,10 +27,10 @@ const Refunds = () => {
 
         <div className="space-y-8 leading-relaxed text-sm md:text-base">
           
-          <div className="bg-red-500/5 border border-red-500/20 p-6 rounded-3xl flex items-start gap-4">
-            <AlertTriangle className="text-red-500 shrink-0 mt-1" size={24} />
+          <div className="bg-blue-500/5 border border-blue-500/20 p-6 rounded-3xl flex items-start gap-4">
+            <AlertTriangle className="text-blue-500 shrink-0 mt-1" size={24} />
             <div>
-              <h2 className="text-lg font-black text-red-400 uppercase tracking-wide mb-2">Strict No-Refund Policy</h2>
+              <h2 className="text-lg font-black text-blue-400 uppercase tracking-wide mb-2">Strict No-Refund Policy</h2>
               <p className="text-slate-300">Once a transaction is confirmed and a digital pass is generated, <strong className="text-white">all ticket sales are final and strictly non-refundable.</strong> By proceeding with a payment on NexusCircle, you acknowledge and agree to this condition.</p>
             </div>
           </div>
