@@ -8,6 +8,8 @@
     overflow-y: auto !important;
     overflow-x: hidden !important;
     background-color: #0a0f1d;
+    /* Prevents iOS text size adjustment after orientation change */
+    -webkit-text-size-adjust: 100%;
   }
 
   body {
@@ -15,5 +17,17 @@
     transition-duration: 300ms;
     transition-timing-function: ease;
     margin: 0;
+  }
+
+  /* Prevent iOS Safari auto-zoom on form focus by forcing 16px */
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+
+  /* Revert back to standard inherited/Tailwind sizes on Desktop */
+  @media (min-width: 768px) {
+    input, textarea, select {
+      font-size: inherit !important;
+    }
   }
 }

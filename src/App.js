@@ -23,6 +23,11 @@ import Scanner from './pages/admin/Scanner';
 import MasterManagement from './pages/admin/MasterManagement'; 
 import ManageEvents from './pages/admin/ManageEvents';
 
+// Legal Pages
+import Terms from './pages/legal/Terms';
+import Privacy from './pages/legal/Privacy';
+import Refunds from './pages/legal/Refunds';
+
 function App() {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -85,6 +90,11 @@ function App() {
             
             {/* Unified Master Database route */}
             <Route path="/admin/master-registry" element={<ProtectedRoute><MasterManagement /></ProtectedRoute>} />
+
+            {/* Legal Pages Routes */}
+            <Route path="/terms" element={<Terms />} />
+            <Route path="/privacy" element={<Privacy />} />
+            <Route path="/refunds" element={<Refunds />} />
 
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

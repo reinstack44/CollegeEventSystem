@@ -296,7 +296,7 @@ const EventList = () => {
         </div>
       )}
 
-      {/* --- IN-PAGE TICKET MODAL (NO REDIRECT NEEDED) --- */}
+      {/* --- IN-PAGE TICKET MODAL --- */}
       {selectedTicket && (
         <div className="fixed inset-0 z-600 bg-black/95 backdrop-blur-3xl flex items-center justify-center p-4 overflow-hidden">
           <button onClick={() => setSelectedTicket(null)} className="absolute top-6 right-6 md:top-8 md:right-8 p-2.5 md:p-3 bg-white/10 hover:bg-white/20 rounded-full transition-colors text-white z-610 border border-white/10 shadow-xl"><X size={24} className="md:w-8 md:h-8" /></button>
@@ -704,7 +704,7 @@ const FlipCard = ({ event, onBook, onFlip, onViewTicket }) => {
   };
 
   return (
-    <div className="h-142.5 w-full group">
+    <div className="h-full w-full group">
       
       <div 
         onClick={onFlip} 
@@ -758,7 +758,7 @@ const FlipCard = ({ event, onBook, onFlip, onViewTicket }) => {
         </div>
 
         <div className="grow flex flex-col justify-start text-left gap-3">
-          <h3 className={`text-2xl font-black uppercase italic leading-[0.9] line-clamp-2 overflow-hidden shrink-0 ${
+          <h3 className={`text-2xl font-black uppercase italic leading-[0.9] line-clamp-2 min-h-11 shrink-0 ${
             event.isCheckedIn ? 'text-indigo-400' :
             event.isBooked ? 'text-green-500' : 
             event.isPending ? 'text-yellow-500' : 
@@ -780,47 +780,49 @@ const FlipCard = ({ event, onBook, onFlip, onViewTicket }) => {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 text-blue-500 text-[13px] font-black uppercase tracking-widest justify-center bg-center text-center">
+          <div className="flex items-center gap-2 text-blue-500 text-[13px] font-black uppercase tracking-widest justify-center bg-center text-center shrink-0">
               {event.event_type === 'paid' && <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Entry Fee ₹{event.price}</span>}
           </div>
 
-          <div className="pt-3 border-t border-slate-700/50 space-y-2 shrink-0">
-            <div className="flex items-center gap-2 text-blue-500 text-[13px] font-black uppercase tracking-widest justify-between bg-center text-center">
-              <span className="flex items-center gap-2"><Timer size={12}/> Registration Window</span>
-            </div>
-            <div className="flex flex-col gap-1.5 text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-              <div className="flex justify-between bg-[#111827] px-3 py-2 rounded-lg border border-white/5">
-                <span className="text-slate-500">Opens</span>
-                <span className="text-white">{formatDateTime(event.reg_start_timestamp)}</span>
+          <div className="mt-auto pt-3 border-t border-slate-700/50 flex flex-col gap-3 shrink-0 w-full">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-blue-500 text-[13px] font-black uppercase tracking-widest justify-between bg-center text-center">
+                <span className="flex items-center gap-2"><Timer size={12}/> Registration Window</span>
               </div>
-              <div className="flex justify-between bg-[#111827] px-3 py-2 rounded-lg border border-white/5">
-                <span className="text-slate-500">Closes</span>
-                <span className="text-white">{formatDateTime(event.reg_end_timestamp)}</span>
+              <div className="flex flex-col gap-1.5 text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                <div className="flex justify-between bg-[#111827] px-3 py-2 rounded-lg border border-white/5">
+                  <span className="text-slate-500">Opens</span>
+                  <span className="text-white">{formatDateTime(event.reg_start_timestamp)}</span>
+                </div>
+                <div className="flex justify-between bg-[#111827] px-3 py-2 rounded-lg border border-white/5">
+                  <span className="text-slate-500">Closes</span>
+                  <span className="text-white">{formatDateTime(event.reg_end_timestamp)}</span>
+                </div>
               </div>
             </div>
-          </div>
 
-          <button 
-            disabled={(event.isSoldOut && !event.hasAnyBooking) || (!event.isOpen && !event.hasAnyBooking) || event.isPending}
-            onClick={(e) => { 
-              e.stopPropagation(); 
-              if (event.isBooked || event.isCheckedIn) {
-                onViewTicket(event);
-              } else {
-                onBook(e, event); 
-              }
-            }}
-            className={`w-full py-3.5 mt-auto rounded-2xl font-black uppercase text-[9px] transition-all tracking-widest shrink-0 ${
-              event.isCheckedIn ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 hover:bg-indigo-600/30 hover:text-indigo-300' :
-              event.isBooked ? 'bg-green-600/20 text-green-500 border border-green-500/30 hover:bg-green-600/30 hover:text-green-400' : 
-              event.isPending ? 'bg-yellow-600/20 text-yellow-500 border border-yellow-500/30' :
-              !event.isOpen ? 'bg-slate-900 text-slate-700 border border-white/5' :
-              event.event_type === 'paid' ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg active:scale-95' :
-              'bg-blue-600 hover:bg-blue-700 text-white shadow-lg active:scale-95'
-            }`}
-          >
-            {event.isCheckedIn ? "Pass Used - View Record" : event.isBooked ? "Pass Secured - View Ticket" : event.isPending ? "Awaiting Verification" : !event.isOpen ? "Opening Soon" : "Book Your Pass"}
-          </button>
+            <button 
+              disabled={(event.isSoldOut && !event.hasAnyBooking) || (!event.isOpen && !event.hasAnyBooking) || event.isPending}
+              onClick={(e) => { 
+                e.stopPropagation(); 
+                if (event.isBooked || event.isCheckedIn) {
+                  onViewTicket(event);
+                } else {
+                  onBook(e, event); 
+                }
+              }}
+              className={`w-full py-3.5 rounded-2xl font-black uppercase text-[9px] transition-all tracking-widest shrink-0 ${
+                event.isCheckedIn ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 hover:bg-indigo-600/30 hover:text-indigo-300' :
+                event.isBooked ? 'bg-green-600/20 text-green-500 border border-green-500/30 hover:bg-green-600/30 hover:text-green-400' : 
+                event.isPending ? 'bg-yellow-600/20 text-yellow-500 border border-yellow-500/30' :
+                !event.isOpen ? 'bg-slate-900 text-slate-700 border border-white/5' :
+                event.event_type === 'paid' ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg active:scale-95' :
+                'bg-blue-600 hover:bg-blue-700 text-white shadow-lg active:scale-95'
+              }`}
+            >
+              {event.isCheckedIn ? "Pass Used - View Record" : event.isBooked ? "Pass Secured - View Ticket" : event.isPending ? "Awaiting Verification" : !event.isOpen ? "Opening Soon" : "Book Your Pass"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
