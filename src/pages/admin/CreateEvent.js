@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../sbclient/supabaseClient';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import CustomTimePicker from '../../components/CustomTimePicker';
+import CustomDatePicker from '../../components/CustomDatePicker';
 import toast from 'react-hot-toast';
 import { 
   Zap, ShieldCheck, AlignLeft, Ticket, 
@@ -18,7 +20,6 @@ const ADYPU_SCHOOLS = [
   "Center for Advanced Indian Science", "Center for Distance and Online Education"
 ];
 
-// Placeholder images for the live preview if nothing is uploaded yet
 const DEFAULT_PREVIEW_IMAGES = [
   "https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&q=80&w=800",
   "https://images.unsplash.com/photo-1551818255-e6e10975bc17?auto=format&fit=crop&q=80&w=800"
@@ -30,18 +31,16 @@ const CreateEvent = () => {
   const editId = searchParams.get('edit');
   const [loading, setLoading] = useState(false);
   
-  // Image State
   const [selectedImages, setSelectedImages] = useState([]);
   const [currentImgIndex, setCurrentImgIndex] = useState(0);
   
-  // Extended Form Data State
   const [formData, setFormData] = useState({
     title: '', date: '', venue: '', description: '', 
     school: ADYPU_SCHOOLS[0],
     start_time: '', end_time: '', ticket_limit: '',
     reg_start_date: '', reg_start_time: '09:00',
     reg_end_date: '', reg_end_time: '23:59',
-    event_type: 'free', // 'free' or 'paid'
+    event_type: 'free',
     price: '',
     merchant_upi: ''
   });
@@ -84,7 +83,6 @@ const CreateEvent = () => {
             price: data.price || '',
             merchant_upi: data.merchant_upi || ''
           });
-          // Load existing images if editing
           if (data.images && data.images.length > 0) {
             setSelectedImages(data.images.map(url => ({ file: null, url })));
           }
@@ -94,7 +92,6 @@ const CreateEvent = () => {
     }
   }, [editId]);
 
-  // --- IMAGE UPLOAD HANDLERS ---
   const handleImageChange = (e) => {
     const files = Array.from(e.target.files);
     if (selectedImages.length + files.length > 10) {
@@ -123,7 +120,6 @@ const CreateEvent = () => {
     try {
       let finalImageUrls = [];
 
-      // 1. Upload new image files
       for (const img of selectedImages) {
         if (img.file) {
           const fileExt = img.file.name.split('.').pop();
@@ -138,11 +134,10 @@ const CreateEvent = () => {
           const { data } = supabase.storage.from('event-images').getPublicUrl(fileName);
           finalImageUrls.push(data.publicUrl);
         } else {
-          finalImageUrls.push(img.url); // Existing image URL
+          finalImageUrls.push(img.url);
         }
       }
 
-      // 2. Prepare DB payload
       const startIso = new Date(`${formData.reg_start_date}T${formData.reg_start_time}`).toISOString();
       const endIso = new Date(`${formData.reg_end_date}T${formData.reg_end_time}`).toISOString();
 
@@ -153,7 +148,6 @@ const CreateEvent = () => {
         ticket_limit: formData.ticket_limit ? parseInt(formData.ticket_limit) : null,
         reg_start_timestamp: startIso, reg_end_timestamp: endIso,
         images: finalImageUrls,
-        // NEW FINANCIAL SPECS
         event_type: formData.event_type,
         price: formData.event_type === 'paid' ? Number(formData.price) : 0,
         merchant_upi: formData.event_type === 'paid' ? formData.merchant_upi : null
@@ -236,15 +230,15 @@ const CreateEvent = () => {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-left p-4 bg-[#1f2937]/30 border border-slate-700/50 rounded-3xl">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2 flex items-center gap-2"><Calendar size={14} /> Event Date</label>
-                  <input required type="date" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} className="w-full p-4 bg-[#1f2937] border border-slate-700 rounded-2xl outline-none focus:border-blue-500 text-white text-sm scheme-dark" />
+                  <CustomDatePicker value={formData.date} onChange={val => setFormData({...formData, date: val})} />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2 flex items-center gap-2"><Clock size={14} /> Start Time</label>
-                  <input required type="time" value={formData.start_time} onChange={e => setFormData({...formData, start_time: e.target.value})} className="w-full p-4 bg-[#1f2937] border border-slate-700 rounded-2xl outline-none focus:border-blue-500 text-white text-sm scheme-dark" />
+                  <CustomTimePicker value={formData.start_time} onChange={val => setFormData({...formData, start_time: val})} />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2 flex items-center gap-2"><Clock size={14} /> End Time</label>
-                  <input required type="time" value={formData.end_time} onChange={e => setFormData({...formData, end_time: e.target.value})} className="w-full p-4 bg-[#1f2937] border border-slate-700 rounded-2xl outline-none focus:border-blue-500 text-white text-sm scheme-dark" />
+                  <CustomTimePicker value={formData.end_time} onChange={val => setFormData({...formData, end_time: val})} />
                 </div>
               </div>
 
@@ -254,20 +248,33 @@ const CreateEvent = () => {
                   <Clock size={14} /> Registration Window
                 </h3>
                 <div className="flex flex-col gap-4">
+                  
+                  {/* Opens Block */}
                   <div className="bg-[#1f2937]/50 p-4 rounded-2xl border border-slate-700/50 space-y-3">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Opens</p>
-                    <div className="grid grid-cols-3 gap-3">
-                      <input required type="date" value={formData.reg_start_date} onChange={e => setFormData({...formData, reg_start_date: e.target.value})} className="col-span-2 w-full p-3 bg-[#111827] border border-slate-700 rounded-xl outline-none focus:border-blue-500 text-white text-sm scheme-dark" />
-                      <input required type="time" value={formData.reg_start_time} onChange={e => setFormData({...formData, reg_start_time: e.target.value})} className="col-span-1 w-full p-3 bg-[#111827] border border-slate-700 rounded-xl outline-none focus:border-blue-500 text-white text-sm scheme-dark" />
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="sm:col-span-2">
+                        <CustomDatePicker value={formData.reg_start_date} onChange={val => setFormData({...formData, reg_start_date: val})} />
+                      </div>
+                      <div className="sm:col-span-1">
+                        <CustomTimePicker value={formData.reg_start_time} onChange={val => setFormData({...formData, reg_start_time: val})} />
+                      </div>
                     </div>
                   </div>
+                  
+                  {/* Closes Block */}
                   <div className="bg-[#1f2937]/50 p-4 rounded-2xl border border-slate-700/50 space-y-3">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Closes</p>
-                    <div className="grid grid-cols-3 gap-3">
-                      <input required type="date" value={formData.reg_end_date} onChange={e => setFormData({...formData, reg_end_date: e.target.value})} className="col-span-2 w-full p-3 bg-[#111827] border border-slate-700 rounded-xl outline-none focus:border-blue-500 text-white text-sm scheme-dark" />
-                      <input required type="time" value={formData.reg_end_time} onChange={e => setFormData({...formData, reg_end_time: e.target.value})} className="col-span-1 w-full p-3 bg-[#111827] border border-slate-700 rounded-xl outline-none focus:border-blue-500 text-white text-sm scheme-dark" />
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="sm:col-span-2">
+                        <CustomDatePicker value={formData.reg_end_date} onChange={val => setFormData({...formData, reg_end_date: val})} />
+                      </div>
+                      <div className="sm:col-span-1">
+                        <CustomTimePicker value={formData.reg_end_time} onChange={val => setFormData({...formData, reg_end_time: val})} />
+                      </div>
                     </div>
                   </div>
+
                 </div>
               </div>
 
@@ -391,7 +398,7 @@ const CreateEvent = () => {
           </form>
         </div>
 
-        {/* PREVIEW SECTION (Mirrors the compact EventList card) */}
+        {/* PREVIEW SECTION */}
         <div className="space-y-6 lg:sticky lg:top-24">
            <div className="flex items-center gap-3 text-blue-500 mb-2">
              <Eye size={20}/>
@@ -400,13 +407,11 @@ const CreateEvent = () => {
            
            <div className="bg-[#0f172a] rounded-[2.5rem] border-2 border-blue-500/40 p-6 md:p-7 shadow-[0_0_30px_rgba(59,130,246,0.1)] text-left flex flex-col h-132.5">
               
-              {/* Preview Top Bar */}
               <div className="flex justify-between items-start mb-4 shrink-0">
                  <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-400 border border-blue-500/20 truncate max-w-35">{formData.school || 'SCHOOL'}</span>
                  <div className="flex items-center gap-1.5 text-blue-400/40 font-black text-[8px] uppercase shrink-0"><Layout size={12}/> LIVE PREVIEW</div>
               </div>
               
-              {/* Preview Image Slider */}
               <div className="relative w-full h-40 rounded-2xl overflow-hidden shrink-0 mb-4 group/slider border border-white/10 shadow-inner bg-slate-900">
                 <img 
                   src={previewImages[currentImgIndex]} 
@@ -414,6 +419,7 @@ const CreateEvent = () => {
                   className="w-full h-full object-cover transition-opacity duration-500 ease-in-out"
                 />
                 
+                {/* Fixed the linter warning here */}
                 <div className="absolute inset-0 bg-linear-to-t from-[#0f172a] via-transparent to-transparent opacity-80 pointer-events-none"></div>
                 
                 <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-md px-2 py-1 rounded-lg text-[8px] font-black text-white uppercase tracking-widest">
@@ -432,7 +438,6 @@ const CreateEvent = () => {
                 )}
               </div>
 
-              {/* Preview Details */}
               <div className="grow flex flex-col justify-start text-left gap-3">
                 <h4 className="text-2xl font-black uppercase italic text-white leading-[0.9] line-clamp-2 overflow-hidden shrink-0">
                   {formData.title || 'Event Title'}
@@ -450,11 +455,9 @@ const CreateEvent = () => {
                   </div>
                 </div>
 
-                {/* Preview Reg Window */}
                 <div className="pt-3 border-t border-slate-700/50 space-y-2 shrink-0">
                   <div className="flex items-center justify-between gap-2 text-blue-500 text-[9px] font-black uppercase tracking-widest">
                     <span className="flex items-center gap-2"><Timer size={12}/> Registration Window</span>
-                    {/* NEW: LIVE PREVIEW PRICE TAG */}
                     {formData.event_type === 'paid' && <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">₹{formData.price || '0'}</span>}
                   </div>
                   <div className="flex flex-col gap-1.5 text-[9px] font-bold text-slate-400 uppercase tracking-widest">
@@ -469,7 +472,6 @@ const CreateEvent = () => {
                   </div>
                 </div>
                 
-                {/* Fake Button */}
                 <div className="w-full py-3.5 mt-auto rounded-2xl font-black uppercase text-[9px] tracking-widest shrink-0 bg-blue-600/50 text-white text-center border border-blue-500/50 cursor-not-allowed">
                   Simulated Button
                 </div>
