@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../sbclient/supabaseClient';
-import { Menu, X, LogOut, Ticket, User, Calendar, Download, Shield, Share, PlusSquare } from 'lucide-react';
+import { Menu, X, LogOut, Ticket, User, Calendar, Download, Shield, Share, PlusSquare, Building, Flag } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 // --- NEW: GLOBAL CATCHER ---
@@ -16,11 +16,31 @@ const Navbar = ({ session }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState(globalDeferredPrompt); // Initialize with global
   const [showIOSModal, setShowIOSModal] = useState(false); 
+  const [userRole, setUserRole] = useState('student'); // NEW: Dynamic Role State
   const menuRef = useRef(null);
   const navigate = useNavigate();
 
   const user = session?.user ?? null;
   const isAdmin = user?.email?.includes('admin') || user?.email?.includes('staff@adypu.edu.in');
+
+  // NEW: Fetch user role on load safely
+  useEffect(() => {
+    let isMounted = true;
+    const fetchRole = async () => {
+      if (user?.email) {
+        const { data } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('email', user.email)
+          .single();
+        if (data && isMounted) {
+          setUserRole(data.role);
+        }
+      }
+    };
+    fetchRole();
+    return () => { isMounted = false; };
+  }, [user]);
 
   useEffect(() => {
     // If it fires late, catch it here
@@ -136,23 +156,43 @@ const Navbar = ({ session }) => {
                   {user ? (
                     <>
                       <MenuLink to="/events" icon={<Calendar size={18} className="text-blue-500"/>} label="Live Events" onClick={() => setIsOpen(false)} />
-                      {!isAdmin ? (
+                      
+                      {/* ROLE-BASED RENDERING */}
+                      {userRole === 'super_admin' || isAdmin ? (
+                        <MenuLink to="/admin" icon={<Shield size={18} className="text-blue-500"/>} label="Super Admin Panel" onClick={() => setIsOpen(false)} />
+                      ) : userRole === 'org_head' ? (
+                        <MenuLink to="/org/dashboard" icon={<Building className="text-indigo-500"/>} label="Organization HQ" onClick={() => setIsOpen(false)} />
+                      ) : (
                         <>
                           <MenuLink to="/my-tickets" icon={<Ticket size={18} className="text-blue-500"/>} label="Your Passes" onClick={() => setIsOpen(false)} />
                           <MenuLink to="/profile" icon={<User size={18} className="text-blue-500"/>} label="My Profile" onClick={() => setIsOpen(false)} />
+                          
+                          {/* NEW: Club Head Exclusive Button */}
+                          {userRole === 'club_head' && (
+                            <MenuLink to="/club/my-clubs" icon={<Flag size={18} className="text-pink-500"/>} label="Manage Your Clubs" onClick={() => setIsOpen(false)} />
+                          )}
                         </>
-                      ) : (
-                        <MenuLink to="/admin" icon={<Shield size={18} className="text-blue-500"/>} label="Admin Control Panel" onClick={() => setIsOpen(false)} />
                       )}
-                      <div className="px-6 py-3 mt-2 border-t border-white/5">
+                      
+                      <div className="px-6 py-3 mt-2 border-t border-white/5 flex flex-col gap-2">
                         <button onClick={handleLogout} className="w-full flex items-center gap-4 px-4 py-4 text-red-400 hover:bg-red-500/10 rounded-2xl font-black text-[10px] transition-all uppercase tracking-[0.2em]">
                           <LogOut size={18} /> Logout
                         </button>
+                        
+                        {/* HIDE IF ALREADY ORG HEAD OR ADMIN */}
+                        {userRole !== 'org_head' && userRole !== 'super_admin' && !isAdmin && (
+                          <Link to="/register-org" onClick={() => setIsOpen(false)} className="w-full flex items-center gap-4 px-4 py-4 text-emerald-400 hover:bg-emerald-500/10 rounded-2xl font-black text-[10px] transition-all uppercase tracking-[0.2em]">
+                            <Building size={18} /> Register Your Org
+                          </Link>
+                        )}
                       </div>
                     </>
                   ) : (
-                    <div className="px-4 mt-2 mb-2">
+                    <div className="px-4 mt-2 mb-2 flex flex-col gap-2">
                       <MenuLink to="/login" icon={<User size={18}/>} label="Student Login" onClick={() => setIsOpen(false)} primary />
+                      <Link to="/register-org" onClick={() => setIsOpen(false)} className="w-full flex items-center gap-4 px-8 py-4 text-emerald-400 hover:bg-emerald-500/10 rounded-2xl font-black text-[10px] transition-all uppercase tracking-[0.2em]">
+                        <Building size={18} /> Register Your Org
+                      </Link>
                     </div>
                   )}
                 </div>

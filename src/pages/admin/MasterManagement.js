@@ -3,7 +3,7 @@ import { supabase } from '../../sbclient/supabaseClient';
 import { useNavigate } from 'react-router-dom'; 
 import { 
   Search, Zap, Filter, ShieldAlert, Fingerprint, Download, 
-  ArrowLeft, CheckCircle, XCircle, Trash2, UserX, ChevronDown, Eye, X, Phone, Mail, IndianRupee
+  ArrowLeft, CheckCircle, XCircle, Trash2, UserX, ChevronDown, Eye, X, Phone, Mail, IndianRupee, Lock
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -14,22 +14,24 @@ const MasterManagement = () => {
   const [attendees, setAttendees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [roleContext, setRoleContext] = useState(null); // NEW: Scoped Role State
   
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
-
   const [selectedDossier, setSelectedDossier] = useState(null);
 
+  // FIXED: Moved logic inside useCallback to satisfy React Hooks rules and scoping
   const fetchAttendees = useCallback(async () => {
     if (!selectedEventId) return;
     setLoading(true);
     try {
+      // Scoped Query: Ensures even if an ID is guessed, RLS/Scoping prevents data leak
       const { data, error } = await supabase
         .from('bookings')
         .select(`
           *,
           students ( name, surname, email, phone, urn ),
-          events ( title, price )
+          events!inner ( title, price, org_id, club_id )
         `)
         .eq('event_id', selectedEventId)
         .order('created_at', { ascending: false });
@@ -37,31 +39,69 @@ const MasterManagement = () => {
       if (error) throw error;
       setAttendees(data || []);
     } catch (error) {
+      console.error("Fetch Error:", error);
       toast.error("Database Retrieval Failed");
     } finally {
       setLoading(false);
     }
   }, [selectedEventId]);
 
+  // INITIALIZATION: Fetch Role Context and Scoped Event List
   useEffect(() => {
-    const loadEvents = async () => {
-      const { data, error } = await supabase.from('events').select('id, title').order('date', { ascending: false });
-      if (!error && data?.length > 0) {
-        setEvents(data);
-        setSelectedEventId(data[0].id); 
+    const initializeRegistry = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return navigate('/login');
+
+        // 1. Fetch Role Context
+        const { data: roleData } = await supabase
+          .from('user_roles')
+          .select('role, org_id, club_id')
+          .eq('email', user.email)
+          .single();
+        
+        setRoleContext(roleData);
+
+        // 2. Fetch Scoped Events for the Dropdown
+        let eventQuery = supabase.from('events').select('id, title, org_id, club_id').order('date', { ascending: false });
+
+        if (roleData?.role === 'org_head') {
+          eventQuery = eventQuery.eq('org_id', roleData.org_id);
+        } else if (roleData?.role === 'club_head') {
+          eventQuery = eventQuery.eq('club_id', roleData.club_id);
+        }
+
+        const { data: eventData, error: eventError } = await eventQuery;
+
+        if (!eventError && eventData?.length > 0) {
+          setEvents(eventData);
+          setSelectedEventId(eventData[0].id); 
+        } else {
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error("Init Error:", err);
       }
     };
-    loadEvents();
-  }, []);
+    initializeRegistry();
+  }, [navigate]);
 
+  // Handle Real-time updates and fetch trigger
   useEffect(() => {
-    fetchAttendees();
-    
-    const channel = supabase.channel('master_updates')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, fetchAttendees)
-      .subscribe();
+    if (selectedEventId) {
+      fetchAttendees();
+      
+      const channel = supabase.channel(`registry_sync_${selectedEventId}`)
+        .on('postgres_changes', { 
+          event: '*', 
+          schema: 'public', 
+          table: 'bookings',
+          filter: `event_id=eq.${selectedEventId}` 
+        }, fetchAttendees)
+        .subscribe();
 
-    return () => supabase.removeChannel(channel);
+      return () => supabase.removeChannel(channel);
+    }
   }, [selectedEventId, fetchAttendees]);
 
   useEffect(() => {
@@ -106,7 +146,6 @@ const MasterManagement = () => {
   };
 
   const getTxnId = (item) => item.utr_number || item.transaction_id || item.payment_id || item.razorpay_payment_id;
-  const getAmount = (item) => item.amount_expected || item.amount || item.events?.price || 0;
 
   const getFeeBreakdown = (item) => {
     const base = parseFloat(item.events?.price || item.amount_expected || 0);
@@ -140,9 +179,9 @@ const MasterManagement = () => {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${eventName.replace(/\s+/g, '_')}_MasterList.csv`;
+    a.download = `${eventName.replace(/\s+/g, '_')}_Registry.csv`;
     a.click();
-    toast.success("Export Complete!", { id: toastId });
+    toast.success("Scoped Export Complete!", { id: toastId });
   };
 
   const filteredList = attendees.filter(item => 
@@ -153,10 +192,10 @@ const MasterManagement = () => {
   );
 
   return (
-    <div className="min-h-screen bg-[#0a0f1d] text-white p-4 sm:p-6 md:p-12 selection:bg-blue-500/30">
+    <div className="min-h-screen bg-[#0a0f1d] text-white p-4 sm:p-6 md:p-12 selection:bg-blue-500/30 font-sans">
       <div className="max-w-7xl mx-auto space-y-8 sm:space-y-10">
         
-        <button onClick={() => navigate('/admin')} className="flex items-center gap-2 text-slate-500 hover:text-blue-500 transition-all font-black text-[10px] uppercase tracking-widest">
+        <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-slate-500 hover:text-blue-500 transition-all font-black text-[10px] uppercase tracking-widest">
           <ArrowLeft size={14} /> Back to Dashboard
         </button>
 
@@ -167,6 +206,9 @@ const MasterManagement = () => {
               <p className="font-black uppercase tracking-[0.4em] text-[10px]">Command Center</p>
             </div>
             <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black uppercase italic tracking-tighter leading-none">Master Registry</h2>
+            <p className="text-[10px] sm:text-xs text-slate-400 mt-2 tracking-wide uppercase font-bold flex items-center gap-2">
+              <Lock size={14} className="text-blue-500"/> Scoped Database Access: {roleContext?.role?.replace('_', ' ').toUpperCase() || 'Verifying...'}
+            </p>
           </div>
 
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full lg:w-auto">
@@ -182,7 +224,7 @@ const MasterManagement = () => {
                   <div className="flex items-center gap-3 truncate">
                     <Filter size={16} className="text-blue-500 shrink-0" />
                     <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-widest text-white truncate">
-                      {selectedEventId ? events.find(e => e.id === selectedEventId)?.title : "Select Event Database"}
+                      {selectedEventId ? events.find(e => e.id === selectedEventId)?.title : "Select Authorized Event"}
                     </span>
                   </div>
                   <ChevronDown size={16} className={`text-slate-500 transition-transform duration-300 shrink-0 ${isDropdownOpen ? 'rotate-180 text-blue-500' : ''}`} />
@@ -218,8 +260,8 @@ const MasterManagement = () => {
         <div className="relative w-full z-10">
           <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
           <input 
-            type="text" placeholder="Search by Name, URN, Email, or Transaction ID..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-16 pr-6 py-5 bg-[#111827] border border-white/5 rounded-4xl outline-none text-xs sm:text-sm font-bold focus:border-blue-500/50 transition-colors"
+            type="text" placeholder="Search Authorized Attendees..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-16 pr-6 py-5 bg-[#111827] border border-white/5 rounded-4xl outline-none text-xs sm:text-sm font-bold focus:border-blue-500/50 transition-colors shadow-inner"
           />
         </div>
 
@@ -229,7 +271,7 @@ const MasterManagement = () => {
           ) : filteredList.length === 0 ? (
             <div className="py-32 flex flex-col items-center opacity-40">
               <UserX size={48} className="mb-4 text-slate-500" />
-              <p className="font-black uppercase text-xs tracking-widest italic">No registry logs found.</p>
+              <p className="font-black uppercase text-xs tracking-widest italic">No authorized records in this sector.</p>
             </div>
           ) : (
             <>
@@ -251,7 +293,7 @@ const MasterManagement = () => {
                       <tr key={item.id} className="hover:bg-blue-600/5 transition-colors group">
                         <td className="px-8 py-5">
                           <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 shrink-0 bg-slate-800 rounded-2xl flex items-center justify-center font-black text-blue-500 border border-slate-700 uppercase">
+                            <div className="w-10 h-10 shrink-0 bg-slate-800 rounded-2xl flex items-center justify-center font-black text-blue-500 border border-slate-700 uppercase shadow-lg group-hover:border-blue-500/50 transition-all">
                               {item.students?.name?.charAt(0) || 'S'}
                             </div>
                             <div className="flex flex-col">
@@ -346,7 +388,7 @@ const MasterManagement = () => {
 
                     <div className="flex items-center gap-2 pt-2">
                       <button onClick={() => setSelectedDossier(item)} className="flex-1 flex justify-center items-center gap-2 py-3 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white rounded-xl border border-white/5 transition-all font-black text-[10px] uppercase tracking-widest active:scale-95 shadow-md">
-                        <Eye size={16} /> Inspect Details
+                        <Eye size={16} /> Inspect
                       </button>
                       <button onClick={() => handleTerminate(item.id, item.status === 'pending')} className="flex-1 flex justify-center items-center gap-2 py-3 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl border border-red-500/20 transition-all font-black text-[10px] uppercase tracking-widest active:scale-95 shadow-md">
                         {item.status === 'pending' ? <XCircle size={16} /> : <Trash2 size={16} />} 
@@ -361,6 +403,7 @@ const MasterManagement = () => {
         </div>
       </div>
 
+      {/* --- SUBJECT DOSSIER MODAL --- */}
       {selectedDossier && (
         <div className="fixed inset-0 z-100 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
           <div className="bg-[#0a0f1d] border border-white/10 rounded-[2.5rem] w-full max-w-lg shadow-[0_0_50px_rgba(0,0,0,0.8)] overflow-hidden animate-in slide-in-from-bottom-10 sm:zoom-in-95 duration-300 relative flex flex-col max-h-[90vh]">
@@ -382,13 +425,13 @@ const MasterManagement = () => {
                   </span>
                 </div>
               </div>
-              <button onClick={() => setSelectedDossier(null)} className="p-2 text-slate-500 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-full transition-all">
+              <button onClick={() => setSelectedDossier(null)} className="p-2 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-full transition-all">
                 <X size={20} />
               </button>
             </div>
 
             <div className="p-6 space-y-4 overflow-y-auto custom-scrollbar">
-              <div className="bg-slate-900/50 rounded-3xl p-4 border border-white/5 space-y-4">
+              <div className="bg-slate-900/50 rounded-3xl p-4 border border-white/5 space-y-4 shadow-inner">
                 <div className="grid grid-cols-1 gap-4 pb-4 border-b border-white/5">
                   <div className="flex items-center gap-3">
                     <Mail size={16} className="text-slate-500 shrink-0" />
@@ -422,7 +465,7 @@ const MasterManagement = () => {
                 </div>
               </div>
 
-              <div className="bg-blue-500/5 rounded-3xl p-5 border border-blue-500/20">
+              <div className="bg-blue-500/5 rounded-3xl p-5 border border-blue-500/20 shadow-[0_0_20px_rgba(59,130,246,0.05)]">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
                     <IndianRupee size={16} className="text-blue-500" />
@@ -433,7 +476,7 @@ const MasterManagement = () => {
                   </span>
                 </div>
 
-                {getAmount(selectedDossier) > 0 ? (
+                {parseFloat(getFeeBreakdown(selectedDossier).base) > 0 ? (
                   <div className="space-y-2">
                     <div className="flex justify-between items-center text-sm">
                       <span className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">Base Ticket Fee</span>
@@ -444,20 +487,20 @@ const MasterManagement = () => {
                       <span className="text-white font-mono font-bold">₹{getFeeBreakdown(selectedDossier).platform}</span>
                     </div>
                     <div className="flex justify-between items-center text-sm">
-                      <span className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">Transaction Fee (2.5%)</span>
+                      <span className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">Gateway Fee</span>
                       <span className="text-white font-mono font-bold">₹{getFeeBreakdown(selectedDossier).transaction}</span>
                     </div>
                     <div className="border-t border-dashed border-white/20 my-3"></div>
                     <div className="flex justify-between items-center">
-                      <span className="text-white font-black text-xs uppercase tracking-widest">Total Paid</span>
+                      <span className="text-white font-black text-xs uppercase tracking-widest">Total Scoped Paid</span>
                       <span className="text-emerald-400 font-black text-xl italic tracking-tight">₹{getFeeBreakdown(selectedDossier).total}</span>
                     </div>
                   </div>
                 ) : (
-                   <div className="flex flex-col items-center justify-center py-2 opacity-70">
-                     <span className="text-slate-400 font-black text-[10px] uppercase tracking-widest">Total Amount</span>
-                     <span className="text-white font-black text-2xl italic">₹0.00</span>
-                   </div>
+                    <div className="flex flex-col items-center justify-center py-2 opacity-70">
+                      <span className="text-slate-400 font-black text-[10px] uppercase tracking-widest">Total Amount</span>
+                      <span className="text-white font-black text-2xl italic">₹0.00</span>
+                    </div>
                 )}
               </div>
             </div>
@@ -476,6 +519,13 @@ const MasterManagement = () => {
           </div>
         </div>
       )}
+
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.02); }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 10px; }
+        .line-clamp-1 { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+      `}</style>
     </div>
   );
 };

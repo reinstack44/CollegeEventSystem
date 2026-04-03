@@ -4,23 +4,31 @@ import { supabase } from '../../sbclient/supabaseClient';
 import { 
   LayoutDashboard, PlusCircle, ScanLine, 
   ArrowRight, Zap, ArrowLeft, Edit3,
-  Database
+  Database, Building 
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const checkAdmin = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        setLoading(false);
-      } else {
-        navigate('/adminlogin');
+    const verifySuperAdmin = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return navigate('/adminlogin');
+
+      // STRICT SUPER ADMIN CHECK USING YOUR CUSTOM EMAILS
+      const adminEmails = ['admin@nexuscircle.in', 'staff@adypu.edu.in', 'prathamesh@adypu.edu.in'];
+      const isAdmin = adminEmails.includes(user.email);
+      
+      if (!isAdmin) {
+        toast.error("UNAUTHORIZED: Primary Admin Access Only");
+        return navigate('/events');
       }
+      
+      setLoading(false);
     };
-    checkAdmin();
+    verifySuperAdmin();
   }, [navigate]);
 
   if (loading) return <div className="flex justify-center items-center h-screen bg-[#0a0f1d]"><Zap className="animate-pulse text-blue-600" size={48}/></div>;
@@ -48,12 +56,14 @@ const Dashboard = () => {
       </div>
 
       {/* ADMIN CONTROL CARDS */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6">
         <AdminCard to="/admin/create" icon={<PlusCircle className="text-green-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Create" desc="New Event." color="border-green-500" />
         <AdminCard to="/admin/events" icon={<Edit3 className="text-orange-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Manage Events" desc="Modify & Delete." color="border-orange-500" />
         <AdminCard to="/admin/scan" icon={<ScanLine className="text-blue-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Scanner" desc="QR Gate Control." color="border-blue-500" />
-        {/* FIXED NAVIGATION PATH BELOW */}
         <AdminCard to="/admin/master-registry" icon={<Database className="text-purple-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Database" desc="Control System." color="border-purple-500" /> 
+        
+        {/* NEW APPLICATIONS CARD USING YOUR NATIVE UI */}
+        <AdminCard to="/admin/applications" icon={<Building className="text-emerald-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Applications" desc="Org Approvals." color="border-emerald-500" /> 
       </div>
 
     </div>

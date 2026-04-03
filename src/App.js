@@ -22,11 +22,24 @@ import CreateEvent from './pages/admin/CreateEvent';
 import Scanner from './pages/admin/Scanner';
 import MasterManagement from './pages/admin/MasterManagement'; 
 import ManageEvents from './pages/admin/ManageEvents';
+import Applications from './pages/admin/Applications'; 
+
+// Org Head Pages
+import OrgDashboard from './pages/org/OrgDashboard';
+import ManageClubs from './pages/org/ManageClubs';
+
+// Club Head Pages
+import MyClubs from './pages/club/MyClubs';
+import ClubDashboard from './pages/club/ClubDashboard';
 
 // Legal Pages
 import Terms from './pages/legal/Terms';
 import Privacy from './pages/legal/Privacy';
 import Refunds from './pages/legal/Refunds';
+
+// Auth / Organization Pages
+import RegisterOrg from './pages/auth/RegisterOrg';
+import PendingApproval from './pages/auth/PendingApproval';
 
 function App() {
   const [session, setSession] = useState(null);
@@ -81,15 +94,26 @@ function App() {
             <Route path="/complete-registration" element={session ? <CompleteRegistration /> : <Navigate to="/" replace />} />
             <Route path="/reset-password" element={<ResetPassword />} />
 
-            {/* ADMIN ROUTES */}
+            {/* SUPER ADMIN ROUTES */}
             <Route path="/adminlogin" element={<AdminLogin />} />
             <Route path="/admin" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/admin/create" element={<ProtectedRoute><CreateEvent /></ProtectedRoute>} />
             <Route path="/admin/scan" element={<ProtectedRoute><Scanner /></ProtectedRoute>} />
             <Route path="/admin/events" element={<ProtectedRoute><ManageEvents /></ProtectedRoute>} />
-            
-            {/* Unified Master Database route */}
             <Route path="/admin/master-registry" element={<ProtectedRoute><MasterManagement /></ProtectedRoute>} />
+            <Route path="/admin/applications" element={<ProtectedRoute><Applications /></ProtectedRoute>} />
+
+            {/* ORG HEAD ROUTES */}
+            <Route path="/org/dashboard" element={<ProtectedRoute><OrgDashboard /></ProtectedRoute>} />
+            <Route path="/org/clubs" element={<ProtectedRoute><ManageClubs /></ProtectedRoute>} />
+
+            {/* CLUB HEAD ROUTES */}
+            <Route path="/club/my-clubs" element={<ProtectedRoute><MyClubs /></ProtectedRoute>} />
+            <Route path="/club/dashboard/:clubId" element={<ProtectedRoute><ClubDashboard /></ProtectedRoute>} />
+
+            {/* Organization Auth Routes */}
+            <Route path="/register-org" element={<RegisterOrg />} />
+            <Route path="/pending-approval" element={<PendingApproval />} />
 
             {/* Legal Pages Routes */}
             <Route path="/terms" element={<Terms />} />

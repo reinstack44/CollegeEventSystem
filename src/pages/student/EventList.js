@@ -5,7 +5,7 @@ import {
   Calendar, Clock, Search, Zap, 
   CheckCircle, MapPin, Timer, Info,
   ChevronLeft, ChevronRight, X, Loader2, Ticket, ShieldCheck,
-  CreditCard, Fingerprint, Download
+  CreditCard, Fingerprint, Download, Globe, Lock
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import html2canvas from 'html2canvas';
@@ -51,14 +51,17 @@ const EventList = () => {
   const fetchEvents = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
+      let userDomain = '';
       
       if (user) {
         const { data: profile } = await supabase.from('students').select('name, surname').eq('email', user.email).single();
         if (profile) setStudentName(`${profile.name || 'Student'} ${profile.surname || ''}`);
+        userDomain = '@' + user.email.split('@')[1]; 
       }
 
       const currentIso = now.toISOString();
 
+      // 1. Fetch Events normally (NO SQL JOIN to prevent Foreign Key crashes)
       const { data: eventData, error: eventError } = await supabase
         .from('events')
         .select('*')
@@ -67,9 +70,28 @@ const EventList = () => {
 
       if (eventError) throw eventError;
 
+      // 2. Fetch Organizations separately
+      const { data: orgData } = await supabase.from('organizations').select('id, domain');
+      
+      // Create a quick lookup map { org_id: '@domain.com' }
+      const orgMap = {};
+      if (orgData) {
+        orgData.forEach(org => { orgMap[org.id] = org.domain; });
+      }
+
+      // 3. Security Filter - Discovery Engine
+      const visibleEvents = (eventData || []).filter(event => {
+        if (event.is_open_to_all) return true; // Public events show for everyone
+        
+        // For internal events, check our Javascript map
+        const eventOrgDomain = orgMap[event.org_id];
+        return eventOrgDomain && eventOrgDomain === userDomain;
+      });
+
+      // 4. Fetch Bookings to determine ticket status
       const { data: bookingData } = await supabase.from('bookings').select('id, event_id, student_email, status');
 
-      const eventsWithMeta = (eventData || []).map(event => {
+      const eventsWithMeta = visibleEvents.map(event => {
         const eventBookings = bookingData?.filter(b => b.event_id === event.id) || [];
         const startTime = new Date(event.reg_start_timestamp);
         
@@ -95,7 +117,8 @@ const EventList = () => {
 
       setEvents(eventsWithMeta);
     } catch (error) {
-      toast.error("Discovery Failed");
+      console.error("Discovery Error:", error);
+      toast.error("Failed to load events. Please try refreshing.");
     } finally {
       setLoading(false);
     }
@@ -105,7 +128,6 @@ const EventList = () => {
     fetchEvents();
   }, [fetchEvents]);
 
-  // --- EXACT MATH HELPER ---
   const getDisplayAmount = (ticket) => {
     if (ticket.event_type === 'paid') {
       const ticketFee = Number(ticket.price || 0);
@@ -139,6 +161,7 @@ const EventList = () => {
       pdf.save(`NexusCircle_Pass_${selectedTicket.title.replace(/\s+/g, '_')}.pdf`);
       toast.success("PDF Download Complete!", { id: toastId });
     } catch (error) {
+      console.error("PDF Gen Error:", error);
       toast.error("Failed to generate PDF.", { id: toastId });
     } finally {
       setIsDownloading(false);
@@ -175,7 +198,8 @@ const EventList = () => {
         setTimeout(() => setIsFlipping(true), 300);
       }, 3500);
     } else {
-      toast.error("Booking failed: " + error.message);
+      console.error("Booking Error:", error);
+      toast.error("Booking failed. Please contact the administrator.");
     }
   };
 
@@ -230,6 +254,7 @@ const EventList = () => {
             }, 3500); 
             
           } else {
+            console.error("Booking Finalization Error:", bookingError);
             toast.error("Payment received, but ticket generation failed. Contact Admin.");
           }
         },
@@ -238,11 +263,15 @@ const EventList = () => {
       };
 
       const paymentObject = new window.Razorpay(options);
-      paymentObject.on('payment.failed', function (response) { toast.error(`Payment Failed: ${response.error.description}`); });
+      paymentObject.on('payment.failed', function (response) { 
+        console.error("Razorpay Error:", response.error);
+        toast.error("Payment Failed. Please verify your details and try again."); 
+      });
       paymentObject.open();
 
     } catch (error) {
-      toast.error(error.message || "Could not initiate payment. Please try again.");
+      console.error("Checkout Initialization Error:", error);
+      toast.error("Could not initiate payment. Please contact the administrator.");
     } finally {
       setProcessingPayment(false);
     }
@@ -403,9 +432,31 @@ const EventList = () => {
           <div ref={printRef} style={{ width: '794px', height: '1123px', backgroundColor: '#0a0f1d', padding: '40px', boxSizing: 'border-box' }}>
             <div style={{ width: '714px', height: '1043px', border: '4px solid #3b82f6', borderRadius: '32px', display: 'flex', flexDirection: 'column', backgroundColor: '#0a0f1d', boxSizing: 'border-box' }}>
               <div style={{ flex: '0 0 auto', padding: '50px 60px 30px 60px', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
-                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}><p style={{ margin: 0, fontSize: '18px', fontWeight: 'bold', color: '#3b82f6', letterSpacing: '3px', textTransform: 'uppercase' }}>{selectedTicket.school || 'EVENT'} • SECURITY PASS</p><div style={{ backgroundColor: '#1e293b', color: '#3b82f6', padding: '10px 20px', borderRadius: '12px', fontWeight: '900', fontSize: '14px', border: '1px solid rgba(59,130,246,0.3)' }}>VERIFIED ACCESS</div></div>
-                 <div style={{ marginBottom: '30px', width: '100%' }}><h1 style={{ margin: 0, fontSize: selectedTicket.title.length > 30 ? '34px' : '48px', fontWeight: '900', color: '#ffffff', textTransform: 'uppercase', fontStyle: 'italic', lineHeight: '38px', wordWrap: 'break-word', display: 'block' }}>{selectedTicket.title}</h1></div>
-                 <div style={{ display: 'flex', marginBottom: '25px', gap: '40px' }}><div style={{ flex: 1 }}><p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Date</p><p style={{ margin: 0, fontSize: '26px', fontWeight: 'bold', color: '#ffffff' }}>{selectedTicket.date}</p></div><div style={{ flex: 1 }}><p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Time</p><p style={{ margin: 0, fontSize: '26px', fontWeight: 'bold', color: '#ffffff' }}>{formatTime(selectedTicket.start_time)} - {selectedTicket.end_time ? formatTime(selectedTicket.end_time) : 'End'}</p></div></div>
+                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
+                   <p style={{ margin: 0, fontSize: '18px', fontWeight: 'bold', color: '#3b82f6', letterSpacing: '3px', textTransform: 'uppercase' }}>
+                     {selectedTicket.school || 'EVENT'} • SECURITY PASS
+                   </p>
+                   <div style={{ backgroundColor: '#1e293b', color: '#3b82f6', padding: '10px 20px', borderRadius: '12px', fontWeight: '900', fontSize: '14px', border: '1px solid rgba(59,130,246,0.3)' }}>
+                     VERIFIED ACCESS
+                   </div>
+                 </div>
+                 <div style={{ marginBottom: '30px', width: '100%' }}>
+                   <h1 style={{ margin: 0, fontSize: selectedTicket.title.length > 30 ? '34px' : '48px', fontWeight: '900', color: '#ffffff', textTransform: 'uppercase', fontStyle: 'italic', lineHeight: '38px', wordWrap: 'break-word', display: 'block' }}>
+                     {selectedTicket.title}
+                   </h1>
+                 </div>
+                 <div style={{ display: 'flex', marginBottom: '25px', gap: '40px' }}>
+                   <div style={{ flex: 1 }}>
+                     <p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Date</p>
+                     <p style={{ margin: 0, fontSize: '26px', fontWeight: 'bold', color: '#ffffff' }}>{selectedTicket.date}</p>
+                   </div>
+                   <div style={{ flex: 1 }}>
+                     <p style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>Time</p>
+                     <p style={{ margin: 0, fontSize: '26px', fontWeight: 'bold', color: '#ffffff' }}>
+                       {formatTime(selectedTicket.start_time)} - {selectedTicket.end_time ? formatTime(selectedTicket.end_time) : 'End'}
+                     </p>
+                   </div>
+                 </div>
                  
                  <div style={{ display: 'flex', marginBottom: '30px', gap: '40px' }}>
                     <div style={{ flex: 1 }}>
@@ -426,10 +477,15 @@ const EventList = () => {
                  </div>
               </div>
               <div style={{ height: '0', borderBottom: '4px dashed #3b82f6', margin: '0 40px' }}></div>
-              <div style={{ flex: '1 1 auto', backgroundColor: '#ffffff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px', boxSizing: 'border-box' }}>
+              <div style={{ flex: '1 1 auto', backgroundColor: '#ffffff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px', boxSizing: 'border-box', borderBottomLeftRadius: '28px', borderBottomRightRadius: '28px' }}>
                  <p style={{ margin: '0 0 10px 0', fontSize: '20px', fontWeight: '900', color: '#0a0f1d', textTransform: 'uppercase', letterSpacing: '8px' }}>ADMIT ONE</p>
-                 <div style={{ backgroundColor: '#ffffff', padding: '10px', borderRadius: '15px', border: '1px solid #e2e8f0' }}><QRCodeCanvas value={selectedTicket.bookingId || "error"} size={170} level="H" /></div>
-                 <div style={{ marginTop: '10px', textAlign: 'center' }}><p style={{ margin: '0 0 2px 0', fontSize: '11px', fontWeight: 'bold', color: '#94a3b8', textTransform: 'uppercase' }}>Secure Token ID</p><p style={{ margin: 0, fontSize: '12px', fontWeight: 'bold', color: '#0a0f1d', fontFamily: 'monospace' }}>{selectedTicket.bookingId}</p></div>
+                 <div style={{ backgroundColor: '#ffffff', padding: '10px', borderRadius: '15px', border: '1px solid #e2e8f0' }}>
+                   <QRCodeCanvas value={selectedTicket.bookingId || "error"} size={170} level="H" />
+                 </div>
+                 <div style={{ marginTop: '10px', textAlign: 'center' }}>
+                   <p style={{ margin: '0 0 2px 0', fontSize: '11px', fontWeight: 'bold', color: '#94a3b8', textTransform: 'uppercase' }}>Secure Token ID</p>
+                   <p style={{ margin: 0, fontSize: '12px', fontWeight: 'bold', color: '#0a0f1d', fontFamily: 'monospace' }}>{selectedTicket.bookingId}</p>
+                 </div>
               </div>
             </div>
           </div>
@@ -450,12 +506,6 @@ const EventList = () => {
               />
             </div>
           </div>
-
-          <div className="flex justify-center w-full">
-            <div className="bg-white rounded-2xl px-20 py-3.5 shadow-[0_10px_40px_rgba(0,0,0,0.4)] border border-white/10 flex items-center justify-center">
-              <img src="/adypu logo.png" alt="ADYPU Logo" className="h-10 md:h-12 object-contain" />
-            </div>
-          </div>
           
           <div className="flex items-center gap-2 p-1.5 bg-[#111827] border border-white/5 rounded-2xl w-fit self-center md:self-start">
             {['all', 'available', 'Booked'].map(s => (
@@ -466,17 +516,21 @@ const EventList = () => {
 
         <section className="space-y-8 text-left">
           <h2 className="text-2xl font-black uppercase italic flex items-center gap-3"><Zap className="text-yellow-500 fill-yellow-500" size={24}/> Registrations Open</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-            {filteredEvents.map(event => (
-              <FlipCard 
-                key={event.id} 
-                event={event} 
-                onBook={handleBook}
-                onFlip={() => setPoppedEvent(event)}
-                onViewTicket={handleViewTicket}
-              />
-            ))}
-          </div>
+          {filteredEvents.length === 0 ? (
+            <div className="text-center py-20 text-slate-500 font-bold uppercase tracking-widest text-sm">No events found matching your credentials.</div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+              {filteredEvents.map(event => (
+                <FlipCard 
+                  key={event.id} 
+                  event={event} 
+                  onBook={handleBook}
+                  onFlip={() => setPoppedEvent(event)}
+                  onViewTicket={handleViewTicket}
+                />
+              ))}
+            </div>
+          )}
         </section>
       </div>
 
@@ -711,8 +765,18 @@ const FlipCard = ({ event, onBook, onFlip, onViewTicket }) => {
         className={`relative w-full h-full bg-[#0f172a] rounded-[2.5rem] border-2 p-6 md:p-7 flex flex-col justify-start cursor-pointer transition-all duration-500 ${glowClass} hover:-translate-y-2`}
       >
         <div className="flex justify-between items-start mb-4 shrink-0">
-          <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-400 border border-blue-500/20 truncate max-w-45">{event.school}</span>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-1">
+            <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-400 border border-blue-500/20 truncate max-w-45">{event.school}</span>
+            
+            {/* NEW: VISIBILITY BADGE */}
+            {event.is_open_to_all ? (
+              <span className="px-2 py-0.5 rounded text-[7px] font-black uppercase tracking-widest text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 w-fit flex items-center gap-1"><Globe size={8}/> Public Event</span>
+            ) : (
+              <span className="px-2 py-0.5 rounded text-[7px] font-black uppercase tracking-widest text-rose-400 bg-rose-500/10 border border-rose-500/20 w-fit flex items-center gap-1"><Lock size={8}/> Internal Only</span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 mt-1">
              <Info size={14} className="text-slate-500 hover:text-blue-400 transition-colors"/> 
              {event.isCheckedIn ? (
                <div className="flex items-center gap-1 text-indigo-400 font-black text-[8px] uppercase shrink-0"><CheckCircle size={12}/> Checked In</div>

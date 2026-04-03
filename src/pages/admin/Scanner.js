@@ -4,7 +4,7 @@ import { supabase } from '../../sbclient/supabaseClient';
 import { useNavigate } from 'react-router-dom';
 import { 
   History, ScanLine, Flashlight, FlashlightOff, ShieldCheck, 
-  RefreshCw, ArrowLeft, Users, CheckCircle2, AlertCircle 
+  RefreshCw, ArrowLeft, Users, CheckCircle2, AlertCircle, Lock
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -19,18 +19,9 @@ const Scanner = () => {
   const audioCtx = useRef(null);
   const scannerRef = useRef(null);
   const isComponentMounted = useRef(true);
+  const userRoleRef = useRef(null); // NEW: Store role context without triggering re-renders
 
   // --- LOGIC SECTION ---
-
-  const fetchInitialCount = async () => {
-    const today = new Date().toISOString().split('T')[0];
-    const { count, error } = await supabase
-      .from('bookings')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'checked_in')
-      .gte('created_at', today);
-    if (!error && isComponentMounted.current) setTotalScanned(count || 0);
-  };
 
   const triggerFeedback = useCallback((type) => {
     if (audioCtx.current) {
@@ -62,20 +53,41 @@ const Scanner = () => {
     try {
       const { data, error } = await supabase
         .from('bookings')
-        .select('*, events(title), students(name, surname)')
+        .select('*, events(title, org_id, club_id), students(name, surname)')
         .eq('id', identifier)
         .single();
 
       if (error || !data) {
         triggerFeedback('error'); 
         setScanResult({ type: 'error', message: 'INVALID CREDENTIALS' });
-      } else if (data.status === 'checked_in') {
+        return;
+      } 
+      
+      // NEW: SECURITY SCOPE CHECK
+      const roleCtx = userRoleRef.current;
+      const isSuperAdmin = roleCtx?.role === 'super_admin';
+      const isMyOrg = roleCtx?.org_id === data.events?.org_id;
+      const isMyClub = roleCtx?.club_id === data.events?.club_id;
+
+      let hasAuthority = false;
+      if (isSuperAdmin || !roleCtx) hasAuthority = true;
+      else if (roleCtx.role === 'org_head' && isMyOrg) hasAuthority = true;
+      else if (roleCtx.role === 'club_head' && isMyClub) hasAuthority = true;
+
+      if (!hasAuthority) {
+        triggerFeedback('error');
+        setScanResult({ type: 'error', message: 'UNAUTHORIZED SECTOR' });
+        return;
+      }
+
+      // Proceed with Check-in
+      if (data.status === 'checked_in') {
         triggerFeedback('error'); 
         setScanResult({ type: 'warning', message: 'ALREADY VERIFIED' });
       } else {
         const { error: updateError } = await supabase
           .from('bookings')
-          .update({ status: 'checked_in' })
+          .update({ status: 'checked_in', checked_in_at: new Date().toISOString() })
           .eq('id', data.id);
 
         if (updateError) throw updateError;
@@ -132,9 +144,42 @@ const Scanner = () => {
 
   useEffect(() => {
     isComponentMounted.current = true;
-    fetchInitialCount();
+    
+    // NEW: Initialize system with Role context and Scoped Counts
+    const initSystem = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: roleData } = await supabase
+          .from('user_roles')
+          .select('role, org_id, club_id')
+          .eq('email', user.email)
+          .single();
+        userRoleRef.current = roleData;
+      }
+
+      const today = new Date().toISOString().split('T')[0];
+      
+      // Scoped Count Query
+      let countQuery = supabase
+        .from('bookings')
+        .select('*, events!inner(org_id, club_id)', { count: 'exact', head: true })
+        .eq('status', 'checked_in')
+        .gte('created_at', today);
+
+      if (userRoleRef.current?.role === 'org_head') {
+        countQuery = countQuery.eq('events.org_id', userRoleRef.current.org_id);
+      } else if (userRoleRef.current?.role === 'club_head') {
+        countQuery = countQuery.eq('events.club_id', userRoleRef.current.club_id);
+      }
+
+      const { count, error } = await countQuery;
+      if (!error && isComponentMounted.current) setTotalScanned(count || 0);
+    };
+
+    initSystem();
     audioCtx.current = new (window.AudioContext || window.webkitAudioContext)();
     startAutomatedScanner();
+    
     return () => { 
       isComponentMounted.current = false;
       stopScanner(); 
@@ -154,12 +199,13 @@ const Scanner = () => {
       {/* TOP NAVIGATION */}
       <div className="w-full max-w-lg flex items-center justify-between py-4 mb-6">
         <button 
-          onClick={() => navigate('/admin')} 
+          onClick={() => navigate(-1)} 
           className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-xs font-semibold tracking-wide uppercase"
         >
           <ArrowLeft size={18} /> Exit Scanner
         </button>
         <div className="flex items-center gap-2 bg-blue-500/10 px-3 py-1 rounded-full border border-blue-500/20">
+          <Lock size={10} className="text-blue-400" />
           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
           <span className="text-[10px] font-bold text-blue-400 tracking-widest uppercase">System Online</span>
         </div>
@@ -187,14 +233,15 @@ const Scanner = () => {
 
       {/* SCANNER VIEWPORT */}
       <div className={`relative w-full max-w-md aspect-square rounded-[2.5rem] border-4 transition-all duration-500 overflow-hidden bg-black shadow-2xl ${
-        scanResult?.type === 'success' ? 'border-green-500 shadow-green-500/20' : 
-        scanResult?.type === 'error' ? 'border-red-500 shadow-red-500/20' :
-        'border-[#1E293B] shadow-blue-900/20'
+        scanResult?.type === 'success' ? 'border-green-500 shadow-[0_0_30px_rgba(34,197,94,0.3)]' : 
+        scanResult?.type === 'error' ? 'border-red-500 shadow-[0_0_30px_rgba(239,68,68,0.3)]' :
+        scanResult?.type === 'warning' ? 'border-yellow-500 shadow-[0_0_30px_rgba(234,179,8,0.3)]' :
+        'border-[#1E293B] shadow-[0_0_40px_rgba(30,58,138,0.2)]'
       }`}>
         
         <div id="reader" className="w-full h-full"></div>
         
-        {/* SCANNER OVERLAY (Fixed to bg-linear-to-r) */}
+        {/* SCANNER OVERLAY */}
         <div className="absolute inset-0 pointer-events-none z-10">
           <div className="absolute inset-12 border-2 border-white/10 rounded-3xl"></div>
           <div className="absolute top-24 left-1/2 -translate-x-1/2 w-48 h-0.5 bg-linear-to-r from-transparent via-blue-400 to-transparent shadow-[0_0_15px_#60a5fa] animate-scan-line"></div>
@@ -235,7 +282,9 @@ const Scanner = () => {
       <div className="mt-8 h-20 flex items-center justify-center w-full px-4">
         {scanResult ? (
           <div className={`flex items-center gap-3 px-6 py-4 rounded-2xl border-2 animate-in fade-in zoom-in duration-300 ${
-            scanResult.type === 'success' ? 'bg-green-500/10 border-green-500/50 text-green-400' : 'bg-red-500/10 border-red-500/50 text-red-400'
+            scanResult.type === 'success' ? 'bg-green-500/10 border-green-500/50 text-green-400' : 
+            scanResult.type === 'warning' ? 'bg-yellow-500/10 border-yellow-500/50 text-yellow-500' :
+            'bg-red-500/10 border-red-500/50 text-red-400'
           }`}>
             {scanResult.type === 'success' ? <CheckCircle2 size={24} /> : <AlertCircle size={24} />}
             <span className="text-lg font-bold tracking-tight uppercase">

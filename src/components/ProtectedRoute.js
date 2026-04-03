@@ -5,20 +5,15 @@ import { Zap } from 'lucide-react';
 
 const ProtectedRoute = ({ children }) => {
   const [loading, setLoading] = useState(true);
-  const [authorized, setAuthorized] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
-    const checkAdmin = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      // Authorized Admin/Staff Emails
-      const adminEmails = ['admin@nexuscircle.in', 'staff@adypu.edu.in', 'prathamesh@adypu.edu.in'];
-      
-      if (user && adminEmails.includes(user.email)) {
-        setAuthorized(true);
-      }
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setIsAuthenticated(!!session);
       setLoading(false);
     };
-    checkAdmin();
+    checkAuth();
   }, []);
 
   if (loading) {
@@ -29,8 +24,9 @@ const ProtectedRoute = ({ children }) => {
     );
   }
 
-  // If not an admin, send to admin login
-  return authorized ? children : <Navigate to="/adminlogin" replace />;
+  // If they have no session at all, send them to the login
+  // Otherwise, let the individual components verify their specific roles!
+  return isAuthenticated ? children : <Navigate to="/login" replace />;
 };
 
 export default ProtectedRoute;

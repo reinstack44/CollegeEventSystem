@@ -6,10 +6,11 @@ import CustomDatePicker from '../../components/CustomDatePicker';
 import toast from 'react-hot-toast';
 import { 
   Zap, ShieldCheck, AlignLeft, Ticket, 
-  AlertCircle, ArrowLeft, Bold, Italic, 
+  ArrowLeft, Bold, Italic, 
   AlignJustify, Type, Save, Eye, Layout,
   Calendar, MapPin, Clock, Building, ChevronDown,
-  UploadCloud, X, Image as ImageIcon, ChevronLeft, ChevronRight, Timer
+  UploadCloud, X, Image as ImageIcon, ChevronLeft, ChevronRight, Timer,
+  Globe, Lock
 } from 'lucide-react';
 
 const ADYPU_SCHOOLS = [
@@ -31,6 +32,9 @@ const CreateEvent = () => {
   const editId = searchParams.get('edit');
   const [loading, setLoading] = useState(false);
   
+  // NEW: Store creator's scoped context
+  const [creatorContext, setCreatorContext] = useState({ role: null, org_id: null, club_id: null });
+
   const [selectedImages, setSelectedImages] = useState([]);
   const [currentImgIndex, setCurrentImgIndex] = useState(0);
   
@@ -42,8 +46,25 @@ const CreateEvent = () => {
     reg_end_date: '', reg_end_time: '23:59',
     event_type: 'free',
     price: '',
-    merchant_upi: ''
+    merchant_upi: '',
+    is_open_to_all: true // NEW: Visibility Toggle
   });
+
+  // Automatically fetch creator's role and scoping IDs
+  useEffect(() => {
+    const fetchContext = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data } = await supabase
+          .from('user_roles')
+          .select('role, org_id, club_id')
+          .eq('email', user.email)
+          .single();
+        if (data) setCreatorContext(data);
+      }
+    };
+    fetchContext();
+  }, []);
 
   const applyFormatting = (tag) => {
     const textarea = document.getElementById('desc-area');
@@ -81,7 +102,8 @@ const CreateEvent = () => {
             reg_end_time: end.toTimeString().slice(0, 5),
             event_type: data.event_type || 'free',
             price: data.price || '',
-            merchant_upi: data.merchant_upi || ''
+            merchant_upi: data.merchant_upi || '',
+            is_open_to_all: data.is_open_to_all ?? true
           });
           if (data.images && data.images.length > 0) {
             setSelectedImages(data.images.map(url => ({ file: null, url })));
@@ -150,7 +172,11 @@ const CreateEvent = () => {
         images: finalImageUrls,
         event_type: formData.event_type,
         price: formData.event_type === 'paid' ? Number(formData.price) : 0,
-        merchant_upi: formData.event_type === 'paid' ? formData.merchant_upi : null
+        merchant_upi: formData.event_type === 'paid' ? formData.merchant_upi : null,
+        is_open_to_all: formData.is_open_to_all,
+        // NEW: Automatically scope the event to the creator's org/club
+        org_id: creatorContext.org_id,
+        club_id: creatorContext.club_id
       };
 
       const { error } = editId 
@@ -160,9 +186,10 @@ const CreateEvent = () => {
       if (error) throw error;
 
       toast.success(editId ? "Transmission Updated!" : "Mission Published!", { id: loadToast });
-      navigate('/admin');
+      navigate(-1); // Return to whichever dashboard they came from
     } catch (error) {
-      toast.error(`Operation Failed: ${error.message}`, { id: loadToast });
+      console.error("Event Creation Error:", error);
+      toast.error("Operation Failed. Please contact the administrator.", { id: loadToast });
     } finally {
       setLoading(false);
     }
@@ -173,7 +200,7 @@ const CreateEvent = () => {
   return (
     <div className="min-h-screen bg-[#0a0f1d] flex flex-col items-center p-4">
       <div className="w-full max-w-7xl mb-4 flex justify-start">
-        <button onClick={() => navigate('/admin')} className="flex items-center gap-2 text-slate-500 hover:text-blue-500 transition-all font-black text-[10px] uppercase tracking-widest">
+        <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-slate-500 hover:text-blue-500 transition-all font-black text-[10px] uppercase tracking-widest">
           <ArrowLeft size={14} /> Back to Dashboard
         </button>
       </div>
@@ -190,6 +217,40 @@ const CreateEvent = () => {
           <form onSubmit={handleSubmit} className="flex flex-col grow overflow-hidden">
             <div className="grow overflow-y-auto p-8 space-y-6 custom-scrollbar">
               
+              {/* NEW: VISIBILITY TOGGLE */}
+              <div className="space-y-4 text-left p-5 bg-purple-900/10 border border-purple-500/20 rounded-3xl transition-all">
+                <div className="flex justify-between items-center">
+                  <label className="text-[10px] font-black text-purple-500 uppercase tracking-widest ml-2 flex items-center gap-2">
+                    <Globe size={14} /> Event Visibility
+                  </label>
+                  <div className="flex bg-[#1f2937] rounded-xl p-1">
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, is_open_to_all: true })}
+                      className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 ${
+                        formData.is_open_to_all ? 'bg-purple-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'
+                      }`}
+                    >
+                      <Globe size={12}/> Public
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, is_open_to_all: false })}
+                      className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 ${
+                        !formData.is_open_to_all ? 'bg-rose-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'
+                      }`}
+                    >
+                      <Lock size={12}/> Internal Only
+                    </button>
+                  </div>
+                </div>
+                {!formData.is_open_to_all && (
+                  <p className="text-[10px] text-rose-400 font-bold px-2 animate-in fade-in slide-in-from-top-1">
+                    * This event will be hidden from the public feed. Only users verified with your Organization's domain can discover and book this event.
+                  </p>
+                )}
+              </div>
+
               {/* Row 1: Title & School */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
                 <div className="space-y-2">
@@ -197,20 +258,19 @@ const CreateEvent = () => {
                   <input required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} placeholder="Event Name" className="w-full p-4 bg-[#1f2937] border border-slate-700 rounded-2xl outline-none focus:border-blue-500 text-white text-sm" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2 flex items-center gap-2"><Building size={14} /> School/Department</label>
-                  <div className="relative">
-                    <select 
-                      required 
-                      value={formData.school} 
-                      onChange={e => setFormData({...formData, school: e.target.value})} 
-                      className="w-full p-4 pr-10 bg-[#1f2937] border border-slate-700 rounded-2xl outline-none focus:border-blue-500 text-white text-sm appearance-none cursor-pointer truncate"
-                    >
-                      {ADYPU_SCHOOLS.map((school, index) => (
-                        <option key={index} value={school}>{school}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
-                  </div>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2 flex items-center gap-2"><Building size={14} /> Faction / Banner</label>
+                  {creatorContext.role === 'super_admin' ? (
+                    <div className="relative">
+                      <select required value={formData.school} onChange={e => setFormData({...formData, school: e.target.value})} className="w-full p-4 pr-10 bg-[#1f2937] border border-slate-700 rounded-2xl outline-none focus:border-blue-500 text-white text-sm appearance-none cursor-pointer truncate">
+                        {ADYPU_SCHOOLS.map((school, index) => (
+                          <option key={index} value={school}>{school}</option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
+                    </div>
+                  ) : (
+                    <input required value={formData.school} onChange={e => setFormData({...formData, school: e.target.value})} placeholder="e.g. Robotics Club" className="w-full p-4 bg-[#1f2937] border border-slate-700 rounded-2xl outline-none focus:border-blue-500 text-white text-sm" />
+                  )}
                 </div>
               </div>
 
@@ -248,8 +308,6 @@ const CreateEvent = () => {
                   <Clock size={14} /> Registration Window
                 </h3>
                 <div className="flex flex-col gap-4">
-                  
-                  {/* Opens Block */}
                   <div className="bg-[#1f2937]/50 p-4 rounded-2xl border border-slate-700/50 space-y-3">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Opens</p>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -262,7 +320,6 @@ const CreateEvent = () => {
                     </div>
                   </div>
                   
-                  {/* Closes Block */}
                   <div className="bg-[#1f2937]/50 p-4 rounded-2xl border border-slate-700/50 space-y-3">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Closes</p>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -274,11 +331,10 @@ const CreateEvent = () => {
                       </div>
                     </div>
                   </div>
-
                 </div>
               </div>
 
-              {/* NEW ROW: MISSION ECONOMY (FREE VS PAID) */}
+              {/* MISSION ECONOMY */}
               <div className="space-y-4 text-left p-5 bg-emerald-900/10 border border-emerald-500/20 rounded-3xl transition-all">
                 <div className="flex justify-between items-center">
                   <label className="text-[10px] font-black text-emerald-500 uppercase tracking-widest ml-2 flex items-center gap-2">
@@ -335,7 +391,6 @@ const CreateEvent = () => {
                   <ImageIcon size={14} /> Event Imagery (Max 10)
                 </label>
                 
-                {/* Drag & Drop Box */}
                 <div className="relative group bg-[#111827] border-2 border-dashed border-slate-700 hover:border-blue-500 rounded-2xl p-6 transition-all text-center cursor-pointer">
                   <input 
                     type="file" 
@@ -348,7 +403,6 @@ const CreateEvent = () => {
                   <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Tap or Drop Images</p>
                 </div>
 
-                {/* Image Thumbnails */}
                 {selectedImages.length > 0 && (
                   <div className="flex flex-wrap gap-3 pt-2">
                     {selectedImages.map((img, idx) => (
@@ -408,7 +462,10 @@ const CreateEvent = () => {
            <div className="bg-[#0f172a] rounded-[2.5rem] border-2 border-blue-500/40 p-6 md:p-7 shadow-[0_0_30px_rgba(59,130,246,0.1)] text-left flex flex-col h-132.5">
               
               <div className="flex justify-between items-start mb-4 shrink-0">
-                 <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-400 border border-blue-500/20 truncate max-w-35">{formData.school || 'SCHOOL'}</span>
+                 <div className="flex flex-col gap-1">
+                   <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-400 border border-blue-500/20 truncate max-w-35">{formData.school || 'FACTION'}</span>
+                   {!formData.is_open_to_all && <span className="px-2 py-0.5 rounded text-[7px] font-black uppercase tracking-widest text-rose-400 bg-rose-500/10 border border-rose-500/20 w-fit flex items-center gap-1"><Lock size={8}/> Internal Only</span>}
+                 </div>
                  <div className="flex items-center gap-1.5 text-blue-400/40 font-black text-[8px] uppercase shrink-0"><Layout size={12}/> LIVE PREVIEW</div>
               </div>
               
@@ -419,7 +476,6 @@ const CreateEvent = () => {
                   className="w-full h-full object-cover transition-opacity duration-500 ease-in-out"
                 />
                 
-                {/* Fixed the linter warning here */}
                 <div className="absolute inset-0 bg-linear-to-t from-[#0f172a] via-transparent to-transparent opacity-80 pointer-events-none"></div>
                 
                 <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-md px-2 py-1 rounded-lg text-[8px] font-black text-white uppercase tracking-widest">
@@ -478,12 +534,6 @@ const CreateEvent = () => {
               </div>
            </div>
            
-           <div className="p-6 bg-blue-500/5 border border-blue-500/10 rounded-3xl">
-              <p className="text-[9px] font-bold text-slate-500 leading-relaxed">
-                <AlertCircle size={10} className="inline mr-1 mb-0.5 text-blue-400"/>
-                NOTE: Images uploaded here will be beamed directly to your storage bucket and linked to the event payload.
-              </p>
-           </div>
         </div>
 
       </div>

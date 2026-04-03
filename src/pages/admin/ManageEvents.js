@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../sbclient/supabaseClient';
 import { 
-  Search, Edit3, Trash2, Zap, ArrowLeft, Activity, CalendarX
+  Search, Edit3, Trash2, Zap, ArrowLeft, Activity, CalendarX,
+  ShieldAlert, Globe, Lock
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -12,24 +13,47 @@ const ManageEvents = () => {
   const [events, setEvents] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // FIXED: Moved fetchEvents inside useEffect to resolve the ESLint warning
   useEffect(() => {
-    fetchEvents();
-  }, []);
+    const fetchEvents = async () => {
+      setLoading(true);
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return navigate('/login');
 
-  const fetchEvents = async () => {
-    setLoading(true);
-    const { data: eventData, error: eventError } = await supabase
-      .from('events')
-      .select('*')
-      .order('date', { ascending: true });
-    
-    if (eventError) {
-      toast.error("Database Link Failure");
-    } else {
-      setEvents(eventData || []);
-    }
-    setLoading(false);
-  };
+        // Fetch user role context
+        const { data: roleData } = await supabase
+          .from('user_roles')
+          .select('role, org_id, club_id')
+          .eq('email', user.email)
+          .single();
+
+        // Scope the query dynamically based on role
+        let query = supabase.from('events').select('*').order('date', { ascending: true });
+
+        if (roleData?.role === 'org_head') {
+          query = query.eq('org_id', roleData.org_id);
+        } else if (roleData?.role === 'club_head') {
+          query = query.eq('club_id', roleData.club_id);
+        }
+
+        const { data: eventData, error: eventError } = await query;
+        
+        if (eventError) {
+          toast.error("Database Link Failure");
+        } else {
+          setEvents(eventData || []);
+        }
+      } catch (error) {
+        console.error(error);
+        toast.error("Security lockout: Failed to load events.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchEvents();
+  }, [navigate]);
 
   const handleDeleteEvent = async (id, title) => {
     toast((t) => (
@@ -66,7 +90,7 @@ const ManageEvents = () => {
     <div className="min-h-screen bg-[#0a0f1d] text-white p-4 sm:p-6 md:p-12 selection:bg-blue-500/30">
       <div className="max-w-5xl mx-auto space-y-8 sm:space-y-10">
         
-        <button onClick={() => navigate('/admin')} className="flex items-center gap-2 text-slate-500 hover:text-blue-500 transition-all font-black text-[10px] uppercase tracking-widest">
+        <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-slate-500 hover:text-blue-500 transition-all font-black text-[10px] uppercase tracking-widest">
           <ArrowLeft size={14} /> Back to Dashboard
         </button>
 
@@ -77,6 +101,9 @@ const ManageEvents = () => {
               <p className="font-black uppercase tracking-[0.4em] text-[10px]">Modification Center</p>
             </div>
             <h2 className="text-3xl sm:text-4xl md:text-5xl font-black uppercase italic tracking-tighter leading-none">Manage Events</h2>
+            <p className="text-[10px] sm:text-xs text-slate-400 mt-2 tracking-wide uppercase font-bold flex items-center gap-2">
+              <ShieldAlert size={14} className="text-blue-500"/> Managing Authorized Deployments Only
+            </p>
           </div>
 
           <div className="relative w-full md:w-80 shrink-0">
@@ -101,7 +128,17 @@ const ManageEvents = () => {
               {filteredEvents.map((event) => (
                 <div key={event.id} className="flex flex-col sm:flex-row sm:items-center justify-between bg-slate-900/50 p-5 sm:p-6 rounded-2xl sm:rounded-3xl border border-white/5 hover:border-blue-500/30 transition-all gap-4 group">
                   <div className="w-full">
-                    <span className="text-[9px] sm:text-[10px] font-black text-blue-500 uppercase tracking-widest">{event.school}</span>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-[9px] sm:text-[10px] font-black text-blue-500 uppercase tracking-widest">{event.school}</span>
+                      
+                      {event.is_open_to_all !== undefined && (
+                        event.is_open_to_all ? (
+                          <span className="flex items-center gap-1 px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-md text-[7px] font-black uppercase tracking-widest"><Globe size={8}/> Public</span>
+                        ) : (
+                          <span className="flex items-center gap-1 px-2 py-0.5 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded-md text-[7px] font-black uppercase tracking-widest"><Lock size={8}/> Internal</span>
+                        )
+                      )}
+                    </div>
                     <h4 className="text-lg sm:text-xl font-black text-white uppercase italic leading-tight mt-1 group-hover:text-blue-400 transition-colors">{event.title}</h4>
                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-2">
                       {new Date(event.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
