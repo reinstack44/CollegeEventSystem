@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../../sbclient/supabaseClient';
 import { 
   LayoutDashboard, PlusCircle, ScanLine, 
   ArrowRight, Zap, ArrowLeft, Edit3,
-  Database, Building, Users, Flag
+  Database, Building, Users, Flag, ChevronDown
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -16,6 +16,21 @@ const Dashboard = () => {
   // Context state for Club Heads managing multiple clubs
   const [myClubs, setMyClubs] = useState([]);
   const [activeClubId, setActiveClubId] = useState(localStorage.getItem('active_club_id'));
+
+  // CUSTOM DROPDOWN STATE
+  const [isClubDropdownOpen, setIsClubDropdownOpen] = useState(false);
+  const clubDropdownRef = useRef(null);
+
+  // Handle click outside for Custom Dropdown
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (clubDropdownRef.current && !clubDropdownRef.current.contains(event.target)) {
+        setIsClubDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     const verifyAdmin = async () => {
@@ -39,7 +54,7 @@ const Dashboard = () => {
         else if (isClubHead) role = 'club_head';
 
         if (role === 'student') {
-          toast.error("UNAUTHORIZED: Command Access Only");
+          toast.error("UNAUTHORIZED: Admin Access Only");
           return navigate('/events');
         }
 
@@ -70,14 +85,14 @@ const Dashboard = () => {
     verifyAdmin();
   }, [navigate]);
 
-  const handleWorkspaceSwitch = (e) => {
-    const clubId = e.target.value;
+  const handleWorkspaceSwitch = (clubId) => {
     const selectedClub = myClubs.find(c => c.id === clubId);
     if (selectedClub) {
       localStorage.setItem('active_club_id', selectedClub.id);
       localStorage.setItem('active_club_name', selectedClub.name);
       setActiveClubId(selectedClub.id);
-      toast.success(`Workspace shifted to ${selectedClub.name}`);
+      setIsClubDropdownOpen(false);
+      toast.success(`Active club set to ${selectedClub.name}`);
     }
   };
 
@@ -103,27 +118,48 @@ const Dashboard = () => {
           </div>
           <div>
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-black text-white tracking-tight uppercase italic leading-none">
-              {userRole === 'super_admin' ? 'Admin Dashboard' : userRole === 'org_head' ? 'Org Headquarters' : 'Commander Launchpad'}
+              {userRole === 'super_admin' ? 'Admin Dashboard' : userRole === 'org_head' ? 'Org Dashboard' : 'Club Dashboard'}
             </h2>
             <p className="text-slate-500 font-medium text-[10px] sm:text-sm mt-1 sm:mt-2 uppercase tracking-wider">
-              {userRole === 'super_admin' ? 'Primary Management Launchpad' : userRole === 'org_head' ? 'Organization Control Center' : 'Club Command Module'}
+              {userRole === 'super_admin' ? 'Primary Management Console' : userRole === 'org_head' ? 'Organization Control Center' : 'Club Management Module'}
             </p>
           </div>
         </div>
 
         {/* WORKSPACE SWITCHER (For Club Heads only) */}
         {userRole === 'club_head' && myClubs.length > 0 && (
-          <div className="flex items-center gap-3 bg-[#111827] border border-slate-800 p-3 rounded-2xl shadow-lg shrink-0">
+          <div className="flex items-center gap-3 bg-[#111827] border border-slate-800 p-3 rounded-2xl shadow-lg shrink-0 relative z-50">
             <div className="p-2 bg-pink-500/10 rounded-lg"><Flag className="text-pink-500 w-4 h-4"/></div>
-            <div className="flex flex-col">
-              <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Active Workspace</span>
-              <select 
-                value={activeClubId} 
-                onChange={handleWorkspaceSwitch}
-                className="bg-transparent text-white font-bold text-xs outline-none cursor-pointer w-full max-w-37.5 truncate appearance-none"
+            <div className="flex flex-col relative w-full sm:w-48" ref={clubDropdownRef}>
+              <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">Active Club</span>
+              
+              {/* CUSTOM REACT DROPDOWN */}
+              <button 
+                onClick={() => setIsClubDropdownOpen(!isClubDropdownOpen)}
+                className="flex items-center justify-between w-full bg-transparent outline-none text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
               >
-                {myClubs.map(c => <option key={c.id} value={c.id} className="bg-slate-900">{c.name}</option>)}
-              </select>
+                <span className="truncate pr-2">
+                  {myClubs.find(c => c.id === activeClubId)?.name || 'Select Club'}
+                </span>
+                <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform duration-200 ${isClubDropdownOpen ? 'rotate-180 text-pink-500' : ''}`} />
+              </button>
+
+              {isClubDropdownOpen && (
+                <div className="absolute top-full right-0 mt-3 min-w-48 w-full bg-[#111827] border border-pink-500/30 rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200">
+                  <div className="max-h-60 overflow-y-auto custom-scrollbar flex flex-col p-1.5">
+                    {myClubs.map(c => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => handleWorkspaceSwitch(c.id)}
+                        className={`text-left px-4 py-3 text-[11px] font-bold uppercase tracking-wider rounded-lg transition-colors ${activeClubId === c.id ? 'bg-pink-600 text-white shadow-md' : 'text-slate-300 hover:bg-slate-800'}`}
+                      >
+                        {c.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -135,14 +171,14 @@ const Dashboard = () => {
         {/* Core Tools (Visible to all Admin Roles) */}
         <AdminCard to="/admin/create" icon={<PlusCircle className="text-green-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Create" desc="New Event." color="border-green-500" />
         <AdminCard to="/admin/events" icon={<Edit3 className="text-orange-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Manage Events" desc="Modify & Delete." color="border-orange-500" />
-        <AdminCard to="/admin/scan" icon={<ScanLine className="text-blue-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Scanner" desc="QR Gate Control." color="border-blue-500" />
+        <AdminCard to="/admin/scan" icon={<ScanLine className="text-blue-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Scanner" desc="QR Ticket Check-in." color="border-blue-500" />
         
         {/* Database Tool (Visible to all Admin Roles - Fixes Goal #5) */}
-        <AdminCard to="/admin/master-registry" icon={<Database className="text-purple-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Database" desc="Control System." color="border-purple-500" /> 
+        <AdminCard to="/admin/master-registry" icon={<Database className="text-purple-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Database" desc="View Registrations." color="border-purple-500" /> 
         
         {/* Org Head & Super Admin Only: Manage Factions/Clubs */}
         {(userRole === 'super_admin' || userRole === 'org_head') && (
-          <AdminCard to="/club/my-clubs" icon={<Users className="text-pink-500 w-5 h-5 sm:w-7 sm:h-7" />} title={userRole === 'org_head' ? 'Org Clubs' : 'Factions'} desc="Assign Leaders." color="border-pink-500" /> 
+          <AdminCard to="/club/my-clubs" icon={<Users className="text-pink-500 w-5 h-5 sm:w-7 sm:h-7" />} title={userRole === 'org_head' ? 'Manage Clubs' : 'Clubs'} desc="Assign Leaders." color="border-pink-500" /> 
         )}
 
         {/* Super Admin Only: Organization Applications */}

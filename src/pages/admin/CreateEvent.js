@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../sbclient/supabaseClient';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import CustomTimePicker from '../../components/CustomTimePicker';
@@ -9,12 +9,17 @@ import {
   ArrowLeft, Bold, Italic, AlignJustify, Type, 
   Save, Eye, Layout, Calendar, MapPin, Clock, 
   Building, ChevronDown, UploadCloud, X, 
-  Image as ImageIcon, ChevronLeft, ChevronRight, Timer, Globe, Lock, FileText, Repeat
+  Image as ImageIcon, ChevronLeft, ChevronRight, Timer, Globe, Lock, FileText, Repeat, Layers
 } from 'lucide-react';
 
 const DEFAULT_PREVIEW_IMAGES = [
   "https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&q=80&w=800",
   "https://images.unsplash.com/photo-1551818255-e6e10975bc17?auto=format&fit=crop&q=80&w=800"
+];
+
+const CATEGORIES = [
+  "Technical", "Cultural", "Sports", "E-Sports", 
+  "Social & Welfare", "Entrepreneurship", "Literature", "Arts & Media", "Other"
 ];
 
 const CreateEvent = () => {
@@ -35,13 +40,32 @@ const CreateEvent = () => {
   const [isFlipped, setIsFlipped] = useState(false);
   
   const [formData, setFormData] = useState({
-    title: '', date: '', venue: '', description: '', 
+    title: '', category: CATEGORIES[0], date: '', venue: '', description: '', 
     start_time: '', end_time: '', ticket_limit: '',
     reg_start_date: '', reg_start_time: '09:00',
     reg_end_date: '', reg_end_time: '23:59',
     event_type: 'free', price: '', merchant_upi: '',
     is_open_to_all: true 
   });
+
+  // CUSTOM DROPDOWN STATE
+  const [isOrgDropdownOpen, setIsOrgDropdownOpen] = useState(false);
+  const [isClubDropdownOpen, setIsClubDropdownOpen] = useState(false);
+  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
+  const orgDropdownRef = useRef(null);
+  const clubDropdownRef = useRef(null);
+  const categoryDropdownRef = useRef(null);
+
+  // Handle click outside for Custom Dropdowns
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (orgDropdownRef.current && !orgDropdownRef.current.contains(event.target)) setIsOrgDropdownOpen(false);
+      if (clubDropdownRef.current && !clubDropdownRef.current.contains(event.target)) setIsClubDropdownOpen(false);
+      if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(event.target)) setIsCategoryDropdownOpen(false);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // 1. Fetch User Context (Multi-Role Supported)
   useEffect(() => {
@@ -52,7 +76,6 @@ const CreateEvent = () => {
       const adminEmails = ['admin@nexuscircle.in', 'staff@adypu.edu.in', 'prathamesh@adypu.edu.in'];
       const isSuperAdmin = adminEmails.includes(user.email);
 
-      // Fetch ALL roles for the user (fixes the .single() crash)
       const { data: rolesData } = await supabase
         .from('user_roles')
         .select('*')
@@ -85,7 +108,6 @@ const CreateEvent = () => {
       else if (currentRole === 'club_head') {
         const clubRoles = rolesData.filter(r => r.role === 'club_head');
         
-        // Use their active workspace, fallback to their first club
         const activeClubId = localStorage.getItem('active_club_id');
         let activeRole = clubRoles.find(r => r.club_id === activeClubId) || clubRoles[0];
 
@@ -125,6 +147,7 @@ const CreateEvent = () => {
           const end = new Date(data.reg_end_timestamp);
           setFormData({
             ...data,
+            category: data.category || CATEGORIES[0],
             reg_start_date: start.toISOString().split('T')[0],
             reg_start_time: start.toTimeString().slice(0, 5),
             reg_end_date: end.toISOString().split('T')[0],
@@ -145,14 +168,14 @@ const CreateEvent = () => {
     }
   }, [editId]);
 
-  const getFactionBadge = () => {
+  const getEventBadge = () => {
     const o = orgs.find(org => org.id === selectedOrgId);
     const c = clubs.find(club => club.id === selectedClubId);
     if (c && o) return `${o.name} - ${c.name}`;
     if (o) return o.name;
     return 'HOSTING ORGANIZATION';
   };
-  const factionBadge = getFactionBadge();
+  const eventBadge = getEventBadge();
 
   const applyFormatting = (tag) => {
     const textarea = document.getElementById('desc-area');
@@ -197,7 +220,7 @@ const CreateEvent = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedOrgId) return toast.error("Organization mapping is strictly required.");
+    if (!selectedOrgId) return toast.error("Organization selection is strictly required.");
     
     setLoading(true);
     const loadToast = toast.loading(editId ? "Updating Event..." : "Publishing Event...");
@@ -227,9 +250,9 @@ const CreateEvent = () => {
       const endIso = new Date(`${formData.reg_end_date}T${formData.reg_end_time}`).toISOString();
 
       const submissionData = {
-        title: formData.title, date: formData.date, venue: formData.venue,
+        title: formData.title, category: formData.category, date: formData.date, venue: formData.venue,
         description: formData.description, 
-        school: factionBadge, 
+        school: eventBadge, 
         start_time: formData.start_time, end_time: formData.end_time,
         ticket_limit: formData.ticket_limit ? parseInt(formData.ticket_limit) : null,
         reg_start_timestamp: startIso, reg_end_timestamp: endIso,
@@ -246,13 +269,14 @@ const CreateEvent = () => {
         ? await supabase.from('events').update(submissionData).eq('id', editId)
         : await supabase.from('events').insert([submissionData]);
       
-      if (error) throw error;
+      if (error) throw error; // THIS CAPTURES THE ERROR FROM SUPABASE
 
       toast.success(editId ? "Event Updated Successfully!" : "Event Published Successfully!", { id: loadToast });
       navigate(-1);
     } catch (error) {
       console.error("Event Creation Error:", error);
-      toast.error("Operation Failed. Please verify database links.", { id: loadToast });
+      // DISPLAY THE EXACT SUPABASE ERROR MESSAGE NOW
+      toast.error(error.message || "Operation Failed. Please verify inputs.", { id: loadToast, duration: 6000 });
     } finally {
       setLoading(false);
     }
@@ -274,7 +298,7 @@ const CreateEvent = () => {
         <div className="bg-[#111827] rounded-[3rem] border border-slate-800 shadow-2xl flex flex-col overflow-hidden max-h-[90vh]">
           <div className="p-8 pb-6 border-b border-slate-800/50 flex items-center gap-4 shrink-0">
             <div className="p-3 bg-blue-600 rounded-2xl shadow-lg shadow-blue-500/20"><ShieldCheck className="text-white" size={28} /></div>
-            <h2 className="text-3xl font-black uppercase italic tracking-tighter text-white">{editId ? "Edit Event" : "New Event"}</h2>
+            <h2 className="text-3xl font-black uppercase italic tracking-tighter text-white">{editId ? "Edit Event" : "Create Event"}</h2>
           </div>
           
           <form onSubmit={handleSubmit} className="flex flex-col grow overflow-hidden">
@@ -301,52 +325,164 @@ const CreateEvent = () => {
                 )}
               </div>
 
+              <div className="space-y-2 text-left">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2 flex items-center gap-2"><AlignLeft size={14} /> Event Title</label>
+                <input required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} placeholder="Event Name" className="w-full p-4 bg-[#1f2937] border border-slate-700 rounded-2xl outline-none focus:border-blue-500 text-white text-sm" />
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2 flex items-center gap-2"><AlignLeft size={14} /> Event Title</label>
-                  <input required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} placeholder="Event Name" className="w-full p-4 bg-[#1f2937] border border-slate-700 rounded-2xl outline-none focus:border-blue-500 text-white text-sm" />
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2 flex items-center gap-2"><Layers size={14} /> Event Category</label>
+                  <div className="relative w-full" ref={categoryDropdownRef}>
+                    <button
+                      type="button"
+                      onClick={() => setIsCategoryDropdownOpen(!isCategoryDropdownOpen)}
+                      className="flex items-center justify-between w-full p-4 bg-[#1f2937] border border-slate-700 hover:border-slate-600 focus:border-blue-500 rounded-2xl outline-none text-white text-xs transition-all shadow-sm cursor-pointer"
+                    >
+                      <span className="truncate pr-4">{formData.category}</span>
+                      <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform duration-200 ${isCategoryDropdownOpen ? 'rotate-180 text-blue-500' : ''}`} />
+                    </button>
+                    {isCategoryDropdownOpen && (
+                      <div className="absolute top-full left-0 right-0 mt-2 bg-[#111827] border border-blue-500/30 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200 z-50">
+                        <div className="max-h-60 overflow-y-auto custom-scrollbar flex flex-col p-1.5">
+                          {CATEGORIES.map(cat => (
+                            <button
+                              key={cat}
+                              type="button"
+                              onClick={() => { setFormData({...formData, category: cat}); setIsCategoryDropdownOpen(false); }}
+                              className={`text-left px-4 py-3 text-[11px] font-bold uppercase tracking-wider rounded-xl transition-colors ${formData.category === cat ? 'bg-blue-600 text-white shadow-md' : 'text-slate-300 hover:bg-slate-800'}`}
+                            >
+                              {cat}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                
+
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2 flex items-center gap-2"><Building size={14} /> Hosting Club / Org</label>
                   
+                  {/* SUPER ADMIN VIEW */}
                   {creatorContext.role === 'super_admin' && (
                     <div className="flex gap-2">
-                      <div className="relative w-1/2">
-                        <select required value={selectedOrgId} onChange={e => {setSelectedOrgId(e.target.value); setSelectedClubId('');}} className="w-full p-4 pr-8 bg-[#1f2937] border border-slate-700 rounded-2xl outline-none focus:border-blue-500 text-white text-xs appearance-none cursor-pointer truncate">
-                          <option value="" disabled>Select Org</option>
-                          {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-                        </select>
-                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
+                      <div className="relative w-1/2" ref={orgDropdownRef}>
+                        <button
+                          type="button"
+                          onClick={() => setIsOrgDropdownOpen(!isOrgDropdownOpen)}
+                          className="flex items-center justify-between w-full p-4 bg-[#1f2937] border border-slate-700 hover:border-slate-600 focus:border-blue-500 rounded-2xl outline-none text-white text-xs transition-all shadow-sm cursor-pointer"
+                        >
+                          <span className="truncate pr-4">
+                            {selectedOrgId ? orgs.find(o => o.id === selectedOrgId)?.name : 'Select Org'}
+                          </span>
+                          <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform duration-200 ${isOrgDropdownOpen ? 'rotate-180 text-blue-500' : ''}`} />
+                        </button>
+                        {isOrgDropdownOpen && (
+                          <div className="absolute top-full left-0 right-0 mt-2 bg-[#111827] border border-blue-500/30 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200 z-50">
+                            <div className="max-h-60 overflow-y-auto custom-scrollbar flex flex-col p-1.5">
+                              {orgs.map(o => (
+                                <button
+                                  key={o.id}
+                                  type="button"
+                                  onClick={() => { setSelectedOrgId(o.id); setSelectedClubId(''); setIsOrgDropdownOpen(false); }}
+                                  className={`text-left px-4 py-3 text-[11px] font-bold uppercase tracking-wider rounded-xl transition-colors ${selectedOrgId === o.id ? 'bg-blue-600 text-white shadow-md' : 'text-slate-300 hover:bg-slate-800'}`}
+                                >
+                                  {o.name}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                      <div className="relative w-1/2">
-                        <select value={selectedClubId} onChange={e => setSelectedClubId(e.target.value)} disabled={!selectedOrgId} className="w-full p-4 pr-8 bg-[#1f2937] border border-slate-700 rounded-2xl outline-none focus:border-blue-500 text-white text-xs appearance-none cursor-pointer truncate disabled:opacity-50 disabled:cursor-not-allowed">
-                          <option value="">Org Only (No Club)</option>
-                          {clubs.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>
-                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
+
+                      <div className="relative w-1/2" ref={clubDropdownRef}>
+                        <button
+                          type="button"
+                          onClick={() => setIsClubDropdownOpen(!isClubDropdownOpen)}
+                          disabled={!selectedOrgId}
+                          className="flex items-center justify-between w-full p-4 bg-[#1f2937] border border-slate-700 hover:border-slate-600 focus:border-blue-500 rounded-2xl outline-none text-white text-xs transition-all shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <span className="truncate pr-4">
+                            {selectedClubId ? clubs.find(c => c.id === selectedClubId)?.name : 'Org Only'}
+                          </span>
+                          <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform duration-200 ${isClubDropdownOpen ? 'rotate-180 text-blue-500' : ''}`} />
+                        </button>
+                        {isClubDropdownOpen && (
+                          <div className="absolute top-full left-0 right-0 mt-2 bg-[#111827] border border-blue-500/30 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200 z-50">
+                            <div className="max-h-60 overflow-y-auto custom-scrollbar flex flex-col p-1.5">
+                              <button
+                                type="button"
+                                onClick={() => { setSelectedClubId(''); setIsClubDropdownOpen(false); }}
+                                className={`text-left px-4 py-3 text-[11px] font-bold uppercase tracking-wider rounded-xl transition-colors ${!selectedClubId ? 'bg-blue-600 text-white shadow-md' : 'text-slate-300 hover:bg-slate-800'}`}
+                              >
+                                Org Only
+                              </button>
+                              {clubs.map(c => (
+                                <button
+                                  key={c.id}
+                                  type="button"
+                                  onClick={() => { setSelectedClubId(c.id); setIsClubDropdownOpen(false); }}
+                                  className={`text-left px-4 py-3 text-[11px] font-bold uppercase tracking-wider rounded-xl transition-colors ${selectedClubId === c.id ? 'bg-blue-600 text-white shadow-md' : 'text-slate-300 hover:bg-slate-800'}`}
+                                >
+                                  {c.name}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
 
+                  {/* ORG HEAD VIEW */}
                   {creatorContext.role === 'org_head' && (
                     <div className="flex gap-2">
                       <div className="w-1/2 p-4 bg-[#1f2937]/50 border border-slate-700/50 rounded-2xl text-slate-400 text-xs truncate cursor-not-allowed border-dashed">
                          {orgs[0]?.name || 'Loading Org...'}
                       </div>
-                      <div className="relative w-1/2">
-                        <select value={selectedClubId} onChange={e => setSelectedClubId(e.target.value)} className="w-full p-4 pr-8 bg-[#1f2937] border border-slate-700 rounded-2xl outline-none focus:border-blue-500 text-white text-xs appearance-none cursor-pointer truncate">
-                          <option value="">Org Only (No Club)</option>
-                          {clubs.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>
-                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
+                      <div className="relative w-1/2" ref={clubDropdownRef}>
+                        <button
+                          type="button"
+                          onClick={() => setIsClubDropdownOpen(!isClubDropdownOpen)}
+                          className="flex items-center justify-between w-full p-4 bg-[#1f2937] border border-slate-700 hover:border-slate-600 focus:border-blue-500 rounded-2xl outline-none text-white text-xs transition-all shadow-sm cursor-pointer"
+                        >
+                          <span className="truncate pr-4">
+                            {selectedClubId ? clubs.find(c => c.id === selectedClubId)?.name : 'Org Only'}
+                          </span>
+                          <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform duration-200 ${isClubDropdownOpen ? 'rotate-180 text-blue-500' : ''}`} />
+                        </button>
+                        {isClubDropdownOpen && (
+                          <div className="absolute top-full left-0 right-0 mt-2 bg-[#111827] border border-blue-500/30 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200 z-50">
+                            <div className="max-h-60 overflow-y-auto custom-scrollbar flex flex-col p-1.5">
+                              <button
+                                type="button"
+                                onClick={() => { setSelectedClubId(''); setIsClubDropdownOpen(false); }}
+                                className={`text-left px-4 py-3 text-[11px] font-bold uppercase tracking-wider rounded-xl transition-colors ${!selectedClubId ? 'bg-blue-600 text-white shadow-md' : 'text-slate-300 hover:bg-slate-800'}`}
+                              >
+                                Org Only
+                              </button>
+                              {clubs.map(c => (
+                                <button
+                                  key={c.id}
+                                  type="button"
+                                  onClick={() => { setSelectedClubId(c.id); setIsClubDropdownOpen(false); }}
+                                  className={`text-left px-4 py-3 text-[11px] font-bold uppercase tracking-wider rounded-xl transition-colors ${selectedClubId === c.id ? 'bg-blue-600 text-white shadow-md' : 'text-slate-300 hover:bg-slate-800'}`}
+                                >
+                                  {c.name}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
 
+                  {/* CLUB HEAD VIEW */}
                   {creatorContext.role === 'club_head' && (
                     <div className="w-full p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl text-blue-400 font-bold uppercase text-[10px] tracking-widest truncate cursor-not-allowed">
-                       {factionBadge}
+                       {eventBadge}
                     </div>
                   )}
                 </div>
@@ -460,7 +596,7 @@ const CreateEvent = () => {
 
               <div className="space-y-3 text-left p-5 bg-[#1f2937]/30 border border-slate-700/50 rounded-3xl">
                 <label className="text-[10px] font-black text-blue-500 uppercase tracking-widest ml-2 flex items-center gap-2">
-                  <ImageIcon size={14} /> Event Imagery (Max 10)
+                  <ImageIcon size={14} /> Event Images (Max 10)
                 </label>
                 
                 <div className="relative group bg-[#111827] border-2 border-dashed border-slate-700 hover:border-blue-500 rounded-2xl p-6 transition-all text-center cursor-pointer">
@@ -529,7 +665,7 @@ const CreateEvent = () => {
            <div className="flex items-center justify-between">
              <div className="flex items-center gap-3 text-blue-500">
                <Eye size={20}/>
-               <h3 className="font-black uppercase tracking-[0.3em] text-[10px] text-left">Listing Preview</h3>
+               <h3 className="font-black uppercase tracking-[0.3em] text-[10px] text-left">Ticket Preview</h3>
              </div>
              <button 
                type="button" 
@@ -544,12 +680,12 @@ const CreateEvent = () => {
              <div className={`relative w-full h-full transition-transform duration-1000 ease-in-out transform-style-3d ${isFlipped ? 'rotate-y-180' : ''}`}>
                 
                 {/* --- FRONT OF CARD --- */}
-                <div className="absolute inset-0 backface-hidden bg-[#0f172a] rounded-[2.5rem] border-2 border-blue-500/40 p-6 md:p-7 shadow-[0_0_30px_rgba(59,130,246,0.1)] text-left flex flex-col">
+                <div className="absolute inset-0 backface-hidden bg-[#0f172a] rounded-[2.5rem] md:rounded-[3.5rem] border-2 border-blue-500/40 p-6 md:p-7 shadow-[0_0_30px_rgba(59,130,246,0.1)] text-left flex flex-col">
                   
                   <div className="flex justify-between items-start mb-4 shrink-0">
                     <div className="flex flex-col gap-1">
                       <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-400 border border-blue-500/20 truncate max-w-45">
-                        {factionBadge}
+                        {eventBadge}
                       </span>
                       {!formData.is_open_to_all && <span className="px-2 py-0.5 rounded text-[7px] font-black uppercase tracking-widest text-rose-400 bg-rose-500/10 border border-rose-500/20 w-fit flex items-center gap-1"><Lock size={8}/> Internal Only</span>}
                     </div>
@@ -616,7 +752,7 @@ const CreateEvent = () => {
                     </div>
                     
                     <div className="w-full py-3.5 mt-auto rounded-2xl font-black uppercase text-[9px] tracking-widest shrink-0 bg-blue-600/50 text-white text-center border border-blue-500/50 cursor-not-allowed">
-                      Simulated Action Button
+                      Get Ticket (Preview)
                     </div>
                   </div>
                 </div>
@@ -625,7 +761,7 @@ const CreateEvent = () => {
                 <div className="absolute inset-0 backface-hidden rotate-y-180 bg-[#111827] rounded-[2.5rem] border-2 border-slate-700 p-6 md:p-8 flex flex-col shadow-2xl overflow-hidden">
                   <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-4 shrink-0">
                      <h4 className="text-[11px] font-black text-blue-400 uppercase tracking-widest flex items-center gap-2">
-                       <FileText size={14} /> Specification Output
+                       <FileText size={14} /> Event Description
                      </h4>
                      <div className="flex items-center gap-1.5 text-slate-500 font-black text-[8px] uppercase"><Layout size={12}/> BACK</div>
                   </div>
@@ -639,7 +775,7 @@ const CreateEvent = () => {
                      ) : (
                        <div className="flex flex-col items-center justify-center h-full text-slate-600 space-y-3 opacity-50">
                          <Type size={32}/>
-                         <p className="text-[10px] font-black uppercase tracking-widest text-center">Shell is currently empty.<br/>Type in the editor to populate.</p>
+                         <p className="text-[10px] font-black uppercase tracking-widest text-center">Description is currently empty.<br/>Type in the editor to preview.</p>
                        </div>
                      )}
                   </div>

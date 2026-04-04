@@ -69,10 +69,10 @@ const OrgDashboard = () => {
           </div>
           <div>
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-black text-white tracking-tight uppercase italic leading-none truncate max-w-sm md:max-w-xl">
-              {orgDetails?.name || 'Organization'} HQ
+              {orgDetails?.name || 'Organization'} Dashboard
             </h2>
             <p className="text-slate-500 font-medium text-[10px] sm:text-sm mt-1 sm:mt-2 uppercase tracking-wider flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Active Event Head
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Active Administrator
             </p>
           </div>
         </div>
@@ -80,13 +80,11 @@ const OrgDashboard = () => {
 
       {/* ORG CONTROL CARDS */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6">
-        <OrgCard to="/admin/create" icon={<PlusCircle className="text-green-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Create" desc="New Org Event." color="border-green-500" />
-        <OrgCard to="/admin/events" icon={<Edit3 className="text-orange-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Manage Events" desc="Modify & Delete." color="border-orange-500" />
-        <OrgCard to="/org/clubs" icon={<Users className="text-purple-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Manage Clubs" desc="Factions & Heads." color="border-purple-500" /> 
-        <OrgCard to="/admin/scan" icon={<ScanLine className="text-blue-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Scanner" desc="Secure Check-in." color="border-blue-500" />
-        
-        {/* NEW DATABASE ROUTE INTEGRATION */}
-        <OrgCard to="/admin/master-registry" icon={<Database className="text-cyan-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Database" desc="Master Registry." color="border-cyan-500" />
+        <OrgCard to="/admin/create" icon={<PlusCircle className="text-green-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Create" desc="Add new event." color="border-green-500" />
+        <OrgCard to="/admin/events" icon={<Edit3 className="text-orange-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Manage Events" desc="Edit or remove." color="border-orange-500" />
+        <OrgCard to="/org/clubs" icon={<Users className="text-purple-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Manage Clubs" desc="Clubs and managers." color="border-purple-500" /> 
+        <OrgCard to="/admin/scan" icon={<ScanLine className="text-blue-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Scanner" desc="Scan entry tickets." color="border-blue-500" />
+        <OrgCard to="/admin/master-registry" icon={<Database className="text-cyan-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Database" desc="View registrations." color="border-cyan-500" />
       </div>
 
     </div>

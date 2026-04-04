@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../sbclient/supabaseClient';
 import { 
   Search, Edit3, Trash2, Zap, ArrowLeft, Activity, CalendarX,
-  ShieldAlert, Globe, Lock, Building2, Flag, ChevronDown
+  ShieldAlert, Globe, Lock, Building2, Flag, ChevronDown, AlertTriangle, X
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -28,6 +28,9 @@ const ManageEvents = () => {
   const [isClubDropdownOpen, setIsClubDropdownOpen] = useState(false);
   const orgDropdownRef = useRef(null);
   const clubDropdownRef = useRef(null);
+
+  // CUSTOM MODAL STATE
+  const [confirmModal, setConfirmModal] = useState({ isOpen: false, eventId: null, eventTitle: '' });
 
   // Handle clicking outside custom dropdowns
   useEffect(() => {
@@ -149,30 +152,24 @@ const ManageEvents = () => {
     if (userRole) fetchScopedEvents();
   }, [selectedOrgId, selectedClubId, userRole, userClubIds]);
 
-  const handleDeleteEvent = async (id, title) => {
-    toast((t) => (
-      <div className="flex flex-col gap-4 p-2 text-left">
-        <p className="text-xs font-black uppercase text-white tracking-widest leading-relaxed">
-          Wipe all data for <span className="text-red-500">"{title}"</span>?
-        </p>
-        <p className="text-[9px] font-bold text-slate-400 uppercase">This will permanently delete the event and all associated data.</p>
-        <div className="flex gap-2 mt-2">
-          <button 
-            className="bg-red-600 px-4 py-3 rounded-xl text-[10px] font-black w-full shadow-lg shadow-red-600/20 active:scale-95 transition-all"
-            onClick={async () => {
-              toast.dismiss(t.id);
-              const { error } = await supabase.from('events').delete().eq('id', id);
-              if (error) toast.error("Wipe Failed");
-              else {
-                toast.success("Event Purged");
-                setEvents(events.filter(event => event.id !== id));
-              }
-            }}
-          >CONFIRM WIPE</button>
-          <button className="bg-slate-700 px-4 py-3 rounded-xl text-[10px] font-black w-full active:scale-95 transition-all" onClick={() => toast.dismiss(t.id)}>CANCEL</button>
-        </div>
-      </div>
-    ), { duration: 5000, style: { background: '#111827', border: '1px solid #ef4444', minWidth: '320px' }});
+  const handleDeleteEventClick = (id, title) => {
+    setConfirmModal({ isOpen: true, eventId: id, eventTitle: title });
+  };
+
+  const confirmDeleteEvent = async () => {
+    const { eventId } = confirmModal;
+    const loadToast = toast.loading("Deleting event...");
+    try {
+      const { error } = await supabase.from('events').delete().eq('id', eventId);
+      if (error) throw error;
+      toast.success("Event deleted successfully.", { id: loadToast });
+      setEvents(events.filter(event => event.id !== eventId));
+    } catch (error) {
+      console.error("Delete Error:", error);
+      toast.error("Failed to delete event.", { id: loadToast });
+    } finally {
+      setConfirmModal({ isOpen: false, eventId: null, eventTitle: '' });
+    }
   };
 
   const filteredEvents = events.filter(event => 
@@ -185,6 +182,40 @@ const ManageEvents = () => {
 
   return (
     <div className="min-h-screen bg-[#0a0f1d] text-white p-4 sm:p-6 md:p-12 selection:bg-blue-500/30">
+      
+      {/* CUSTOM CONFIRMATION MODAL */}
+      {confirmModal.isOpen && (
+        <div className="fixed inset-0 z-200 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-[#111827] border border-slate-800 rounded-3xl w-full max-w-sm shadow-[0_0_50px_rgba(239,68,68,0.15)] flex flex-col overflow-hidden relative">
+            <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-[#0a0f1d]/50">
+              <h3 className="text-white font-black uppercase tracking-widest text-base flex items-center gap-2">
+                <AlertTriangle className="text-red-500" size={18} /> Delete Event
+              </h3>
+              <button onClick={() => setConfirmModal({ isOpen: false, eventId: null, eventTitle: '' })} className="text-slate-500 hover:text-white bg-white/5 p-2 rounded-full transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4 text-center">
+              <p className="text-sm font-bold text-slate-300 leading-relaxed">
+                Are you sure you want to delete <br/>
+                <span className="inline-block text-white bg-slate-800 px-3 py-1.5 rounded-lg my-2 border border-slate-700">{confirmModal.eventTitle}</span>?
+              </p>
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                This will permanently delete the event and all associated data. This action cannot be undone.
+              </p>
+              <div className="flex gap-3 mt-6 pt-2 border-t border-slate-800">
+                <button onClick={() => setConfirmModal({ isOpen: false, eventId: null, eventTitle: '' })} className="flex-1 px-4 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-black uppercase tracking-widest text-[10px] transition-all active:scale-95">
+                  Cancel
+                </button>
+                <button onClick={confirmDeleteEvent} className="flex-1 px-4 py-3 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white border border-red-500/20 rounded-xl font-black uppercase tracking-widest text-[10px] transition-all active:scale-95 shadow-lg">
+                  Confirm Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-6xl mx-auto space-y-8 sm:space-y-10">
         
         <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-slate-500 hover:text-blue-500 transition-all font-black text-[10px] uppercase tracking-widest">
@@ -195,11 +226,11 @@ const ManageEvents = () => {
           <div className="space-y-2 text-left">
             <div className="flex items-center gap-3 text-blue-500 mb-4">
               <Activity size={28} />
-              <p className="font-black uppercase tracking-[0.4em] text-[10px]">Modification Center</p>
+              <p className="font-black uppercase tracking-[0.4em] text-[10px]">Event Management</p>
             </div>
             <h2 className="text-3xl sm:text-4xl md:text-5xl font-black uppercase italic tracking-tighter leading-none">Manage Events</h2>
             <p className="text-[10px] sm:text-xs text-slate-400 mt-2 tracking-wide uppercase font-bold flex items-center gap-2">
-              <ShieldAlert size={14} className="text-blue-500"/> Managing Authorized Deployments Only
+              <ShieldAlert size={14} className="text-blue-500"/> Managing Your Authorized Events
             </p>
           </div>
         </header>
@@ -210,7 +241,7 @@ const ManageEvents = () => {
           <div className="relative w-full lg:w-80 shrink-0">
             <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
             <input 
-              type="text" placeholder="Search events or banners..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+              type="text" placeholder="Search events..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-12 pr-4 py-3.5 bg-[#0a0f1d] border border-white/5 hover:border-blue-500/50 rounded-2xl outline-none text-xs font-bold tracking-wider text-white transition-colors shadow-inner focus:border-blue-500"
             />
           </div>
@@ -267,7 +298,7 @@ const ManageEvents = () => {
                   <div className="flex items-center gap-3 truncate">
                     <Flag size={16} className="text-slate-500 shrink-0"/>
                     <span className="truncate">
-                      {selectedClubId === 'all' ? 'All Factions / Clubs' : clubs.find(c => c.id === selectedClubId)?.name}
+                      {selectedClubId === 'all' ? 'All Clubs' : clubs.find(c => c.id === selectedClubId)?.name}
                     </span>
                   </div>
                   <ChevronDown size={14} className={`text-slate-500 transition-transform duration-200 shrink-0 ${isClubDropdownOpen ? 'rotate-180 text-blue-500' : ''}`} />
@@ -280,7 +311,7 @@ const ManageEvents = () => {
                         onClick={() => { setSelectedClubId('all'); setIsClubDropdownOpen(false); }}
                         className={`text-left px-5 py-3 text-[10px] font-black uppercase tracking-widest transition-colors border-b border-white/5 last:border-0 ${selectedClubId === 'all' ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}
                       >
-                        All Factions / Clubs
+                        All Clubs
                       </button>
                       {clubs.map(c => (
                         <button
@@ -338,7 +369,7 @@ const ManageEvents = () => {
                       <Edit3 size={18} className="sm:w-5 sm:h-5" />
                     </button>
                     <button 
-                      onClick={() => handleDeleteEvent(event.id, event.title)} 
+                      onClick={() => handleDeleteEventClick(event.id, event.title)} 
                       className="flex-1 sm:flex-none flex justify-center items-center p-3 sm:p-4 bg-red-500/10 text-red-500 rounded-xl sm:rounded-2xl hover:bg-red-500 hover:text-white transition-all active:scale-95"
                     >
                       <Trash2 size={18} className="sm:w-5 sm:h-5" />

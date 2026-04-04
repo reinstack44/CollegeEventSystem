@@ -158,7 +158,7 @@ const Navbar = ({ session }) => {
                 <div className="absolute right-0 mt-5 w-64 sm:w-72 bg-[#111827] rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.5)] py-4 border border-white/5 overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300 backdrop-blur-2xl">
                   <div className="px-6 py-3 mb-2 border-b border-white/5">
                     <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.3em] truncate">
-                      {user ? `-Welcome-  ${user.email.split('@')[0]}` : "Identity Verification"}
+                      {user ? `-Welcome-  ${user.email.split('@')[0]}` : "Account Options"}
                     </p>
                   </div>
                   
@@ -168,9 +168,9 @@ const Navbar = ({ session }) => {
                       
                       {/* ROLE-BASED RENDERING */}
                       {userRole === 'super_admin' ? (
-                        <MenuLink to="/admin" icon={<Shield size={18} className="text-blue-500"/>} label="Super Admin Panel" onClick={() => setIsOpen(false)} />
+                        <MenuLink to="/admin" icon={<Shield size={18} className="text-blue-500"/>} label="Admin Dashboard" onClick={() => setIsOpen(false)} />
                       ) : userRole === 'org_head' ? (
-                        <MenuLink to="/org/dashboard" icon={<Building className="text-indigo-500"/>} label="Organization HQ" onClick={() => setIsOpen(false)} />
+                        <MenuLink to="/org/dashboard" icon={<Building className="text-indigo-500"/>} label="Org Dashboard" onClick={() => setIsOpen(false)} />
                       ) : (
                         <>
                           <MenuLink to="/my-tickets" icon={<Ticket size={18} className="text-blue-500"/>} label="Your Passes" onClick={() => setIsOpen(false)} />
@@ -178,7 +178,7 @@ const Navbar = ({ session }) => {
                           
                           {/* Club Head Exclusive Button */}
                           {userRole === 'club_head' && (
-                            <MenuLink to="/club/my-clubs" icon={<Flag size={18} className="text-pink-500"/>} label="Manage Your Clubs" onClick={() => setIsOpen(false)} />
+                            <MenuLink to="/admin" icon={<Flag size={18} className="text-pink-500"/>} label="Club Dashboard" onClick={() => setIsOpen(false)} />
                           )}
                         </>
                       )}
@@ -213,7 +213,7 @@ const Navbar = ({ session }) => {
 
       {/* --- iOS INSTALL INSTRUCTION MODAL --- */}
       {showIOSModal && (
-        <div className="fixed inset-0 z-999 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 pb-10 sm:pb-4 animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-100 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 pb-10 sm:pb-4 animate-in fade-in duration-300">
           <div className="bg-[#111827] w-full max-w-sm rounded-[2.5rem] p-8 border border-white/10 shadow-[0_0_50px_rgba(59,130,246,0.15)] relative animate-in slide-in-from-bottom-10">
             <button onClick={() => setShowIOSModal(false)} className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white bg-white/5 rounded-full transition-colors">
               <X size={18} />
