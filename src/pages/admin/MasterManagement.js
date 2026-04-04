@@ -3,81 +3,85 @@ import { supabase } from '../../sbclient/supabaseClient';
 import { useNavigate } from 'react-router-dom'; 
 import { 
   Search, Zap, Filter, ShieldAlert, Fingerprint, Download, 
-  ArrowLeft, CheckCircle, XCircle, Trash2, UserX, ChevronDown, Eye, X, Phone, Mail, IndianRupee, Lock
+  ArrowLeft, CheckCircle, XCircle, Trash2, UserX, ChevronDown, 
+  Eye, X, Phone, Mail, IndianRupee, Lock, Building2, Flag, Layers
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const MasterManagement = () => {
   const navigate = useNavigate(); 
-  const [events, setEvents] = useState([]);
-  const [selectedEventId, setSelectedEventId] = useState('');
+  
+  // ROLE & CONTEXT STATE
+  const [userRole, setUserRole] = useState(null);
+  const [orgs, setOrgs] = useState([]);
+  const [clubs, setClubs] = useState([]);
+  const [userClubIds, setUserClubIds] = useState([]);
+  
+  // SLICER STATE
+  const [selectedOrgId, setSelectedOrgId] = useState('all');
+  const [selectedClubId, setSelectedClubId] = useState('all');
+  const [selectedEventId, setSelectedEventId] = useState('all'); // Defaults to ALL
+  
+  // EVENT & ATTENDEE STATE
+  const [allEvents, setAllEvents] = useState([]);
   const [attendees, setAttendees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [roleContext, setRoleContext] = useState(null); // NEW: Scoped Role State
   
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const dropdownRef = useRef(null);
+  // CUSTOM DROPDOWN STATES
+  const [isEventDropdownOpen, setIsEventDropdownOpen] = useState(false);
+  const [isOrgDropdownOpen, setIsOrgDropdownOpen] = useState(false);
+  const [isClubDropdownOpen, setIsClubDropdownOpen] = useState(false);
+  
+  const eventDropdownRef = useRef(null);
+  const orgDropdownRef = useRef(null);
+  const clubDropdownRef = useRef(null);
+  
   const [selectedDossier, setSelectedDossier] = useState(null);
 
-  // FIXED: Moved logic inside useCallback to satisfy React Hooks rules and scoping
-  const fetchAttendees = useCallback(async () => {
-    if (!selectedEventId) return;
-    setLoading(true);
-    try {
-      // Scoped Query: Ensures even if an ID is guessed, RLS/Scoping prevents data leak
-      const { data, error } = await supabase
-        .from('bookings')
-        .select(`
-          *,
-          students ( name, surname, email, phone, urn ),
-          events!inner ( title, price, org_id, club_id )
-        `)
-        .eq('event_id', selectedEventId)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setAttendees(data || []);
-    } catch (error) {
-      console.error("Fetch Error:", error);
-      toast.error("Database Retrieval Failed");
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedEventId]);
-
-  // INITIALIZATION: Fetch Role Context and Scoped Event List
+  // 1. INITIALIZATION: Fetch Roles and Top-Level Context
   useEffect(() => {
     const initializeRegistry = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return navigate('/login');
 
-        // 1. Fetch Role Context
-        const { data: roleData } = await supabase
-          .from('user_roles')
-          .select('role, org_id, club_id')
-          .eq('email', user.email)
-          .single();
+        // Fetch ALL roles (Supports Multi-Club Head)
+        const { data: roles } = await supabase.from('user_roles').select('*').eq('email', user.email);
         
-        setRoleContext(roleData);
+        const adminEmails = ['admin@nexuscircle.in', 'staff@adypu.edu.in', 'prathamesh@adypu.edu.in'];
+        const isSuperAdmin = adminEmails.includes(user.email);
+        const isOrgHead = roles?.some(r => r.role === 'org_head');
+        const isClubHead = roles?.some(r => r.role === 'club_head');
 
-        // 2. Fetch Scoped Events for the Dropdown
-        let eventQuery = supabase.from('events').select('id, title, org_id, club_id').order('date', { ascending: false });
+        let highestRole = 'student';
+        if (isSuperAdmin) highestRole = 'super_admin';
+        else if (isOrgHead) highestRole = 'org_head';
+        else if (isClubHead) highestRole = 'club_head';
 
-        if (roleData?.role === 'org_head') {
-          eventQuery = eventQuery.eq('org_id', roleData.org_id);
-        } else if (roleData?.role === 'club_head') {
-          eventQuery = eventQuery.eq('club_id', roleData.club_id);
+        if (highestRole === 'student') {
+          toast.error("Unauthorized Access");
+          return navigate('/');
         }
 
-        const { data: eventData, error: eventError } = await eventQuery;
+        setUserRole(highestRole);
 
-        if (!eventError && eventData?.length > 0) {
-          setEvents(eventData);
-          setSelectedEventId(eventData[0].id); 
-        } else {
-          setLoading(false);
+        // Pre-load top level slicer data based on role
+        if (highestRole === 'super_admin') {
+          const { data } = await supabase.from('organizations').select('id, name').eq('status', 'approved').order('name');
+          setOrgs(data || []);
+        } else if (highestRole === 'org_head') {
+          const myOrgId = roles.find(r => r.role === 'org_head').org_id;
+          setSelectedOrgId(myOrgId);
+          const { data } = await supabase.from('clubs').select('id, name').eq('org_id', myOrgId).order('name');
+          setClubs(data || []);
+        } else if (highestRole === 'club_head') {
+          const myOrgId = roles.find(r => r.role === 'club_head').org_id;
+          const myClubIds = roles.filter(r => r.role === 'club_head').map(r => r.club_id);
+          setUserClubIds(myClubIds);
+          setSelectedOrgId(myOrgId);
+          const { data } = await supabase.from('clubs').select('id, name').in('id', myClubIds).order('name');
+          setClubs(data || []);
         }
       } catch (err) {
         console.error("Init Error:", err);
@@ -86,34 +90,124 @@ const MasterManagement = () => {
     initializeRegistry();
   }, [navigate]);
 
-  // Handle Real-time updates and fetch trigger
+  // 2. CASCADING SLICER: Org -> Clubs (Super Admin Only)
   useEffect(() => {
-    if (selectedEventId) {
-      fetchAttendees();
-      
-      const channel = supabase.channel(`registry_sync_${selectedEventId}`)
-        .on('postgres_changes', { 
-          event: '*', 
-          schema: 'public', 
-          table: 'bookings',
-          filter: `event_id=eq.${selectedEventId}` 
-        }, fetchAttendees)
-        .subscribe();
-
-      return () => supabase.removeChannel(channel);
+    if (userRole === 'super_admin') {
+      if (selectedOrgId !== 'all') {
+        supabase.from('clubs').select('id, name').eq('org_id', selectedOrgId).order('name').then(({ data }) => {
+          setClubs(data || []);
+        });
+        setSelectedClubId('all');
+      } else {
+        setClubs([]);
+        setSelectedClubId('all');
+      }
     }
+  }, [selectedOrgId, userRole]);
+
+  // 3. CASCADING SLICER: Clubs -> Events
+  useEffect(() => {
+    const fetchEvents = async () => {
+      let q = supabase.from('events').select('id, title, date, org_id, club_id').order('date', { ascending: false });
+
+      if (userRole === 'super_admin') {
+        if (selectedOrgId !== 'all') q = q.eq('org_id', selectedOrgId);
+        if (selectedClubId !== 'all') q = q.eq('club_id', selectedClubId);
+      } else if (userRole === 'org_head') {
+        q = q.eq('org_id', selectedOrgId);
+        if (selectedClubId !== 'all') q = q.eq('club_id', selectedClubId);
+      } else if (userRole === 'club_head') {
+        if (selectedClubId !== 'all') {
+          q = q.eq('club_id', selectedClubId);
+        } else {
+          const clubIds = clubs.map(c => c.id);
+          if (clubIds.length > 0) q = q.in('club_id', clubIds);
+          else q = q.eq('club_id', '00000000-0000-0000-0000-000000000000');
+        }
+      }
+
+      const { data, error } = await q;
+      if (!error && data) {
+        setAllEvents(data);
+      } else {
+        setAllEvents([]);
+      }
+      setSelectedEventId('all'); // Always default to viewing ALL events in scope when changing slicers
+    };
+
+    if (userRole) fetchEvents();
+  }, [selectedOrgId, selectedClubId, userRole, clubs]);
+
+  // 4. DATA FETCH: Dynamic Attendee Aggregation
+  const fetchAttendees = useCallback(async () => {
+    setLoading(true);
+    try {
+      let q = supabase
+        .from('bookings')
+        .select(`
+          *,
+          students ( name, surname, email, phone, urn ),
+          events!inner ( title, price, org_id, club_id )
+        `)
+        .order('created_at', { ascending: false });
+
+      // If 'all' events, strictly scope the query using the joined events table
+      if (selectedEventId === 'all') {
+        
+        if (userRole !== 'super_admin') {
+          q = q.eq('events.org_id', selectedOrgId);
+        } else if (selectedOrgId !== 'all') {
+          q = q.eq('events.org_id', selectedOrgId);
+        }
+
+        if (selectedClubId !== 'all') {
+          q = q.eq('events.club_id', selectedClubId);
+        } else if (userRole === 'club_head') {
+          q = q.in('events.club_id', userClubIds);
+        }
+
+      } else {
+        // If a specific event is selected, just filter by that ID
+        q = q.eq('event_id', selectedEventId);
+      }
+
+      const { data, error } = await q;
+      if (error) throw error;
+      setAttendees(data || []);
+    } catch (error) {
+      console.error("Fetch Error:", error);
+      toast.error("Database Retrieval Failed");
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedEventId, selectedOrgId, selectedClubId, userRole, userClubIds]);
+
+  useEffect(() => {
+    fetchAttendees();
+    
+    // Setup Realtime with dynamic filter
+    const config = { event: '*', schema: 'public', table: 'bookings' };
+    if (selectedEventId !== 'all') config.filter = `event_id=eq.${selectedEventId}`;
+    
+    const channel = supabase.channel(`registry_sync`)
+      .on('postgres_changes', config, fetchAttendees)
+      .subscribe();
+      
+    return () => supabase.removeChannel(channel);
   }, [selectedEventId, fetchAttendees]);
 
+  // Dropdown dismiss logic
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setIsDropdownOpen(false);
-      }
+      if (eventDropdownRef.current && !eventDropdownRef.current.contains(event.target)) setIsEventDropdownOpen(false);
+      if (orgDropdownRef.current && !orgDropdownRef.current.contains(event.target)) setIsOrgDropdownOpen(false);
+      if (clubDropdownRef.current && !clubDropdownRef.current.contains(event.target)) setIsClubDropdownOpen(false);
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // --- ACTIONS ---
   const handleVerifyUTR = async (bookingId) => {
     const toastId = toast.loading("Verifying Identity...");
     try {
@@ -121,10 +215,7 @@ const MasterManagement = () => {
       if (error) throw error;
       toast.success("Pass Authorized!", { id: toastId });
       setAttendees(prev => prev.map(a => a.id === bookingId ? { ...a, status: 'verified' } : a));
-      
-      if (selectedDossier?.id === bookingId) {
-        setSelectedDossier(prev => ({...prev, status: 'verified'}));
-      }
+      if (selectedDossier?.id === bookingId) setSelectedDossier(prev => ({...prev, status: 'verified'}));
     } catch (error) {
       toast.error("Verification failed.", { id: toastId });
     }
@@ -133,7 +224,6 @@ const MasterManagement = () => {
   const handleTerminate = async (bookingId, isUtrReject = false) => {
     const confirmMsg = isUtrReject ? "Reject fraudulent payment claim?" : "Terminate this student's access pass?";
     if (!window.confirm(confirmMsg)) return;
-    
     try {
       const { error } = await supabase.from('bookings').delete().eq('id', bookingId);
       if (error) throw error;
@@ -150,46 +240,57 @@ const MasterManagement = () => {
   const getFeeBreakdown = (item) => {
     const base = parseFloat(item.events?.price || item.amount_expected || 0);
     if (base === 0) return { base: "0.00", platform: "0.00", transaction: "0.00", total: "0.00" };
-
     const platform = parseFloat(item.platform_fee ?? 5.00); 
     const transaction = parseFloat(item.transaction_fee ?? item.razorpay_fee ?? ((base + platform) * 0.025).toFixed(2));
     const total = parseFloat(item.total_amount ?? item.amount ?? (base + platform + transaction).toFixed(2));
-
-    return {
-      base: base.toFixed(2),
-      platform: platform.toFixed(2),
-      transaction: transaction.toFixed(2),
-      total: total.toFixed(2)
-    };
+    return { base: base.toFixed(2), platform: platform.toFixed(2), transaction: transaction.toFixed(2), total: total.toFixed(2) };
   };
 
   const downloadCSV = () => {
     if (attendees.length === 0) return toast.error("No data to export");
     const toastId = toast.loading("Packaging Database...");
     
-    const eventName = events.find(e => e.id === selectedEventId)?.title || "Event";
-    const headers = "Name,Surname,Email,Phone,URN,Status,Transaction ID,Ticket Fee,Platform Fee,Transaction Fee,Total Paid\n";
+    let exportName = "Registry";
+    if (selectedEventId !== 'all') {
+      exportName = allEvents.find(e => e.id === selectedEventId)?.title.replace(/\s+/g, '_') || "Event";
+    } else if (selectedClubId !== 'all') {
+      exportName = "Club_Wide";
+    } else {
+      exportName = "Organization_Wide";
+    }
+
+    const headers = "Event,Name,Surname,Email,Phone,URN,Status,Transaction ID,Ticket Fee,Platform Fee,Transaction Fee,Total Paid\n";
     const rows = attendees.map(item => {
       const txn = getTxnId(item) || 'N/A';
       const fees = getFeeBreakdown(item);
-      return `${item.students?.name || 'Unknown'},${item.students?.surname || ''},${item.student_email},${item.students?.phone || 'N/A'},${item.students?.urn || 'N/A'},${item.status},${txn},₹${fees.base},₹${fees.platform},₹${fees.transaction},₹${fees.total}`;
+      const eventName = item.events?.title?.replace(/,/g, '') || 'Unknown Event';
+      return `${eventName},${item.students?.name || 'Unknown'},${item.students?.surname || ''},${item.student_email},${item.students?.phone || 'N/A'},${item.students?.urn || 'N/A'},${item.status},${txn},₹${fees.base},₹${fees.platform},₹${fees.transaction},₹${fees.total}`;
     }).join("\n");
 
     const blob = new Blob([headers + rows], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${eventName.replace(/\s+/g, '_')}_Registry.csv`;
+    a.download = `${exportName}_Registry.csv`;
     a.click();
     toast.success("Scoped Export Complete!", { id: toastId });
   };
 
+  // --- FILTERS & GROUPS ---
   const filteredList = attendees.filter(item => 
     item.students?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     item.students?.urn?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     item.student_email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (item.events?.title?.toLowerCase().includes(searchQuery.toLowerCase())) ||
     (getTxnId(item) && getTxnId(item).toLowerCase().includes(searchQuery.toLowerCase()))
   );
+
+  const today = new Date().toISOString().split('T')[0];
+  const liveEvents = allEvents.filter(e => e.date >= today);
+  const pastEvents = allEvents.filter(e => e.date < today);
+
+  const showOrgSelect = userRole === 'super_admin';
+  const showClubSelect = userRole === 'super_admin' || userRole === 'org_head' || (userRole === 'club_head' && clubs.length > 1);
 
   return (
     <div className="min-h-screen bg-[#0a0f1d] text-white p-4 sm:p-6 md:p-12 selection:bg-blue-500/30 font-sans">
@@ -207,60 +308,177 @@ const MasterManagement = () => {
             </div>
             <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black uppercase italic tracking-tighter leading-none">Master Registry</h2>
             <p className="text-[10px] sm:text-xs text-slate-400 mt-2 tracking-wide uppercase font-bold flex items-center gap-2">
-              <Lock size={14} className="text-blue-500"/> Scoped Database Access: {roleContext?.role?.replace('_', ' ').toUpperCase() || 'Verifying...'}
+              <Lock size={14} className="text-blue-500"/> Scoped Database Access: {userRole?.replace('_', ' ').toUpperCase() || 'Verifying...'}
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full lg:w-auto">
-             <button onClick={downloadCSV} className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 sm:py-3 rounded-xl sm:rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shrink-0">
-               <Download size={16} /> Export CSV
-             </button>
-
-             <div className="relative w-full sm:w-auto z-40" ref={dropdownRef}>
-                <button 
-                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                  className="flex items-center justify-between w-full sm:w-72 bg-[#111827] px-5 py-4 sm:py-3 rounded-xl sm:rounded-2xl border border-white/5 shadow-lg transition-all hover:border-blue-500/30 active:scale-95"
-                >
-                  <div className="flex items-center gap-3 truncate">
-                    <Filter size={16} className="text-blue-500 shrink-0" />
-                    <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-widest text-white truncate">
-                      {selectedEventId ? events.find(e => e.id === selectedEventId)?.title : "Select Authorized Event"}
-                    </span>
-                  </div>
-                  <ChevronDown size={16} className={`text-slate-500 transition-transform duration-300 shrink-0 ${isDropdownOpen ? 'rotate-180 text-blue-500' : ''}`} />
-                </button>
-
-                {isDropdownOpen && (
-                  <div className="absolute top-full left-0 right-0 mt-2 bg-[#111827] border border-white/10 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.8)] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-                    <div className="max-h-60 overflow-y-auto custom-scrollbar">
-                      {events.map(ev => (
-                        <button
-                          key={ev.id}
-                          onClick={() => {
-                            setSelectedEventId(ev.id);
-                            setIsDropdownOpen(false);
-                          }}
-                          className={`w-full flex items-center gap-4 px-5 py-4 text-left transition-colors border-b border-white/5 last:border-0 ${
-                            selectedEventId === ev.id 
-                            ? 'bg-blue-500/10 text-blue-400' 
-                            : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                          }`}
-                        >
-                          <div className={`w-2 h-2 rounded-full shrink-0 ${selectedEventId === ev.id ? 'bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.8)]' : 'bg-transparent'}`} />
-                          <span className="text-[10px] font-black uppercase tracking-widest truncate">{ev.title}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-             </div>
-          </div>
+          <button onClick={downloadCSV} className="w-full lg:w-auto flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 sm:py-3 rounded-xl sm:rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shrink-0">
+            <Download size={16} /> Export Scope CSV
+          </button>
         </header>
+
+        {/* --- CASCADING SLICER FILTERS --- */}
+        <div className="flex flex-col md:flex-row flex-wrap items-center gap-4 bg-[#111827] p-4 rounded-3xl border border-white/5 shadow-xl relative z-40">
+          
+          {showOrgSelect && (
+            <div className="relative w-full md:w-auto min-w-48 grow md:grow-0 z-50" ref={orgDropdownRef}>
+              <button 
+                onClick={() => setIsOrgDropdownOpen(!isOrgDropdownOpen)}
+                className="flex items-center justify-between w-full px-5 py-3.5 bg-[#0a0f1d] border border-white/5 hover:border-blue-500/50 rounded-2xl outline-none text-[10px] font-black tracking-widest uppercase transition-all text-white shadow-sm"
+              >
+                <div className="flex items-center gap-3 truncate">
+                  <Building2 size={16} className="text-slate-500 shrink-0"/>
+                  <span className="truncate">
+                    {selectedOrgId === 'all' ? 'All Organizations' : orgs.find(o => o.id === selectedOrgId)?.name}
+                  </span>
+                </div>
+                <ChevronDown size={14} className={`text-slate-500 transition-transform duration-200 shrink-0 ${isOrgDropdownOpen ? 'rotate-180 text-blue-500' : ''}`} />
+              </button>
+
+              {isOrgDropdownOpen && (
+                <div className="absolute top-full left-0 mt-2 w-full min-w-56 bg-[#111827] border border-blue-500/30 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200">
+                  <div className="max-h-60 overflow-y-auto custom-scrollbar flex flex-col">
+                    <button
+                      onClick={() => { setSelectedOrgId('all'); setIsOrgDropdownOpen(false); }}
+                      className={`text-left px-5 py-3 text-[10px] font-black uppercase tracking-widest transition-colors border-b border-white/5 last:border-0 ${selectedOrgId === 'all' ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}
+                    >
+                      All Organizations
+                    </button>
+                    {orgs.map(o => (
+                      <button
+                        key={o.id}
+                        onClick={() => { setSelectedOrgId(o.id); setIsOrgDropdownOpen(false); }}
+                        className={`text-left px-5 py-3 text-[10px] font-black uppercase tracking-widest transition-colors border-b border-white/5 last:border-0 ${selectedOrgId === o.id ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}
+                      >
+                        {o.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {showClubSelect && (
+            <div className="relative w-full md:w-auto min-w-48 grow md:grow-0 z-40" ref={clubDropdownRef}>
+              <button 
+                onClick={() => setIsClubDropdownOpen(!isClubDropdownOpen)}
+                disabled={selectedOrgId === 'all' && userRole === 'super_admin'}
+                className="flex items-center justify-between w-full px-5 py-3.5 bg-[#0a0f1d] border border-white/5 hover:border-blue-500/50 rounded-2xl outline-none text-[10px] font-black tracking-widest uppercase transition-all text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <div className="flex items-center gap-3 truncate">
+                  <Flag size={16} className="text-slate-500 shrink-0"/>
+                  <span className="truncate">
+                    {selectedClubId === 'all' ? 'All Factions / Clubs' : clubs.find(c => c.id === selectedClubId)?.name}
+                  </span>
+                </div>
+                <ChevronDown size={14} className={`text-slate-500 transition-transform duration-200 shrink-0 ${isClubDropdownOpen ? 'rotate-180 text-blue-500' : ''}`} />
+              </button>
+
+              {isClubDropdownOpen && (
+                <div className="absolute top-full left-0 mt-2 w-full min-w-56 bg-[#111827] border border-blue-500/30 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200">
+                  <div className="max-h-60 overflow-y-auto custom-scrollbar flex flex-col">
+                    <button
+                      onClick={() => { setSelectedClubId('all'); setIsClubDropdownOpen(false); }}
+                      className={`text-left px-5 py-3 text-[10px] font-black uppercase tracking-widest transition-colors border-b border-white/5 last:border-0 ${selectedClubId === 'all' ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}
+                    >
+                      All Factions / Clubs
+                    </button>
+                    {clubs.map(c => (
+                      <button
+                        key={c.id}
+                        onClick={() => { setSelectedClubId(c.id); setIsClubDropdownOpen(false); }}
+                        className={`text-left px-5 py-3 text-[10px] font-black uppercase tracking-widest transition-colors border-b border-white/5 last:border-0 ${selectedClubId === c.id ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}
+                      >
+                        {c.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="relative w-full md:w-auto min-w-64 grow md:grow-0 z-30" ref={eventDropdownRef}>
+            <button 
+              onClick={() => setIsEventDropdownOpen(!isEventDropdownOpen)}
+              className="flex items-center justify-between w-full bg-blue-600/10 px-5 py-3.5 rounded-2xl border border-blue-500/30 shadow-lg transition-all hover:bg-blue-600/20 active:scale-95"
+            >
+              <div className="flex items-center gap-3 truncate">
+                <Filter size={16} className="text-blue-400 shrink-0" />
+                <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-widest text-blue-400 truncate">
+                  {selectedEventId === 'all' ? "All Events In Scope" : allEvents.find(e => e.id === selectedEventId)?.title}
+                </span>
+              </div>
+              <ChevronDown size={16} className={`text-blue-400 transition-transform duration-300 shrink-0 ${isEventDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {isEventDropdownOpen && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-[#111827] border border-white/10 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.8)] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="max-h-64 overflow-y-auto custom-scrollbar">
+                  
+                  {/* NEW: ALL EVENTS OPTION */}
+                  <button
+                    onClick={() => { setSelectedEventId('all'); setIsEventDropdownOpen(false); }}
+                    className={`w-full flex items-center gap-4 px-5 py-4 text-left transition-colors border-b border-white/5 bg-slate-900 sticky top-0 z-20 ${
+                      selectedEventId === 'all' ? 'text-blue-400 font-black' : 'text-slate-300 hover:bg-slate-800'
+                    }`}
+                  >
+                    <Layers size={14} className={selectedEventId === 'all' ? 'text-blue-500' : 'text-slate-500'}/>
+                    <span className="text-[11px] font-black uppercase tracking-widest truncate">View All Events</span>
+                  </button>
+
+                  {liveEvents.length > 0 && (
+                    <div className="px-4 py-2 bg-emerald-500/10 border-y border-emerald-500/20 text-emerald-400 text-[8px] font-black uppercase tracking-widest flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></div> Live Missions
+                    </div>
+                  )}
+                  {liveEvents.map(ev => (
+                    <button
+                      key={ev.id}
+                      onClick={() => { setSelectedEventId(ev.id); setIsEventDropdownOpen(false); }}
+                      className={`w-full flex items-center gap-4 px-5 py-3.5 text-left transition-colors border-b border-white/5 last:border-0 ${
+                        selectedEventId === ev.id ? 'bg-blue-500/10 text-blue-400' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                      }`}
+                    >
+                      <div className={`w-2 h-2 rounded-full shrink-0 ${selectedEventId === ev.id ? 'bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.8)]' : 'bg-transparent'}`} />
+                      <span className="text-[10px] font-black uppercase tracking-widest truncate">{ev.title}</span>
+                    </button>
+                  ))}
+
+                  {pastEvents.length > 0 && (
+                    <div className="px-4 py-2 bg-slate-800 border-y border-white/5 text-slate-400 text-[8px] font-black uppercase tracking-widest flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 bg-slate-500 rounded-full"></div> Past Archives
+                    </div>
+                  )}
+                  {pastEvents.map(ev => (
+                    <button
+                      key={ev.id}
+                      onClick={() => { setSelectedEventId(ev.id); setIsEventDropdownOpen(false); }}
+                      className={`w-full flex items-center gap-4 px-5 py-3.5 text-left transition-colors border-b border-white/5 last:border-0 ${
+                        selectedEventId === ev.id ? 'bg-blue-500/10 text-blue-400' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                      }`}
+                    >
+                      <div className={`w-2 h-2 rounded-full shrink-0 ${selectedEventId === ev.id ? 'bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.8)]' : 'bg-transparent'}`} />
+                      <span className="text-[10px] font-black uppercase tracking-widest truncate">{ev.title}</span>
+                    </button>
+                  ))}
+
+                  {allEvents.length === 0 && (
+                    <div className="p-6 text-center text-slate-500 text-[10px] font-black uppercase tracking-widest">
+                      No events found in this scope
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
 
         <div className="relative w-full z-10">
           <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
           <input 
-            type="text" placeholder="Search Authorized Attendees..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+            type="text" placeholder="Search by Name, URN, Email, Event Title, or Transaction ID..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-16 pr-6 py-5 bg-[#111827] border border-white/5 rounded-4xl outline-none text-xs sm:text-sm font-bold focus:border-blue-500/50 transition-colors shadow-inner"
           />
         </div>
@@ -280,6 +498,7 @@ const MasterManagement = () => {
                   <thead>
                     <tr className="bg-[#1f2937]/50 border-b border-white/5">
                       <th className="px-8 py-6 text-[10px] font-black text-slate-500 uppercase tracking-widest">Subject Identity</th>
+                      <th className="px-8 py-6 text-[10px] font-black text-slate-500 uppercase tracking-widest">Event</th>
                       <th className="px-8 py-6 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">Status</th>
                       <th className="px-8 py-6 text-[10px] font-black text-slate-500 uppercase tracking-widest">Payment Audit</th>
                       <th className="px-8 py-6 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right">Command Actions</th>
@@ -305,6 +524,11 @@ const MasterManagement = () => {
                               </div>
                             </div>
                           </div>
+                        </td>
+                        <td className="px-8 py-5">
+                           <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest bg-slate-800 px-3 py-1.5 rounded-lg border border-white/5 truncate max-w-48 block">
+                             {item.events?.title || 'Unknown Event'}
+                           </span>
                         </td>
                         <td className="px-8 py-5 text-center">
                           <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border ${
@@ -371,6 +595,10 @@ const MasterManagement = () => {
                       }`}>
                         {item.status.replace('_', ' ')}
                       </span>
+                    </div>
+
+                    <div className="bg-blue-500/10 border border-blue-500/20 px-3 py-2 rounded-lg text-[10px] font-bold text-blue-400 uppercase tracking-widest truncate">
+                       {item.events?.title || 'Unknown Event'}
                     </div>
 
                     {txn && (
@@ -445,6 +673,13 @@ const MasterManagement = () => {
                     <div className="flex flex-col">
                       <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Phone Number</span>
                       <span className="text-sm font-bold text-white">{selectedDossier.students?.phone || 'N/A'}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Layers size={16} className="text-blue-500 shrink-0" />
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-[9px] font-black uppercase tracking-widest text-blue-500">Registered Event</span>
+                      <span className="text-sm font-bold text-white truncate">{selectedDossier.events?.title || 'Unknown'}</span>
                     </div>
                   </div>
                 </div>

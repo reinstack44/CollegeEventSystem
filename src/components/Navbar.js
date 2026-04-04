@@ -4,8 +4,7 @@ import { supabase } from '../sbclient/supabaseClient';
 import { Menu, X, LogOut, Ticket, User, Calendar, Download, Shield, Share, PlusSquare, Building, Flag } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-// --- NEW: GLOBAL CATCHER ---
-// This catches the install prompt instantly, even if React hasn't finished loading the Navbar yet!
+// --- GLOBAL CATCHER ---
 let globalDeferredPrompt = null;
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
@@ -14,36 +13,47 @@ window.addEventListener('beforeinstallprompt', (e) => {
 
 const Navbar = ({ session }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [deferredPrompt, setDeferredPrompt] = useState(globalDeferredPrompt); // Initialize with global
+  const [deferredPrompt, setDeferredPrompt] = useState(globalDeferredPrompt); 
   const [showIOSModal, setShowIOSModal] = useState(false); 
-  const [userRole, setUserRole] = useState('student'); // NEW: Dynamic Role State
+  const [userRole, setUserRole] = useState('student'); 
   const menuRef = useRef(null);
   const navigate = useNavigate();
 
   const user = session?.user ?? null;
-  const isAdmin = user?.email?.includes('admin') || user?.email?.includes('staff@adypu.edu.in');
+  const adminEmails = ['admin@nexuscircle.in', 'staff@adypu.edu.in', 'prathamesh@adypu.edu.in'];
+  const isAdmin = user?.email && adminEmails.includes(user.email);
 
-  // NEW: Fetch user role on load safely
+  // Fetch highest user role safely (Supports multi-role users)
   useEffect(() => {
     let isMounted = true;
     const fetchRole = async () => {
       if (user?.email) {
-        const { data } = await supabase
+        if (isAdmin) {
+           if (isMounted) setUserRole('super_admin');
+           return;
+        }
+
+        const { data, error } = await supabase
           .from('user_roles')
           .select('role')
-          .eq('email', user.email)
-          .single();
-        if (data && isMounted) {
-          setUserRole(data.role);
+          .eq('email', user.email);
+
+        if (!error && data && data.length > 0 && isMounted) {
+          // Check for highest authority role if they hold multiple
+          const hasOrgHead = data.some(r => r.role === 'org_head');
+          const hasClubHead = data.some(r => r.role === 'club_head');
+          
+          if (hasOrgHead) setUserRole('org_head');
+          else if (hasClubHead) setUserRole('club_head');
+          else setUserRole('student');
         }
       }
     };
     fetchRole();
     return () => { isMounted = false; };
-  }, [user]);
+  }, [user, isAdmin]);
 
   useEffect(() => {
-    // If it fires late, catch it here
     const handleInstallPrompt = (e) => {
       e.preventDefault();
       setDeferredPrompt(e);
@@ -86,7 +96,6 @@ const Navbar = ({ session }) => {
     } else if (isIOS() && !isStandalone()) {
       setShowIOSModal(true);
     } else {
-      // UPDATED: Now explicitly tells PC users about chrome://apps
       toast(
         "App is already installed! \n\n📱 Phone: Check your home screen.\n💻 PC: Open a new tab and type 'chrome://apps' to find it.", 
         { 
@@ -158,7 +167,7 @@ const Navbar = ({ session }) => {
                       <MenuLink to="/events" icon={<Calendar size={18} className="text-blue-500"/>} label="Live Events" onClick={() => setIsOpen(false)} />
                       
                       {/* ROLE-BASED RENDERING */}
-                      {userRole === 'super_admin' || isAdmin ? (
+                      {userRole === 'super_admin' ? (
                         <MenuLink to="/admin" icon={<Shield size={18} className="text-blue-500"/>} label="Super Admin Panel" onClick={() => setIsOpen(false)} />
                       ) : userRole === 'org_head' ? (
                         <MenuLink to="/org/dashboard" icon={<Building className="text-indigo-500"/>} label="Organization HQ" onClick={() => setIsOpen(false)} />
@@ -167,7 +176,7 @@ const Navbar = ({ session }) => {
                           <MenuLink to="/my-tickets" icon={<Ticket size={18} className="text-blue-500"/>} label="Your Passes" onClick={() => setIsOpen(false)} />
                           <MenuLink to="/profile" icon={<User size={18} className="text-blue-500"/>} label="My Profile" onClick={() => setIsOpen(false)} />
                           
-                          {/* NEW: Club Head Exclusive Button */}
+                          {/* Club Head Exclusive Button */}
                           {userRole === 'club_head' && (
                             <MenuLink to="/club/my-clubs" icon={<Flag size={18} className="text-pink-500"/>} label="Manage Your Clubs" onClick={() => setIsOpen(false)} />
                           )}
@@ -180,7 +189,7 @@ const Navbar = ({ session }) => {
                         </button>
                         
                         {/* HIDE IF ALREADY ORG HEAD OR ADMIN */}
-                        {userRole !== 'org_head' && userRole !== 'super_admin' && !isAdmin && (
+                        {userRole !== 'org_head' && userRole !== 'super_admin' && (
                           <Link to="/register-org" onClick={() => setIsOpen(false)} className="w-full flex items-center gap-4 px-4 py-4 text-emerald-400 hover:bg-emerald-500/10 rounded-2xl font-black text-[10px] transition-all uppercase tracking-[0.2em]">
                             <Building size={18} /> Register Your Org
                           </Link>
@@ -232,8 +241,6 @@ const Navbar = ({ session }) => {
                 Got it
               </button>
             </div>
-            
-            <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-0 h-0 border-l-15 border-l-transparent border-t-15 border-t-[#111827] border-r-15 border-r-transparent drop-shadow-lg sm:hidden"></div>
           </div>
         </div>
       )}

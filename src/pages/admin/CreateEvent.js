@@ -6,20 +6,11 @@ import CustomDatePicker from '../../components/CustomDatePicker';
 import toast from 'react-hot-toast';
 import { 
   Zap, ShieldCheck, AlignLeft, Ticket, 
-  ArrowLeft, Bold, Italic, 
-  AlignJustify, Type, Save, Eye, Layout,
-  Calendar, MapPin, Clock, Building, ChevronDown,
-  UploadCloud, X, Image as ImageIcon, ChevronLeft, ChevronRight, Timer,
-  Globe, Lock
+  ArrowLeft, Bold, Italic, AlignJustify, Type, 
+  Save, Eye, Layout, Calendar, MapPin, Clock, 
+  Building, ChevronDown, UploadCloud, X, 
+  Image as ImageIcon, ChevronLeft, ChevronRight, Timer, Globe, Lock, FileText, Repeat
 } from 'lucide-react';
-
-const ADYPU_SCHOOLS = [
-  "ADYPU", "School of Engineering", "School of Management", 
-  "School of Design", "School of Hospitality and Hotel Administration", 
-  "School of Law", "School of Liberal Arts", "School of Architecture", 
-  "School of Film and Media", "School of Science", "School of Allied Health Sciences", 
-  "Center for Advanced Indian Science", "Center for Distance and Online Education"
-];
 
 const DEFAULT_PREVIEW_IMAGES = [
   "https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&q=80&w=800",
@@ -32,39 +23,136 @@ const CreateEvent = () => {
   const editId = searchParams.get('edit');
   const [loading, setLoading] = useState(false);
   
-  // NEW: Store creator's scoped context
-  const [creatorContext, setCreatorContext] = useState({ role: null, org_id: null, club_id: null });
+  // ROLE & CONTEXT LOGIC
+  const [creatorContext, setCreatorContext] = useState({ role: null });
+  const [orgs, setOrgs] = useState([]);
+  const [clubs, setClubs] = useState([]);
+  const [selectedOrgId, setSelectedOrgId] = useState('');
+  const [selectedClubId, setSelectedClubId] = useState('');
 
   const [selectedImages, setSelectedImages] = useState([]);
   const [currentImgIndex, setCurrentImgIndex] = useState(0);
+  const [isFlipped, setIsFlipped] = useState(false);
   
   const [formData, setFormData] = useState({
     title: '', date: '', venue: '', description: '', 
-    school: ADYPU_SCHOOLS[0],
     start_time: '', end_time: '', ticket_limit: '',
     reg_start_date: '', reg_start_time: '09:00',
     reg_end_date: '', reg_end_time: '23:59',
-    event_type: 'free',
-    price: '',
-    merchant_upi: '',
-    is_open_to_all: true // NEW: Visibility Toggle
+    event_type: 'free', price: '', merchant_upi: '',
+    is_open_to_all: true 
   });
 
-  // Automatically fetch creator's role and scoping IDs
+  // 1. Fetch User Context (Multi-Role Supported)
   useEffect(() => {
     const fetchContext = async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data } = await supabase
-          .from('user_roles')
-          .select('role, org_id, club_id')
-          .eq('email', user.email)
-          .single();
-        if (data) setCreatorContext(data);
+      if (!user) return;
+
+      const adminEmails = ['admin@nexuscircle.in', 'staff@adypu.edu.in', 'prathamesh@adypu.edu.in'];
+      const isSuperAdmin = adminEmails.includes(user.email);
+
+      // Fetch ALL roles for the user (fixes the .single() crash)
+      const { data: rolesData } = await supabase
+        .from('user_roles')
+        .select('*')
+        .eq('email', user.email);
+
+      let currentRole = 'student';
+      if (isSuperAdmin) {
+        currentRole = 'super_admin';
+      } else if (rolesData && rolesData.length > 0) {
+        if (rolesData.some(r => r.role === 'org_head')) currentRole = 'org_head';
+        else if (rolesData.some(r => r.role === 'club_head')) currentRole = 'club_head';
+      }
+
+      setCreatorContext({ role: currentRole });
+
+      // Pre-fill dropdowns based on role
+      if (currentRole === 'super_admin') {
+        const { data: orgData } = await supabase.from('organizations').select('id, name').eq('status', 'approved');
+        setOrgs(orgData || []);
+      } 
+      else if (currentRole === 'org_head') {
+        const orgRole = rolesData.find(r => r.role === 'org_head');
+        setSelectedOrgId(orgRole.org_id);
+        
+        const { data: orgData } = await supabase.from('organizations').select('id, name').eq('id', orgRole.org_id);
+        setOrgs(orgData || []);
+        const { data: clubData } = await supabase.from('clubs').select('id, name').eq('org_id', orgRole.org_id);
+        setClubs(clubData || []);
+      } 
+      else if (currentRole === 'club_head') {
+        const clubRoles = rolesData.filter(r => r.role === 'club_head');
+        
+        // Use their active workspace, fallback to their first club
+        const activeClubId = localStorage.getItem('active_club_id');
+        let activeRole = clubRoles.find(r => r.club_id === activeClubId) || clubRoles[0];
+
+        if (activeRole) {
+          setSelectedOrgId(activeRole.org_id);
+          setSelectedClubId(activeRole.club_id);
+          
+          const { data: orgData } = await supabase.from('organizations').select('id, name').eq('id', activeRole.org_id);
+          setOrgs(orgData || []);
+          const { data: clubData } = await supabase.from('clubs').select('id, name').eq('id', activeRole.club_id);
+          setClubs(clubData || []);
+        }
       }
     };
     fetchContext();
   }, []);
+
+  // 2. Dynamic Club Loading for Super Admin
+  useEffect(() => {
+    if (creatorContext.role === 'super_admin' && selectedOrgId) {
+      supabase.from('clubs').select('id, name').eq('org_id', selectedOrgId).then(({ data }) => {
+        setClubs(data || []);
+      });
+    } else if (creatorContext.role === 'super_admin' && !selectedOrgId) {
+      setClubs([]);
+      setSelectedClubId('');
+    }
+  }, [selectedOrgId, creatorContext.role]);
+
+  // 3. Edit Mode Pre-Loader
+  useEffect(() => {
+    if (editId) {
+      const fetchEventData = async () => {
+        const { data, error } = await supabase.from('events').select('*').eq('id', editId).single();
+        if (data && !error) {
+          const start = new Date(data.reg_start_timestamp);
+          const end = new Date(data.reg_end_timestamp);
+          setFormData({
+            ...data,
+            reg_start_date: start.toISOString().split('T')[0],
+            reg_start_time: start.toTimeString().slice(0, 5),
+            reg_end_date: end.toISOString().split('T')[0],
+            reg_end_time: end.toTimeString().slice(0, 5),
+            event_type: data.event_type || 'free',
+            price: data.price || '',
+            merchant_upi: data.merchant_upi || '',
+            is_open_to_all: data.is_open_to_all ?? true
+          });
+          setSelectedOrgId(data.org_id || '');
+          setSelectedClubId(data.club_id || '');
+          if (data.images && data.images.length > 0) {
+            setSelectedImages(data.images.map(url => ({ file: null, url })));
+          }
+        }
+      };
+      fetchEventData();
+    }
+  }, [editId]);
+
+  const getFactionBadge = () => {
+    const o = orgs.find(org => org.id === selectedOrgId);
+    const c = clubs.find(club => club.id === selectedClubId);
+    if (c && o) return `${o.name} - ${c.name}`;
+    if (o) return o.name;
+    return 'HOSTING ORGANIZATION';
+  };
+  const factionBadge = getFactionBadge();
 
   const applyFormatting = (tag) => {
     const textarea = document.getElementById('desc-area');
@@ -86,33 +174,6 @@ const CreateEvent = () => {
     
     setFormData({ ...formData, description: newText });
   };
-
-  useEffect(() => {
-    if (editId) {
-      const fetchEventData = async () => {
-        const { data, error } = await supabase.from('events').select('*').eq('id', editId).single();
-        if (data && !error) {
-          const start = new Date(data.reg_start_timestamp);
-          const end = new Date(data.reg_end_timestamp);
-          setFormData({
-            ...data,
-            reg_start_date: start.toISOString().split('T')[0],
-            reg_start_time: start.toTimeString().slice(0, 5),
-            reg_end_date: end.toISOString().split('T')[0],
-            reg_end_time: end.toTimeString().slice(0, 5),
-            event_type: data.event_type || 'free',
-            price: data.price || '',
-            merchant_upi: data.merchant_upi || '',
-            is_open_to_all: data.is_open_to_all ?? true
-          });
-          if (data.images && data.images.length > 0) {
-            setSelectedImages(data.images.map(url => ({ file: null, url })));
-          }
-        }
-      };
-      fetchEventData();
-    }
-  }, [editId]);
 
   const handleImageChange = (e) => {
     const files = Array.from(e.target.files);
@@ -136,8 +197,10 @@ const CreateEvent = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!selectedOrgId) return toast.error("Organization mapping is strictly required.");
+    
     setLoading(true);
-    const loadToast = toast.loading(editId ? "Updating Mission..." : "Uploading Assets & Publishing...");
+    const loadToast = toast.loading(editId ? "Updating Event..." : "Publishing Event...");
     
     try {
       let finalImageUrls = [];
@@ -165,7 +228,8 @@ const CreateEvent = () => {
 
       const submissionData = {
         title: formData.title, date: formData.date, venue: formData.venue,
-        description: formData.description, school: formData.school,
+        description: formData.description, 
+        school: factionBadge, 
         start_time: formData.start_time, end_time: formData.end_time,
         ticket_limit: formData.ticket_limit ? parseInt(formData.ticket_limit) : null,
         reg_start_timestamp: startIso, reg_end_timestamp: endIso,
@@ -174,9 +238,8 @@ const CreateEvent = () => {
         price: formData.event_type === 'paid' ? Number(formData.price) : 0,
         merchant_upi: formData.event_type === 'paid' ? formData.merchant_upi : null,
         is_open_to_all: formData.is_open_to_all,
-        // NEW: Automatically scope the event to the creator's org/club
-        org_id: creatorContext.org_id,
-        club_id: creatorContext.club_id
+        org_id: selectedOrgId,
+        club_id: selectedClubId || null 
       };
 
       const { error } = editId 
@@ -185,11 +248,11 @@ const CreateEvent = () => {
       
       if (error) throw error;
 
-      toast.success(editId ? "Transmission Updated!" : "Mission Published!", { id: loadToast });
-      navigate(-1); // Return to whichever dashboard they came from
+      toast.success(editId ? "Event Updated Successfully!" : "Event Published Successfully!", { id: loadToast });
+      navigate(-1);
     } catch (error) {
       console.error("Event Creation Error:", error);
-      toast.error("Operation Failed. Please contact the administrator.", { id: loadToast });
+      toast.error("Operation Failed. Please verify database links.", { id: loadToast });
     } finally {
       setLoading(false);
     }
@@ -207,39 +270,26 @@ const CreateEvent = () => {
 
       <div className="w-full max-w-7xl grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
         
-        {/* FORM SECTION */}
+        {/* --- FORM SECTION --- */}
         <div className="bg-[#111827] rounded-[3rem] border border-slate-800 shadow-2xl flex flex-col overflow-hidden max-h-[90vh]">
           <div className="p-8 pb-6 border-b border-slate-800/50 flex items-center gap-4 shrink-0">
             <div className="p-3 bg-blue-600 rounded-2xl shadow-lg shadow-blue-500/20"><ShieldCheck className="text-white" size={28} /></div>
-            <h2 className="text-3xl font-black uppercase italic tracking-tighter text-white">{editId ? "Modify Specs" : "New Event"}</h2>
+            <h2 className="text-3xl font-black uppercase italic tracking-tighter text-white">{editId ? "Edit Event" : "New Event"}</h2>
           </div>
           
           <form onSubmit={handleSubmit} className="flex flex-col grow overflow-hidden">
             <div className="grow overflow-y-auto p-8 space-y-6 custom-scrollbar">
               
-              {/* NEW: VISIBILITY TOGGLE */}
               <div className="space-y-4 text-left p-5 bg-purple-900/10 border border-purple-500/20 rounded-3xl transition-all">
                 <div className="flex justify-between items-center">
                   <label className="text-[10px] font-black text-purple-500 uppercase tracking-widest ml-2 flex items-center gap-2">
                     <Globe size={14} /> Event Visibility
                   </label>
                   <div className="flex bg-[#1f2937] rounded-xl p-1">
-                    <button
-                      type="button"
-                      onClick={() => setFormData({ ...formData, is_open_to_all: true })}
-                      className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 ${
-                        formData.is_open_to_all ? 'bg-purple-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'
-                      }`}
-                    >
+                    <button type="button" onClick={() => setFormData({ ...formData, is_open_to_all: true })} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 ${formData.is_open_to_all ? 'bg-purple-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>
                       <Globe size={12}/> Public
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setFormData({ ...formData, is_open_to_all: false })}
-                      className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 ${
-                        !formData.is_open_to_all ? 'bg-rose-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'
-                      }`}
-                    >
+                    <button type="button" onClick={() => setFormData({ ...formData, is_open_to_all: false })} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 ${!formData.is_open_to_all ? 'bg-rose-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>
                       <Lock size={12}/> Internal Only
                     </button>
                   </div>
@@ -251,30 +301,57 @@ const CreateEvent = () => {
                 )}
               </div>
 
-              {/* Row 1: Title & School */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2 flex items-center gap-2"><AlignLeft size={14} /> Title</label>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2 flex items-center gap-2"><AlignLeft size={14} /> Event Title</label>
                   <input required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} placeholder="Event Name" className="w-full p-4 bg-[#1f2937] border border-slate-700 rounded-2xl outline-none focus:border-blue-500 text-white text-sm" />
                 </div>
+                
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2 flex items-center gap-2"><Building size={14} /> Faction / Banner</label>
-                  {creatorContext.role === 'super_admin' ? (
-                    <div className="relative">
-                      <select required value={formData.school} onChange={e => setFormData({...formData, school: e.target.value})} className="w-full p-4 pr-10 bg-[#1f2937] border border-slate-700 rounded-2xl outline-none focus:border-blue-500 text-white text-sm appearance-none cursor-pointer truncate">
-                        {ADYPU_SCHOOLS.map((school, index) => (
-                          <option key={index} value={school}>{school}</option>
-                        ))}
-                      </select>
-                      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2 flex items-center gap-2"><Building size={14} /> Hosting Club / Org</label>
+                  
+                  {creatorContext.role === 'super_admin' && (
+                    <div className="flex gap-2">
+                      <div className="relative w-1/2">
+                        <select required value={selectedOrgId} onChange={e => {setSelectedOrgId(e.target.value); setSelectedClubId('');}} className="w-full p-4 pr-8 bg-[#1f2937] border border-slate-700 rounded-2xl outline-none focus:border-blue-500 text-white text-xs appearance-none cursor-pointer truncate">
+                          <option value="" disabled>Select Org</option>
+                          {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
+                      </div>
+                      <div className="relative w-1/2">
+                        <select value={selectedClubId} onChange={e => setSelectedClubId(e.target.value)} disabled={!selectedOrgId} className="w-full p-4 pr-8 bg-[#1f2937] border border-slate-700 rounded-2xl outline-none focus:border-blue-500 text-white text-xs appearance-none cursor-pointer truncate disabled:opacity-50 disabled:cursor-not-allowed">
+                          <option value="">Org Only (No Club)</option>
+                          {clubs.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
+                      </div>
                     </div>
-                  ) : (
-                    <input required value={formData.school} onChange={e => setFormData({...formData, school: e.target.value})} placeholder="e.g. Robotics Club" className="w-full p-4 bg-[#1f2937] border border-slate-700 rounded-2xl outline-none focus:border-blue-500 text-white text-sm" />
+                  )}
+
+                  {creatorContext.role === 'org_head' && (
+                    <div className="flex gap-2">
+                      <div className="w-1/2 p-4 bg-[#1f2937]/50 border border-slate-700/50 rounded-2xl text-slate-400 text-xs truncate cursor-not-allowed border-dashed">
+                         {orgs[0]?.name || 'Loading Org...'}
+                      </div>
+                      <div className="relative w-1/2">
+                        <select value={selectedClubId} onChange={e => setSelectedClubId(e.target.value)} className="w-full p-4 pr-8 bg-[#1f2937] border border-slate-700 rounded-2xl outline-none focus:border-blue-500 text-white text-xs appearance-none cursor-pointer truncate">
+                          <option value="">Org Only (No Club)</option>
+                          {clubs.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
+                      </div>
+                    </div>
+                  )}
+
+                  {creatorContext.role === 'club_head' && (
+                    <div className="w-full p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl text-blue-400 font-bold uppercase text-[10px] tracking-widest truncate cursor-not-allowed">
+                       {factionBadge}
+                    </div>
                   )}
                 </div>
               </div>
 
-              {/* Row 2: Venue & Limit */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2 flex items-center gap-2"><MapPin size={14} /> Venue</label>
@@ -286,7 +363,6 @@ const CreateEvent = () => {
                 </div>
               </div>
 
-              {/* Row 3: Event Date & Time */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-left p-4 bg-[#1f2937]/30 border border-slate-700/50 rounded-3xl">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2 flex items-center gap-2"><Calendar size={14} /> Event Date</label>
@@ -302,7 +378,6 @@ const CreateEvent = () => {
                 </div>
               </div>
 
-              {/* Row 4: Registration Window */}
               <div className="space-y-4 text-left p-5 bg-blue-900/10 border border-blue-500/20 rounded-3xl">
                 <h3 className="text-[10px] font-black text-blue-500 uppercase tracking-widest ml-2 flex items-center gap-2">
                   <Clock size={14} /> Registration Window
@@ -334,11 +409,10 @@ const CreateEvent = () => {
                 </div>
               </div>
 
-              {/* MISSION ECONOMY */}
               <div className="space-y-4 text-left p-5 bg-emerald-900/10 border border-emerald-500/20 rounded-3xl transition-all">
                 <div className="flex justify-between items-center">
                   <label className="text-[10px] font-black text-emerald-500 uppercase tracking-widest ml-2 flex items-center gap-2">
-                    <Ticket size={14} /> Mission Economy
+                    <Ticket size={14} /> Ticket Type
                   </label>
                   <div className="flex bg-[#1f2937] rounded-xl p-1">
                     {['free', 'paid'].map((type) => (
@@ -362,8 +436,7 @@ const CreateEvent = () => {
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Ticket Price (₹)</p>
                       <input 
                         required 
-                        type="number" 
-                        min="1"
+                        type="number" min="1"
                         value={formData.price} 
                         onChange={e => setFormData({...formData, price: e.target.value})} 
                         placeholder="e.g. 199" 
@@ -385,7 +458,6 @@ const CreateEvent = () => {
                 )}
               </div>
 
-              {/* IMAGE UPLOADER */}
               <div className="space-y-3 text-left p-5 bg-[#1f2937]/30 border border-slate-700/50 rounded-3xl">
                 <label className="text-[10px] font-black text-blue-500 uppercase tracking-widest ml-2 flex items-center gap-2">
                   <ImageIcon size={14} /> Event Imagery (Max 10)
@@ -421,9 +493,8 @@ const CreateEvent = () => {
                 )}
               </div>
 
-              {/* Description Shell */}
               <div className="space-y-2 text-left">
-                <label className="text-[10px] font-black text-blue-500 uppercase tracking-widest ml-2 flex items-center gap-2"><Type size={14} /> Description Shell</label>
+                <label className="text-[10px] font-black text-blue-500 uppercase tracking-widest ml-2 flex items-center gap-2"><Type size={14} /> Event Description</label>
                 <div className="bg-[#1f2937] rounded-3xl border border-slate-700 overflow-hidden focus-within:border-blue-500 transition-all">
                   <div className="flex items-center gap-4 px-6 py-3 border-b border-slate-700/50 bg-slate-900/50">
                     <button type="button" onClick={() => applyFormatting('bold')} className="text-slate-500 hover:text-blue-500"><Bold size={16}/></button>
@@ -437,7 +508,7 @@ const CreateEvent = () => {
                     required rows={6} 
                     value={formData.description} 
                     onChange={e => setFormData({...formData, description: e.target.value})} 
-                    className="w-full p-6 bg-transparent outline-none text-white text-sm resize-none font-mono" 
+                    className="w-full p-6 bg-transparent outline-none text-white text-sm resize-none font-mono custom-scrollbar" 
                     placeholder="Use tools above or type <b>bold</b>, <i>italic</i>, etc."
                   />
                 </div>
@@ -446,92 +517,135 @@ const CreateEvent = () => {
 
             <div className="p-8 pt-4 border-t border-slate-800/50 bg-[#111827] shrink-0">
               <button type="submit" disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-5 rounded-2xl font-black text-base flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-blue-500/20">
-                {loading ? <Zap className="animate-pulse" size={20} /> : editId ? <><Save size={20}/> UPDATE SPECS</> : "PUBLISH MISSION"}
+                {loading ? <Zap className="animate-pulse" size={20} /> : editId ? <><Save size={20}/> UPDATE EVENT</> : "PUBLISH EVENT"}
               </button>
             </div>
           </form>
         </div>
 
-        {/* PREVIEW SECTION */}
-        <div className="space-y-6 lg:sticky lg:top-24">
-           <div className="flex items-center gap-3 text-blue-500 mb-2">
-             <Eye size={20}/>
-             <h3 className="font-black uppercase tracking-[0.3em] text-xs text-left">Event Listing Preview</h3>
+        {/* --- PREVIEW SECTION (FLIPPABLE) --- */}
+        <div className="space-y-4 lg:sticky lg:top-24">
+           
+           <div className="flex items-center justify-between">
+             <div className="flex items-center gap-3 text-blue-500">
+               <Eye size={20}/>
+               <h3 className="font-black uppercase tracking-[0.3em] text-[10px] text-left">Listing Preview</h3>
+             </div>
+             <button 
+               type="button" 
+               onClick={() => setIsFlipped(!isFlipped)} 
+               className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500/10 text-blue-400 hover:bg-blue-500 hover:text-white rounded-lg border border-blue-500/30 text-[9px] font-black uppercase tracking-widest transition-all shadow-md active:scale-95"
+             >
+               <Repeat size={12}/> View {isFlipped ? 'Front' : 'Details'}
+             </button>
            </div>
            
-           <div className="bg-[#0f172a] rounded-[2.5rem] border-2 border-blue-500/40 p-6 md:p-7 shadow-[0_0_30px_rgba(59,130,246,0.1)] text-left flex flex-col h-132.5">
-              
-              <div className="flex justify-between items-start mb-4 shrink-0">
-                 <div className="flex flex-col gap-1">
-                   <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-400 border border-blue-500/20 truncate max-w-35">{formData.school || 'FACTION'}</span>
-                   {!formData.is_open_to_all && <span className="px-2 py-0.5 rounded text-[7px] font-black uppercase tracking-widest text-rose-400 bg-rose-500/10 border border-rose-500/20 w-fit flex items-center gap-1"><Lock size={8}/> Internal Only</span>}
-                 </div>
-                 <div className="flex items-center gap-1.5 text-blue-400/40 font-black text-[8px] uppercase shrink-0"><Layout size={12}/> LIVE PREVIEW</div>
-              </div>
-              
-              <div className="relative w-full h-40 rounded-2xl overflow-hidden shrink-0 mb-4 group/slider border border-white/10 shadow-inner bg-slate-900">
-                <img 
-                  src={previewImages[currentImgIndex]} 
-                  alt="Preview Visualization" 
-                  className="w-full h-full object-cover transition-opacity duration-500 ease-in-out"
-                />
+           <div className="perspective-2000 w-full h-132.5">
+             <div className={`relative w-full h-full transition-transform duration-1000 ease-in-out transform-style-3d ${isFlipped ? 'rotate-y-180' : ''}`}>
                 
-                <div className="absolute inset-0 bg-linear-to-t from-[#0f172a] via-transparent to-transparent opacity-80 pointer-events-none"></div>
-                
-                <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-md px-2 py-1 rounded-lg text-[8px] font-black text-white uppercase tracking-widest">
-                  {currentImgIndex + 1} / {previewImages.length} IMAGES
-                </div>
-
-                {previewImages.length > 1 && (
-                  <>
-                    <button type="button" onClick={() => setCurrentImgIndex(p => p === 0 ? previewImages.length - 1 : p - 1)} className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 text-white p-1.5 rounded-full backdrop-blur-sm z-20 hover:bg-blue-600 transition-colors">
-                      <ChevronLeft size={16} />
-                    </button>
-                    <button type="button" onClick={() => setCurrentImgIndex(p => p === previewImages.length - 1 ? 0 : p + 1)} className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 text-white p-1.5 rounded-full backdrop-blur-sm z-20 hover:bg-blue-600 transition-colors">
-                      <ChevronRight size={16} />
-                    </button>
-                  </>
-                )}
-              </div>
-
-              <div className="grow flex flex-col justify-start text-left gap-3">
-                <h4 className="text-2xl font-black uppercase italic text-white leading-[0.9] line-clamp-2 overflow-hidden shrink-0">
-                  {formData.title || 'Event Title'}
-                </h4>
-
-                <div className="space-y-1 shrink-0">
-                  <div className="flex items-center gap-2 text-slate-400 text-[9px] font-bold uppercase tracking-widest">
-                    <Calendar size={12} className="text-blue-500"/> {formData.date || 'YYYY-MM-DD'}
-                  </div>
-                  <div className="flex items-center gap-2 text-slate-400 text-[9px] font-bold uppercase tracking-widest">
-                    <Clock size={12} className="text-blue-500"/> {formData.start_time || '--:--'} - {formData.end_time || '--:--'}
-                  </div>
-                  <div className="flex items-center gap-2 text-slate-400 text-[9px] font-bold uppercase tracking-widest">
-                    <MapPin size={12} className="text-blue-500"/> {formData.venue || 'Location'}
-                  </div>
-                </div>
-
-                <div className="pt-3 border-t border-slate-700/50 space-y-2 shrink-0">
-                  <div className="flex items-center justify-between gap-2 text-blue-500 text-[9px] font-black uppercase tracking-widest">
-                    <span className="flex items-center gap-2"><Timer size={12}/> Registration Window</span>
-                    {formData.event_type === 'paid' && <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">₹{formData.price || '0'}</span>}
-                  </div>
-                  <div className="flex flex-col gap-1.5 text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                    <div className="flex justify-between bg-[#111827] px-3 py-2 rounded-lg border border-white/5">
-                      <span className="text-slate-500">Opens</span>
-                      <span className="text-white">{formData.reg_start_date || 'TBA'}</span>
+                {/* --- FRONT OF CARD --- */}
+                <div className="absolute inset-0 backface-hidden bg-[#0f172a] rounded-[2.5rem] border-2 border-blue-500/40 p-6 md:p-7 shadow-[0_0_30px_rgba(59,130,246,0.1)] text-left flex flex-col">
+                  
+                  <div className="flex justify-between items-start mb-4 shrink-0">
+                    <div className="flex flex-col gap-1">
+                      <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-400 border border-blue-500/20 truncate max-w-45">
+                        {factionBadge}
+                      </span>
+                      {!formData.is_open_to_all && <span className="px-2 py-0.5 rounded text-[7px] font-black uppercase tracking-widest text-rose-400 bg-rose-500/10 border border-rose-500/20 w-fit flex items-center gap-1"><Lock size={8}/> Internal Only</span>}
                     </div>
-                    <div className="flex justify-between bg-[#111827] px-3 py-2 rounded-lg border border-white/5">
-                      <span className="text-slate-500">Closes</span>
-                      <span className="text-white">{formData.reg_end_date || 'TBA'}</span>
+                    <div className="flex items-center gap-1.5 text-blue-400/40 font-black text-[8px] uppercase shrink-0"><Layout size={12}/> FRONT</div>
+                  </div>
+                  
+                  <div className="relative w-full h-40 rounded-2xl overflow-hidden shrink-0 mb-4 group/slider border border-white/10 shadow-inner bg-slate-900">
+                    <img 
+                      src={previewImages[currentImgIndex]} 
+                      alt="Preview Visualization" 
+                      className="w-full h-full object-cover transition-opacity duration-500 ease-in-out"
+                    />
+                    
+                    <div className="absolute inset-0 bg-linear-to-t from-[#0f172a] via-transparent to-transparent opacity-80 pointer-events-none"></div>
+                    
+                    <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-md px-2 py-1 rounded-lg text-[8px] font-black text-white uppercase tracking-widest">
+                      {currentImgIndex + 1} / {previewImages.length} IMAGES
+                    </div>
+
+                    {previewImages.length > 1 && (
+                      <>
+                        <button type="button" onClick={() => setCurrentImgIndex(p => p === 0 ? previewImages.length - 1 : p - 1)} className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 text-white p-1.5 rounded-full backdrop-blur-sm z-20 hover:bg-blue-600 transition-colors">
+                          <ChevronLeft size={16} />
+                        </button>
+                        <button type="button" onClick={() => setCurrentImgIndex(p => p === previewImages.length - 1 ? 0 : p + 1)} className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 text-white p-1.5 rounded-full backdrop-blur-sm z-20 hover:bg-blue-600 transition-colors">
+                          <ChevronRight size={16} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+
+                  <div className="grow flex flex-col justify-start text-left gap-3">
+                    <h4 className="text-2xl font-black uppercase italic text-white leading-[0.9] line-clamp-2 overflow-hidden shrink-0">
+                      {formData.title || 'Event Title'}
+                    </h4>
+
+                    <div className="space-y-1 shrink-0">
+                      <div className="flex items-center gap-2 text-slate-400 text-[9px] font-bold uppercase tracking-widest">
+                        <Calendar size={12} className="text-blue-500"/> {formData.date || 'YYYY-MM-DD'}
+                      </div>
+                      <div className="flex items-center gap-2 text-slate-400 text-[9px] font-bold uppercase tracking-widest">
+                        <Clock size={12} className="text-blue-500"/> {formData.start_time || '--:--'} - {formData.end_time || '--:--'}
+                      </div>
+                      <div className="flex items-center gap-2 text-slate-400 text-[9px] font-bold uppercase tracking-widest truncate">
+                        <MapPin size={12} className="text-blue-500"/> {formData.venue || 'Location'}
+                      </div>
+                    </div>
+
+                    <div className="pt-3 border-t border-slate-700/50 space-y-2 shrink-0">
+                      <div className="flex items-center justify-between gap-2 text-blue-500 text-[9px] font-black uppercase tracking-widest">
+                        <span className="flex items-center gap-2"><Timer size={12}/> Registration Window</span>
+                        {formData.event_type === 'paid' && <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">₹{formData.price || '0'}</span>}
+                      </div>
+                      <div className="flex flex-col gap-1.5 text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                        <div className="flex justify-between bg-[#111827] px-3 py-2 rounded-lg border border-white/5">
+                          <span className="text-slate-500">Opens</span>
+                          <span className="text-white">{formData.reg_start_date || 'TBA'}</span>
+                        </div>
+                        <div className="flex justify-between bg-[#111827] px-3 py-2 rounded-lg border border-white/5">
+                          <span className="text-slate-500">Closes</span>
+                          <span className="text-white">{formData.reg_end_date || 'TBA'}</span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="w-full py-3.5 mt-auto rounded-2xl font-black uppercase text-[9px] tracking-widest shrink-0 bg-blue-600/50 text-white text-center border border-blue-500/50 cursor-not-allowed">
+                      Simulated Action Button
                     </div>
                   </div>
                 </div>
-                
-                <div className="w-full py-3.5 mt-auto rounded-2xl font-black uppercase text-[9px] tracking-widest shrink-0 bg-blue-600/50 text-white text-center border border-blue-500/50 cursor-not-allowed">
-                  Simulated Button
+
+                {/* --- BACK OF CARD (SPECS) --- */}
+                <div className="absolute inset-0 backface-hidden rotate-y-180 bg-[#111827] rounded-[2.5rem] border-2 border-slate-700 p-6 md:p-8 flex flex-col shadow-2xl overflow-hidden">
+                  <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-4 shrink-0">
+                     <h4 className="text-[11px] font-black text-blue-400 uppercase tracking-widest flex items-center gap-2">
+                       <FileText size={14} /> Specification Output
+                     </h4>
+                     <div className="flex items-center gap-1.5 text-slate-500 font-black text-[8px] uppercase"><Layout size={12}/> BACK</div>
+                  </div>
+
+                  <div className="grow overflow-y-auto custom-scrollbar pr-2">
+                     {formData.description ? (
+                       <div 
+                         className="event-description text-slate-300 text-sm leading-relaxed"
+                         dangerouslySetInnerHTML={{ __html: formData.description }}
+                       />
+                     ) : (
+                       <div className="flex flex-col items-center justify-center h-full text-slate-600 space-y-3 opacity-50">
+                         <Type size={32}/>
+                         <p className="text-[10px] font-black uppercase tracking-widest text-center">Shell is currently empty.<br/>Type in the editor to populate.</p>
+                       </div>
+                     )}
+                  </div>
                 </div>
-              </div>
+
+             </div>
            </div>
            
         </div>
@@ -542,6 +656,16 @@ const CreateEvent = () => {
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #2563eb; border-radius: 10px; }
         .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; } 
+        
+        .perspective-2000 { perspective: 2000px; }
+        .transform-style-3d { transform-style: preserve-3d; }
+        .backface-hidden { backface-visibility: hidden; }
+        .rotate-y-180 { transform: rotateY(180deg); }
+
+        .event-description p { margin-bottom: 0.75rem; }
+        .event-description p:last-child { margin-bottom: 0; }
+        .event-description strong, .event-description b { font-weight: 700; color: #ffffff; }
+        .event-description em, .event-description i { font-style: italic; }
       `}</style>
     </div>
   );

@@ -4,7 +4,7 @@ import { supabase } from '../../sbclient/supabaseClient';
 import { 
   Building2, PlusCircle, ScanLine, 
   ArrowRight, Zap, ArrowLeft, Edit3,
-  Users
+  Users, Database
 } from 'lucide-react';
 
 const OrgDashboard = () => {
@@ -79,11 +79,14 @@ const OrgDashboard = () => {
       </div>
 
       {/* ORG CONTROL CARDS */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6">
         <OrgCard to="/admin/create" icon={<PlusCircle className="text-green-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Create" desc="New Org Event." color="border-green-500" />
         <OrgCard to="/admin/events" icon={<Edit3 className="text-orange-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Manage Events" desc="Modify & Delete." color="border-orange-500" />
         <OrgCard to="/org/clubs" icon={<Users className="text-purple-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Manage Clubs" desc="Factions & Heads." color="border-purple-500" /> 
         <OrgCard to="/admin/scan" icon={<ScanLine className="text-blue-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Scanner" desc="Secure Check-in." color="border-blue-500" />
+        
+        {/* NEW DATABASE ROUTE INTEGRATION */}
+        <OrgCard to="/admin/master-registry" icon={<Database className="text-cyan-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Database" desc="Master Registry." color="border-cyan-500" />
       </div>
 
     </div>

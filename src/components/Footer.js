@@ -17,11 +17,11 @@ const Footer = () => {
               NexusCircle
             </h3>
             
-            <div className="flex items-center gap-2 px-2.5 py-1 md:px-3 md:py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 shadow-[0_0_15px_rgba(16,185,129,0.05)] w-fit cursor-default transition-all hover:bg-blue-500/20">
+            <div className="flex items-center gap-2 px-2.5 py-1 md:px-2 md:py-2 rounded-lg bg-blue-500/10 border border-blue-500/20 shadow-[0_0_15px_rgba(16,185,129,0.05)] w-fit cursor-default transition-all hover:bg-blue-500/20">
               <ShieldCheck size={14} className="text-blue-400 shrink-0 md:w-4 md:h-4" />
               <div className="flex flex-col items-start justify-center">
-                <span className="text-[5px] md:text-[6px] text-blue-500/80 font-black uppercase tracking-[0.2em] leading-none mb-0.5">Govt. of India</span>
-                <span className="text-[8px] md:text-[9px] text-blue-400 font-black uppercase tracking-widest leading-none">MSME Registered</span>
+                <span className="text-[5px] md:text-[8px] text-blue-500/80 font-black uppercase tracking-[0.2em] leading-none mb-0.5">Govt. of India</span>
+                <span className="text-[8px] md:text-[11px] text-blue-400 font-black uppercase tracking-widest leading-none">MSME Registered</span>
               </div>
             </div>
           </div>

@@ -4,32 +4,82 @@ import { supabase } from '../../sbclient/supabaseClient';
 import { 
   LayoutDashboard, PlusCircle, ScanLine, 
   ArrowRight, Zap, ArrowLeft, Edit3,
-  Database, Building 
+  Database, Building, Users, Flag
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
+  const [userRole, setUserRole] = useState(null);
+  
+  // Context state for Club Heads managing multiple clubs
+  const [myClubs, setMyClubs] = useState([]);
+  const [activeClubId, setActiveClubId] = useState(localStorage.getItem('active_club_id'));
 
   useEffect(() => {
-    const verifySuperAdmin = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return navigate('/adminlogin');
+    const verifyAdmin = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return navigate('/adminlogin');
 
-      // STRICT SUPER ADMIN CHECK USING YOUR CUSTOM EMAILS
-      const adminEmails = ['admin@nexuscircle.in', 'staff@adypu.edu.in', 'prathamesh@adypu.edu.in'];
-      const isAdmin = adminEmails.includes(user.email);
-      
-      if (!isAdmin) {
-        toast.error("UNAUTHORIZED: Primary Admin Access Only");
-        return navigate('/events');
+        // 1. Identify Super Admin via Custom Emails
+        const adminEmails = ['admin@nexuscircle.in', 'staff@adypu.edu.in', 'prathamesh@adypu.edu.in'];
+        const isSuperAdmin = adminEmails.includes(user.email);
+
+        // 2. Fetch Database Roles (Supports Multi-Role)
+        const { data: roles } = await supabase.from('user_roles').select('*').eq('email', user.email);
+        const isOrgHead = roles?.some(r => r.role === 'org_head');
+        const isClubHead = roles?.some(r => r.role === 'club_head');
+
+        // 3. Determine Highest Authority
+        let role = 'student';
+        if (isSuperAdmin) role = 'super_admin';
+        else if (isOrgHead) role = 'org_head';
+        else if (isClubHead) role = 'club_head';
+
+        if (role === 'student') {
+          toast.error("UNAUTHORIZED: Command Access Only");
+          return navigate('/events');
+        }
+
+        setUserRole(role);
+
+        // 4. Initialize Workspace for Club Heads
+        if (role === 'club_head') {
+          const clubIds = roles.filter(r => r.role === 'club_head').map(r => r.club_id);
+          const { data: clubsData } = await supabase.from('clubs').select('*').in('id', clubIds);
+          
+          if (clubsData && clubsData.length > 0) {
+            setMyClubs(clubsData);
+            // Auto-set the first club if none is active
+            if (!localStorage.getItem('active_club_id')) {
+              localStorage.setItem('active_club_id', clubsData[0].id);
+              localStorage.setItem('active_club_name', clubsData[0].name);
+              setActiveClubId(clubsData[0].id);
+            }
+          }
+        }
+        
+      } catch (error) {
+        console.error("Dashboard verification error:", error);
+      } finally {
+        setLoading(false);
       }
-      
-      setLoading(false);
     };
-    verifySuperAdmin();
+    verifyAdmin();
   }, [navigate]);
+
+  const handleWorkspaceSwitch = (e) => {
+    const clubId = e.target.value;
+    const selectedClub = myClubs.find(c => c.id === clubId);
+    if (selectedClub) {
+      localStorage.setItem('active_club_id', selectedClub.id);
+      localStorage.setItem('active_club_name', selectedClub.name);
+      setActiveClubId(selectedClub.id);
+      toast.success(`Workspace shifted to ${selectedClub.name}`);
+    }
+  };
 
   if (loading) return <div className="flex justify-center items-center h-screen bg-[#0a0f1d]"><Zap className="animate-pulse text-blue-600" size={48}/></div>;
 
@@ -39,31 +89,67 @@ const Dashboard = () => {
       {/* TOP NAVIGATION / BACK BUTTON */}
       <div className="w-full mb-4 sm:mb-6 flex justify-start">
         <button onClick={() => navigate('/')} className="flex items-center gap-2 text-slate-500 hover:text-blue-500 transition-all font-black text-[10px] uppercase tracking-widest">
-          <ArrowLeft size={14} /> Back
+          <ArrowLeft size={14} /> Back to Home
         </button>
       </div>
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8 sm:mb-12">
         <div className="flex items-center gap-3 sm:gap-4">
-          <div className="p-2.5 sm:p-3.5 bg-blue-600 text-white rounded-xl sm:rounded-2xl shadow-xl shrink-0">
+          <div className={`p-2.5 sm:p-3.5 text-white rounded-xl sm:rounded-2xl shadow-xl shrink-0 ${
+            userRole === 'super_admin' ? 'bg-blue-600' : 
+            userRole === 'org_head' ? 'bg-indigo-600' : 'bg-pink-600'
+          }`}>
             <LayoutDashboard className="w-6 h-6 sm:w-7 sm:h-7" />
           </div>
           <div>
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-black text-white tracking-tight uppercase italic leading-none">Admin dashboard</h2>
-            <p className="text-slate-500 font-medium text-[10px] sm:text-sm mt-1 sm:mt-2 uppercase tracking-wider">Management Launchpad</p>
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-black text-white tracking-tight uppercase italic leading-none">
+              {userRole === 'super_admin' ? 'Admin Dashboard' : userRole === 'org_head' ? 'Org Headquarters' : 'Commander Launchpad'}
+            </h2>
+            <p className="text-slate-500 font-medium text-[10px] sm:text-sm mt-1 sm:mt-2 uppercase tracking-wider">
+              {userRole === 'super_admin' ? 'Primary Management Launchpad' : userRole === 'org_head' ? 'Organization Control Center' : 'Club Command Module'}
+            </p>
           </div>
         </div>
+
+        {/* WORKSPACE SWITCHER (For Club Heads only) */}
+        {userRole === 'club_head' && myClubs.length > 0 && (
+          <div className="flex items-center gap-3 bg-[#111827] border border-slate-800 p-3 rounded-2xl shadow-lg shrink-0">
+            <div className="p-2 bg-pink-500/10 rounded-lg"><Flag className="text-pink-500 w-4 h-4"/></div>
+            <div className="flex flex-col">
+              <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Active Workspace</span>
+              <select 
+                value={activeClubId} 
+                onChange={handleWorkspaceSwitch}
+                className="bg-transparent text-white font-bold text-xs outline-none cursor-pointer w-full max-w-37.5 truncate appearance-none"
+              >
+                {myClubs.map(c => <option key={c.id} value={c.id} className="bg-slate-900">{c.name}</option>)}
+              </select>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* ADMIN CONTROL CARDS */}
+      {/* DYNAMIC ADMIN CONTROL CARDS */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6">
+        
+        {/* Core Tools (Visible to all Admin Roles) */}
         <AdminCard to="/admin/create" icon={<PlusCircle className="text-green-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Create" desc="New Event." color="border-green-500" />
         <AdminCard to="/admin/events" icon={<Edit3 className="text-orange-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Manage Events" desc="Modify & Delete." color="border-orange-500" />
         <AdminCard to="/admin/scan" icon={<ScanLine className="text-blue-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Scanner" desc="QR Gate Control." color="border-blue-500" />
+        
+        {/* Database Tool (Visible to all Admin Roles - Fixes Goal #5) */}
         <AdminCard to="/admin/master-registry" icon={<Database className="text-purple-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Database" desc="Control System." color="border-purple-500" /> 
         
-        {/* NEW APPLICATIONS CARD USING YOUR NATIVE UI */}
-        <AdminCard to="/admin/applications" icon={<Building className="text-emerald-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Applications" desc="Org Approvals." color="border-emerald-500" /> 
+        {/* Org Head & Super Admin Only: Manage Factions/Clubs */}
+        {(userRole === 'super_admin' || userRole === 'org_head') && (
+          <AdminCard to="/club/my-clubs" icon={<Users className="text-pink-500 w-5 h-5 sm:w-7 sm:h-7" />} title={userRole === 'org_head' ? 'Org Clubs' : 'Factions'} desc="Assign Leaders." color="border-pink-500" /> 
+        )}
+
+        {/* Super Admin Only: Organization Applications */}
+        {userRole === 'super_admin' && (
+          <AdminCard to="/admin/applications" icon={<Building className="text-emerald-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Applications" desc="Org Approvals." color="border-emerald-500" /> 
+        )}
+
       </div>
 
     </div>
