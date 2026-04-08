@@ -165,56 +165,18 @@ const MasterManagement = () => {
   }, [typeFilter, gameFilter, searchQuery]);
 
   // 4. DATA FETCH: Dynamic Attendee Aggregation with Pagination
+  // 4. DATA FETCH: Dynamic Attendee Aggregation with Pagination
   const fetchAttendees = useCallback(async () => {
-    if (!userRole) return; 
+    if (!userRole) return;
 
     setLoading(true);
     try {
-      // BUILD BASE QUERY FOR BOTH DATA AND COUNT
-      let baseQuery = supabase.from('bookings');
-      
-      let filterString = '';
-      if (selectedEventId !== 'all') {
-        filterString = `event_id.eq.${selectedEventId}`;
-      } else {
-        if (selectedOrgId !== 'all') {
-          filterString = `events.org_id.eq.${selectedOrgId}`;
-        } else if (userRole !== 'super_admin') {
-          setLoading(false);
-          return; 
-        }
+      // --- 1. SETUP BASE QUERIES ---
+      // We need one for the COUNT and one for the DATA
+      let countReq = supabase
+        .from('bookings')
+        .select('id, events!inner(org_id, club_id)', { count: 'exact', head: true });
 
-        if (selectedClubId !== 'all') {
-          filterString += filterString ? `,events.club_id.eq.${selectedClubId}` : `events.club_id.eq.${selectedClubId}`;
-        } else if (userRole === 'club_head') {
-          if (userClubIds.length > 0) {
-            filterString += filterString ? `,events.club_id.in.(${userClubIds.join(',')})` : `events.club_id.in.(${userClubIds.join(',')})`;
-          } else {
-            filterString += filterString ? `,events.club_id.eq.00000000-0000-0000-0000-000000000000` : `events.club_id.eq.00000000-0000-0000-0000-000000000000`;
-          }
-        }
-      }
-
-      let searchFilterString = '';
-      if (searchQuery.trim() !== '') {
-        searchFilterString = `or(student_email.ilike.%${searchQuery}%,team_name.ilike.%${searchQuery}%,transaction_id.ilike.%${searchQuery}%,razorpay_payment_id.ilike.%${searchQuery}%)`;
-      }
-
-      // Compile count request
-      let countReq = baseQuery.select('id, events!inner(org_id, club_id)', { count: 'exact', head: true });
-      if (filterString && selectedEventId === 'all') countReq = countReq.or(filterString); 
-      else if (selectedEventId !== 'all') countReq = countReq.eq('event_id', selectedEventId);
-      
-      if (typeFilter === 'Team') countReq = countReq.not('team_name', 'is', null);
-      if (typeFilter === 'Individual') countReq = countReq.is('team_name', null);
-      if (gameFilter !== 'all') countReq = countReq.eq('selected_game', gameFilter);
-      if (searchFilterString) countReq = countReq.or(searchFilterString);
-
-      const { count, error: countError } = await countReq;
-      if (countError) throw countError;
-      setTotalRecords(count || 0);
-
-      // FETCH ACTUAL DATA WITH PAGINATION
       const from = (currentPage - 1) * ROWS_PER_PAGE;
       const to = from + ROWS_PER_PAGE - 1;
 
@@ -228,30 +190,80 @@ const MasterManagement = () => {
         .order('created_at', { ascending: false })
         .range(from, to);
 
-      if (selectedEventId !== 'all') dataReq = dataReq.eq('event_id', selectedEventId);
-      else {
-        if (selectedOrgId !== 'all') dataReq = dataReq.eq('events.org_id', selectedOrgId);
-        if (selectedClubId !== 'all') dataReq = dataReq.eq('events.club_id', selectedClubId);
-        else if (userRole === 'club_head' && userClubIds.length > 0) dataReq = dataReq.in('events.club_id', userClubIds);
+      // --- 2. APPLY SCOPE FILTERS (Event -> Club -> Org) ---
+      if (selectedEventId !== 'all') {
+        countReq = countReq.eq('event_id', selectedEventId);
+        dataReq = dataReq.eq('event_id', selectedEventId);
+      } else {
+        // If searching across all events, apply Org/Club filters
+        if (selectedOrgId !== 'all') {
+          countReq = countReq.eq('events.org_id', selectedOrgId);
+          dataReq = dataReq.eq('events.org_id', selectedOrgId);
+        } else if (userRole !== 'super_admin') {
+          // If not super admin and no org selected, we can't show anything
+          setLoading(false);
+          return;
+        }
+
+        if (selectedClubId !== 'all') {
+          countReq = countReq.eq('events.club_id', selectedClubId);
+          dataReq = dataReq.eq('events.club_id', selectedClubId);
+        } else if (userRole === 'club_head') {
+          if (userClubIds.length > 0) {
+            countReq = countReq.in('events.club_id', userClubIds);
+            dataReq = dataReq.in('events.club_id', userClubIds);
+          } else {
+            countReq = countReq.eq('events.club_id', '00000000-0000-0000-0000-000000000000');
+            dataReq = dataReq.eq('events.club_id', '00000000-0000-0000-0000-000000000000');
+          }
+        }
       }
 
-      if (typeFilter === 'Team') dataReq = dataReq.not('team_name', 'is', null);
-      if (typeFilter === 'Individual') dataReq = dataReq.is('team_name', null);
-      if (gameFilter !== 'all') dataReq = dataReq.eq('selected_game', gameFilter);
-      if (searchFilterString) dataReq = dataReq.or(searchFilterString);
+      // --- 3. APPLY TYPE & GAME FILTERS ---
+      if (typeFilter === 'Team') {
+        countReq = countReq.not('team_name', 'is', null);
+        dataReq = dataReq.not('team_name', 'is', null);
+      } else if (typeFilter === 'Individual') {
+        countReq = countReq.is('team_name', null);
+        dataReq = dataReq.is('team_name', null);
+      }
 
-      const { data, error } = await dataReq;
-      if (error) throw error;
-      
-      let enrichedData = data || [];
+      if (gameFilter !== 'all') {
+        countReq = countReq.eq('selected_game', gameFilter);
+        dataReq = dataReq.eq('selected_game', gameFilter);
+      }
 
+      // --- 4. APPLY SEARCH FILTER ---
+      if (searchQuery.trim() !== '') {
+        const searchStr = `or(student_email.ilike.%${searchQuery}%,team_name.ilike.%${searchQuery}%,transaction_id.ilike.%${searchQuery}%,razorpay_payment_id.ilike.%${searchQuery}%)`;
+        countReq = countReq.or(searchStr);
+        dataReq = dataReq.or(searchStr);
+      }
+
+      // --- 5. EXECUTE QUERIES ---
+      const [countRes, dataRes] = await Promise.all([countReq, dataReq]);
+
+      if (countRes.error) throw countRes.error;
+      if (dataRes.error) throw dataRes.error;
+
+      setTotalRecords(countRes.count || 0);
+
+      let enrichedData = dataRes.data || [];
+
+      // --- 6. FETCH TEAM ROSTERS (If applicable) ---
       if (enrichedData.length > 0) {
         const bookingIds = enrichedData.map(b => b.id);
-        const { data: membersData } = await supabase.from('booking_members').select('booking_id, student_email').in('booking_id', bookingIds);
+        const { data: membersData } = await supabase
+          .from('booking_members')
+          .select('booking_id, student_email')
+          .in('booking_id', bookingIds);
         
         if (membersData && membersData.length > 0) {
            const uniqueEmails = [...new Set(membersData.map(m => m.student_email))];
-           const { data: studentProfiles } = await supabase.from('students').select('email, name, surname, urn, phone').in('email', uniqueEmails);
+           const { data: studentProfiles } = await supabase
+            .from('students')
+            .select('email, name, surname, urn, phone')
+            .in('email', uniqueEmails);
            
            enrichedData = enrichedData.map(booking => {
               const bMembers = membersData.filter(m => m.booking_id === booking.id);
