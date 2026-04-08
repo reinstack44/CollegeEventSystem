@@ -162,7 +162,7 @@ const CreateEvent = () => {
             price: data.price || '',
             merchant_upi: data.merchant_upi || '',
             is_open_to_all: data.is_open_to_all ?? true,
-            participation_type: data.participation_type || 'Individual',
+             participation_type: data.participation_type || 'Individual',
             team_size: data.team_size || '',
             games_list: safeGamesList
           });
@@ -871,7 +871,7 @@ const CreateEvent = () => {
              </button>
            </div>
            
-           <div className="perspective-2000 w-full h-132.5">
+           <div className="perspective-2000 w-full h-125">
              <div className={`relative w-full h-full transition-transform duration-1000 ease-in-out transform-style-3d ${isFlipped ? 'rotate-y-180' : ''}`}>
                 
                 {/* --- FRONT OF CARD --- */}
@@ -953,7 +953,7 @@ const CreateEvent = () => {
                 </div>
 
                 {/* --- BACK OF CARD (SPECS) --- */}
-                <div className="absolute inset-0 backface-hidden rotate-y-180 bg-[#111827] rounded-[2.5rem] border-2 border-slate-700 p-6 md:p-8 flex flex-col shadow-2xl overflow-hidden">
+                <div className="absolute inset-0 backface-hidden rotate-y-180 bg-[#111827] rounded-[2.5rem] md:rounded-[3.5rem] border-2 border-slate-700 p-6 md:p-8 flex flex-col shadow-2xl overflow-hidden">
                   <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-4 shrink-0">
                      <h4 className="text-[11px] font-black text-blue-400 uppercase tracking-widest flex items-center gap-2">
                        <FileText size={14} /> Event Description
@@ -974,6 +974,8 @@ const CreateEvent = () => {
                        </div>
                      )}
                   </div>
+                  
+                  <p className="mt-4 pt-4 border-t border-white/10 shrink-0 text-center text-slate-500 text-[10px] font-bold uppercase animate-pulse">Tap anywhere to flip back</p>
                 </div>
 
              </div>

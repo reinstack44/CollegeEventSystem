@@ -5,7 +5,7 @@ import {
   Calendar, Clock, Search, Zap, 
   CheckCircle, MapPin, X, Loader2, ShieldCheck,
   Fingerprint, Download, ChevronDown, Layers, Share2, 
-  Users, Gamepad2, ArrowRight, UserPlus, UserMinus, Ticket // Restored Ticket!
+  Users, Gamepad2, ArrowRight, UserPlus, UserMinus, Ticket, FileText
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import html2canvas from 'html2canvas';
@@ -589,18 +589,14 @@ const EventList = () => {
       {poppedEvent && (
         <div className="fixed inset-0 z-600 bg-black/95 backdrop-blur-3xl flex items-center justify-center p-4 overflow-hidden" onClick={closePoppedEvent}>
           <div className={`relative w-full max-w-md animate-in zoom-in-95 fade-in duration-300 ${isClosing ? 'animate-flip-pop-out' : 'animate-flip-pop'}`} onClick={(e) => e.stopPropagation()}>
-            <button onClick={closePoppedEvent} className="absolute -top-16 right-0 p-3 bg-white/10 hover:bg-white/20 rounded-full text-white border border-white/10 transition-all active:scale-90 z-700"><X size={24} /></button>
+            <button onClick={closePoppedEvent} className="absolute -top-12 md:-top-16 right-0 p-3 bg-white/10 hover:bg-white/20 rounded-full text-white border border-white/10 transition-all active:scale-90 z-700"><X size={24} /></button>
             <div className="flex flex-col gap-6">
               <div className="text-center space-y-2">
                 <p className="text-blue-500 font-black uppercase tracking-[0.3em] text-[10px]">Spotlight Visualization</p>
                 <h3 className="text-white font-black uppercase text-xl italic tracking-tighter">Interactive Entry Point</h3>
               </div>
-              <div className="scale-105">
+              <div className="md:scale-105 origin-center">
                 <FlipCard event={poppedEvent} onBook={startBookingWizard} onViewTicket={handleViewTicket} onZoomClub={setZoomedClub} availableClubs={availableClubs} spotlightMode={true} />
-              </div>
-              <div className="bg-slate-900/50 p-6 rounded-3xl border border-white/5 max-h-48 overflow-y-auto custom-scrollbar">
-                <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-3 flex items-center gap-2"><Layers size={14}/> Event Specification</p>
-                <div className="event-description text-slate-300 text-xs leading-relaxed" dangerouslySetInnerHTML={{ __html: poppedEvent.description }} />
               </div>
             </div>
           </div>
@@ -847,11 +843,12 @@ const FlipCard = ({ event, onBook, onFlip, onViewTicket, onZoomClub, availableCl
   return (
     <div 
       onClick={() => { if(spotlightMode) setIsInternalFlipped(!isInternalFlipped); else onFlip(); }} 
-      className={`group relative bg-[#111827]/90 backdrop-blur-md rounded-[2.5rem] overflow-hidden flex flex-col cursor-pointer transition-all duration-500 border border-transparent ${glowClass} ${!spotlightMode && 'hover:-translate-y-1'} perspective-2000`}
+      className={`group relative h-125 bg-[#111827]/90 backdrop-blur-md rounded-[2.5rem] flex flex-col cursor-pointer transition-all duration-500 border border-transparent ${glowClass} ${!spotlightMode && 'hover:-translate-y-1'} perspective-2000`}
     >
       <div className={`relative w-full h-full transition-transform duration-700 transform-style-3d ${isInternalFlipped ? 'rotate-y-180' : ''}`}>
         
-        <div className="backface-hidden flex flex-col h-full">
+        {/* FRONT FACE */}
+        <div className="absolute inset-0 backface-hidden flex flex-col h-full rounded-[2.5rem] overflow-hidden bg-[#111827]/90">
           <div className="relative w-full h-48 sm:h-52 shrink-0 bg-slate-900 overflow-hidden border-b border-white/5">
             <img src={images[0]} alt="Cover" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"/>
             <div className="absolute inset-0 bg-linear-to-t from-[#111827] via-transparent to-transparent opacity-90"></div>
@@ -886,35 +883,50 @@ const FlipCard = ({ event, onBook, onFlip, onViewTicket, onZoomClub, availableCl
           </div>
         </div>
 
-        <div className="absolute inset-0 backface-hidden rotate-y-180 bg-slate-900 flex flex-col p-8">
-             <div className="flex justify-between items-center border-b border-white/5 pb-4 mb-6 shrink-0">
-               <h4 className="text-blue-500 font-black uppercase text-xs">Event Details</h4>
-               <Layers size={20} className="text-slate-700" />
+        {/* BACK FACE (Details + Specifications inside the card) */}
+        <div className="absolute inset-0 backface-hidden rotate-y-180 bg-slate-900 rounded-[2.5rem] flex flex-col p-6 md:p-8 overflow-hidden border border-white/5">
+             <div className="flex justify-between items-center border-b border-white/10 pb-4 mb-4 shrink-0">
+               <h4 className="text-blue-500 font-black uppercase tracking-widest text-[11px]">Event Details</h4>
+               <Layers size={16} className="text-slate-500" />
              </div>
-             <div className="space-y-6 text-left grow overflow-y-auto custom-scrollbar">
-                <div className="flex items-center gap-4 text-white">
-                   <div className="w-10 h-10 rounded-xl bg-blue-600/20 flex items-center justify-center shrink-0"><Clock size={20} className="text-blue-500"/></div>
-                   <div><p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Timing</p><p className="font-bold text-sm">{formatEventTime(event.start_time)} — {formatEventTime(event.end_time) || 'END'}</p></div>
-                </div>
-                <div className="flex items-center gap-4 text-white">
-                   <div className="w-10 h-10 rounded-xl bg-emerald-600/20 flex items-center justify-center shrink-0"><Ticket size={20} className="text-emerald-500"/></div>
-                   <div><p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Pricing</p><p className="font-bold text-sm uppercase">{event.event_type} ENTRY</p></div>
-                </div>
-                {event.category === 'E-Sports' && event.games_list && event.games_list.length > 0 && (
-                  <div className="flex items-start gap-4 text-white pt-2 border-t border-white/5">
-                     <div className="w-10 h-10 rounded-xl bg-cyan-600/20 flex items-center justify-center shrink-0"><Gamepad2 size={20} className="text-cyan-500"/></div>
-                     <div>
-                       <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Tournaments Available</p>
-                       <div className="flex flex-wrap gap-1.5">
-                         {event.games_list.map((g, i) => (
-                           <span key={i} className="text-[9px] font-bold uppercase tracking-wider bg-cyan-500/10 text-cyan-400 px-2 py-1 rounded border border-cyan-500/20">{g.gameName}</span>
-                         ))}
-                       </div>
+             
+             <div className="flex flex-col gap-6 text-left grow overflow-y-auto custom-scrollbar pr-2 pb-2">
+                <div className="space-y-4 shrink-0">
+                   <div className="flex items-center gap-4 text-white">
+                      <div className="w-10 h-10 rounded-xl bg-blue-600/20 flex items-center justify-center shrink-0"><Clock size={20} className="text-blue-500"/></div>
+                      <div><p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Timing</p><p className="font-bold text-sm">{formatEventTime(event.start_time)} — {formatEventTime(event.end_time) || 'END'}</p></div>
+                   </div>
+                   <div className="flex items-center gap-4 text-white">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-600/20 flex items-center justify-center shrink-0"><Ticket size={20} className="text-emerald-500"/></div>
+                      <div><p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Pricing</p><p className="font-bold text-sm uppercase">{event.event_type} ENTRY</p></div>
+                   </div>
+                   {event.category === 'E-Sports' && event.games_list && event.games_list.length > 0 && (
+                     <div className="flex items-start gap-4 text-white pt-2 border-t border-white/5">
+                        <div className="w-10 h-10 rounded-xl bg-cyan-600/20 flex items-center justify-center shrink-0"><Gamepad2 size={20} className="text-cyan-500"/></div>
+                        <div>
+                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Tournaments Available</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {event.games_list.map((g, i) => (
+                              <span key={i} className="text-[9px] font-bold uppercase tracking-wider bg-cyan-500/10 text-cyan-400 px-2 py-1 rounded border border-cyan-500/20">{g.gameName}</span>
+                            ))}
+                          </div>
+                        </div>
                      </div>
-                  </div>
+                   )}
+                </div>
+
+                {/* Fully Integrated Scrolling Event Description */}
+                {event.description && (
+                   <div className="pt-4 border-t border-white/5 shrink-0">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                        <FileText size={12}/> Event Specification
+                      </p>
+                      <div className="event-description text-slate-300 text-xs leading-relaxed" dangerouslySetInnerHTML={{ __html: event.description }} />
+                   </div>
                 )}
              </div>
-             <p className="mt-auto pt-4 border-t border-white/5 shrink-0 text-center text-slate-500 text-[10px] font-bold uppercase animate-pulse">Tap anywhere to flip back</p>
+             
+             <p className="mt-4 pt-4 border-t border-white/10 shrink-0 text-center text-slate-500 text-[10px] font-bold uppercase animate-pulse">Tap anywhere to flip back</p>
         </div>
 
       </div>
