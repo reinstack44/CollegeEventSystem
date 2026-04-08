@@ -3,7 +3,7 @@ import { supabase } from '../../sbclient/supabaseClient';
 import { QRCodeCanvas } from 'qrcode.react'; 
 import { 
   Ticket, Calendar, MapPin, Zap, Clock, 
-  Fingerprint, X, ShieldCheck, Info, CheckCircle2, Trash2, Download, Loader2, History, AlertTriangle, CreditCard
+  Fingerprint, X, ShieldCheck, Info, CheckCircle2, Trash2, Download, Loader2, History, AlertTriangle, CreditCard, Users, Gamepad2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import html2canvas from 'html2canvas';
@@ -25,7 +25,6 @@ const MyTickets = () => {
 
   const printRef = useRef(null);
 
-  // --- EXACT MATH HELPER ---
   const getDisplayAmount = (ticket) => {
     if (ticket.events?.event_type === 'paid') {
       const ticketFee = Number(ticket.events?.price || 0);
@@ -36,7 +35,6 @@ const MyTickets = () => {
     return "0.00";
   };
 
-  // --- TIME FORMATTING HELPER (12-Hour AM/PM) ---
   const formatTime = (timeStr) => {
     if (!timeStr) return '';
     if (timeStr.toLowerCase().includes('m')) return timeStr; 
@@ -67,13 +65,7 @@ const MyTickets = () => {
           if (targetTicket.status === 'pending') {
             toast.error("Ticket is still pending verification.");
           } else {
-            setSelectedTicket(targetTicket);
-            setIsFlipping(false);
-            
-            if (hasAutoFlip) {
-              setTimeout(() => setIsFlipping(true), 700); 
-            }
-            
+            openTicket(targetTicket, hasAutoFlip);
             window.history.replaceState(null, '', window.location.pathname);
           }
         }
@@ -86,39 +78,44 @@ const MyTickets = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data: profile } = await supabase
-        .from('students')
-        .select('name, surname')
-        .eq('email', user.email)
-        .single();
-      
+      const { data: profile } = await supabase.from('students').select('name, surname').eq('email', user.email).single();
       setStudentName(`${profile?.name || 'Student'} ${profile?.surname || ''}`);
 
+      // 1. Fetch all bookings where this user is listed as a team member
+      const { data: memberships } = await supabase.from('booking_members').select('booking_id').eq('student_email', user.email);
+      const bookingIds = memberships ? memberships.map(m => m.booking_id) : [];
+
+      if (bookingIds.length === 0) {
+        setTickets([]);
+        return;
+      }
+
+      // 2. Fetch those specific bookings with all event details
       const { data, error } = await supabase
         .from('bookings')
         .select(`
-          id, 
-          status,
-          amount_expected,
-          events ( 
-            id,
-            title, 
-            date, 
-            venue, 
-            school, 
-            start_time, 
-            end_time,
-            registration_deadline,
-            event_type,
-            price
-          )
+          id, status, amount_expected, team_name, selected_game, student_email,
+          events ( id, title, date, venue, school, start_time, end_time, registration_deadline, event_type, price, org_id )
         `)
-        .eq('student_email', user.email)
+        .in('id', bookingIds)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
 
-      const validTickets = (data || []).filter(ticket => ticket.events !== null);
+      // 3. Fetch org names securely
+      const orgIds = [...new Set((data || []).map(b => b.events?.org_id).filter(Boolean))];
+      let orgMap = {};
+      if (orgIds.length > 0) {
+        const { data: orgData } = await supabase.from('organizations').select('id, name').in('id', orgIds);
+        if (orgData) orgData.forEach(o => { orgMap[o.id] = o.name; });
+      }
+
+      const validTickets = (data || []).filter(ticket => ticket.events !== null).map(t => ({
+        ...t,
+        orgName: orgMap[t.events.org_id] || 'Organization',
+        isLead: t.student_email === user.email // Am I the one who booked it?
+      }));
+
       setTickets(validTickets);
     } catch (error) {
       toast.error("Vault Access Failure");
@@ -140,11 +137,7 @@ const MyTickets = () => {
   const handleCancelTicket = async () => {
     const { ticketId } = confirmModal;
     try {
-      const { error } = await supabase
-        .from('bookings')
-        .delete()
-        .eq('id', ticketId);
-
+      const { error } = await supabase.from('bookings').delete().eq('id', ticketId);
       if (error) throw error;
 
       toast.success("Ticket Cancelled Successfully");
@@ -156,10 +149,20 @@ const MyTickets = () => {
     }
   };
 
-  const openTicket = (ticket, shouldFlip = true) => {
-    setSelectedTicket(ticket);
+  const openTicket = async (ticket, shouldFlip = true) => {
+    let fullMembers = [];
+    // If it's a team ticket, fetch the roster before opening
+    if (ticket.team_name) {
+       const { data: memEmails } = await supabase.from('booking_members').select('student_email').eq('booking_id', ticket.id);
+       if (memEmails) {
+          const emails = memEmails.map(m => m.student_email);
+          const { data: profiles } = await supabase.from('students').select('email, name, surname').in('email', emails);
+          fullMembers = profiles || [];
+       }
+    }
+
+    setSelectedTicket({ ...ticket, fullMembers });
     setIsFlipping(false);
-    
     if (shouldFlip) {
       setTimeout(() => setIsFlipping(true), 300);
     }
@@ -170,13 +173,7 @@ const MyTickets = () => {
     setIsDownloading(true);
     const toastId = toast.loading("Generating Secure PDF Pass...");
     try {
-      const canvas = await html2canvas(printRef.current, { 
-        scale: 3, 
-        useCORS: true, 
-        backgroundColor: '#0a0f1d', 
-        windowWidth: 794, 
-        logging: false 
-      });
+      const canvas = await html2canvas(printRef.current, { scale: 3, useCORS: true, backgroundColor: '#0a0f1d', windowWidth: 794, logging: false });
       const imgData = canvas.toDataURL('image/png', 1.0);
       const pdf = new jsPDF('p', 'px', [794, 1123]);
       pdf.addImage(imgData, 'PNG', 0, 0, 794, 1123);
@@ -196,15 +193,7 @@ const MyTickets = () => {
 
     const handleCardClick = () => {
       if (isPending) {
-        toast('Pass is awaiting Admin UTR verification.', {
-          icon: '⏳',
-          style: {
-            borderRadius: '10px',
-            background: '#1f2937',
-            color: '#eab308',
-            border: '1px solid rgba(234, 179, 8, 0.2)'
-          },
-        });
+        toast('Pass is awaiting verification.', { icon: '⏳', style: { borderRadius: '10px', background: '#1f2937', color: '#eab308', border: '1px solid rgba(234, 179, 8, 0.2)' }});
         return; 
       }
       openTicket(ticket, true);
@@ -220,29 +209,26 @@ const MyTickets = () => {
 
         <div className="relative z-10 flex justify-between items-start">
           <span className={`text-[9px] font-black uppercase tracking-widest px-4 py-1.5 rounded-full border ${isExpired ? 'text-slate-400 bg-slate-500/10 border-slate-400/30' : isPending ? 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' : 'text-blue-400 bg-blue-500/20 border-blue-400/30'}`}>
-            {ticket.events?.school}
+            {ticket.orgName}
           </span>
-          <span className={`flex items-center gap-1.5 text-[8px] font-black uppercase tracking-[0.2em] px-3 py-1 rounded-md border ${
-            isCheckedIn 
-            ? 'text-green-500 border-green-500/20 bg-green-500/10' 
-            : isExpired ? 'text-slate-500 border-slate-500/20 bg-slate-500/10' 
-            : isPending ? 'text-yellow-500 border-yellow-500/20 bg-yellow-500/10'
-            : 'text-blue-500 border-blue-500/20 bg-blue-500/10'
-          }`}>
+          <span className={`flex items-center gap-1.5 text-[8px] font-black uppercase tracking-[0.2em] px-3 py-1 rounded-md border ${isCheckedIn ? 'text-green-500 border-green-500/20 bg-green-500/10' : isExpired ? 'text-slate-500 border-slate-500/20 bg-slate-500/10' : isPending ? 'text-yellow-500 border-yellow-500/20 bg-yellow-500/10' : 'text-blue-500 border-blue-500/20 bg-blue-500/10'}`}>
             {isCheckedIn ? <CheckCircle2 size={10}/> : isPending ? <Clock size={10}/> : <ShieldCheck size={10}/>}
             {isExpired ? 'EXPIRED' : ticket.status.replace('_', ' ')}
           </span>
         </div>
 
         <div className="relative z-10 space-y-4 text-left">
-          <h3 className={`text-3xl font-black uppercase tracking-tighter leading-[0.85] transition-colors ${isExpired ? 'text-slate-500' : isPending ? 'text-yellow-500/80' : 'group-hover:text-blue-400'}`}>
+          <h3 className={`text-3xl font-black uppercase tracking-tighter leading-[0.85] transition-colors line-clamp-2 ${isExpired ? 'text-slate-500' : isPending ? 'text-yellow-500/80' : 'group-hover:text-blue-400'}`}>
             {ticket.events?.title}
           </h3>
           <div className="space-y-2">
+            {ticket.team_name && <p className="flex items-center gap-2 text-[10px] font-bold text-indigo-400 uppercase tracking-widest"><Users size={12}/> TEAM: {ticket.team_name}</p>}
+            {ticket.selected_game && <p className="flex items-center gap-2 text-[10px] font-bold text-cyan-400 uppercase tracking-widest"><Gamepad2 size={12}/> {ticket.selected_game}</p>}
             <p className="flex items-center gap-2 text-[10px] font-bold text-slate-300 uppercase tracking-widest"><Calendar size={12} className={isExpired ? "text-slate-500" : isPending ? "text-yellow-600" : "text-blue-500"}/> {ticket.events?.date}</p>
-            <p className="flex items-center gap-2 text-[10px] font-bold text-slate-300 uppercase tracking-widest"><Clock size={12} className={isExpired ? "text-slate-500" : isPending ? "text-yellow-600" : "text-blue-500"}/> {formatTime(ticket.events?.start_time)} — {ticket.events?.end_time ? formatTime(ticket.events?.end_time) : 'End'}</p>
-            <p className="flex items-center gap-2 text-[10px] font-bold text-slate-300 uppercase tracking-widest truncate max-w-[90%]"><MapPin size={12} className={isExpired ? "text-slate-500" : isPending ? "text-yellow-600" : "text-blue-500"}/> {ticket.events?.venue}</p>
-            
+            <div className="flex items-start gap-2 text-[10px] font-bold text-slate-300 uppercase tracking-widest">
+               <MapPin size={12} className={`shrink-0 mt-0.5 ${isExpired ? "text-slate-500" : isPending ? "text-yellow-600" : "text-blue-500"}`} /> 
+               <span className="truncate">{ticket.events?.venue}</span>
+            </div>
             {ticket.events?.event_type === 'paid' && (
               <p className={`flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest pt-1 ${isExpired ? "text-slate-500" : isPending ? "text-yellow-500" : "text-emerald-400"}`}>
                 <CreditCard size={12} /> PAID: ₹{getDisplayAmount(ticket)}
@@ -256,12 +242,9 @@ const MyTickets = () => {
              {isPending ? <Clock size={12} /> : <Info size={12} />} 
              {isExpired ? 'View Record' : isPending ? 'Awaiting Audit' : 'Tap to Open Pass'}
           </div>
-          {!isCheckedIn && !isExpired && (
+          {!isCheckedIn && !isExpired && ticket.isLead && (
             <button 
-              onClick={(e) => {
-                e.stopPropagation();
-                triggerCancelConfirmation(ticket.id, ticket.events?.title);
-              }}
+              onClick={(e) => { e.stopPropagation(); triggerCancelConfirmation(ticket.id, ticket.events?.title); }}
               className="flex items-center gap-2 px-3 py-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl border border-red-500/20 transition-all active:scale-95 group/cancel"
             >
               <Trash2 size={14} />
@@ -360,10 +343,10 @@ const MyTickets = () => {
 
       {/* TICKET DETAIL MODAL WITH RESPONSIVE FLIP */}
       {selectedTicket && (
-        <div className="fixed inset-0 z-100 bg-black/95 backdrop-blur-3xl flex items-center justify-center p-4 overflow-hidden">
-          <button onClick={() => setSelectedTicket(null)} className="absolute top-6 right-6 md:top-8 md:right-8 p-2.5 md:p-3 bg-white/10 hover:bg-white/20 rounded-full transition-colors text-white z-110 border border-white/10 shadow-xl"><X size={24} className="md:w-8 md:h-8" /></button>
+        <div className="fixed inset-0 z-600 bg-black/95 backdrop-blur-3xl flex items-center justify-center p-4 overflow-hidden">
+          <button onClick={() => setSelectedTicket(null)} className="absolute top-6 right-6 md:top-8 md:right-8 p-2.5 md:p-3 bg-white/10 hover:bg-white/20 rounded-full transition-colors text-white z-610 border border-white/10 shadow-xl"><X size={24} className="md:w-8 md:h-8" /></button>
           
-          <div className="perspective-2000 w-[90vw] max-w-85 md:max-w-md h-120 md:h-155 cursor-pointer" onClick={() => setIsFlipping(!isFlipping)}>
+          <div className="perspective-2000 w-[90vw] max-w-[85vw] md:max-w-md h-[120vw] md:h-162.5 cursor-pointer" onClick={() => setIsFlipping(!isFlipping)}>
             <div className={`relative w-full h-full transition-transform duration-1000 ease-in-out transform-style-3d ${isFlipping ? 'rotate-y-180' : ''}`}>
               
               {/* FRONT OF TICKET */}

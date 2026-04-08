@@ -4,7 +4,7 @@ import { supabase } from '../../sbclient/supabaseClient';
 import { useNavigate } from 'react-router-dom';
 import { 
   History, ScanLine, Flashlight, FlashlightOff, ShieldCheck, 
-  RefreshCw, ArrowLeft, Users, CheckCircle2, AlertCircle, Lock
+  RefreshCw, ArrowLeft, Users, CheckCircle2, AlertCircle, Lock, Gamepad2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -16,10 +16,13 @@ const Scanner = () => {
   const [totalScanned, setTotalScanned] = useState(0);
   const [isTorchOn, setIsTorchOn] = useState(false);
   
+  // NEW: State for the Team Roster Verification Screen
+  const [pendingTeamVerification, setPendingTeamVerification] = useState(null);
+  
   const audioCtx = useRef(null);
   const scannerRef = useRef(null);
   const isComponentMounted = useRef(true);
-  const userRoleRef = useRef(null); // NEW: Store role context without triggering re-renders
+  const userRoleRef = useRef(null); 
 
   // --- LOGIC SECTION ---
 
@@ -46,9 +49,53 @@ const Scanner = () => {
     }
   }, []);
 
+  const finalizeCheckIn = async (bookingData) => {
+    try {
+      const { error: updateError } = await supabase
+        .from('bookings')
+        .update({ status: 'checked_in', checked_in_at: new Date().toISOString() })
+        .eq('id', bookingData.id);
+
+      if (updateError) throw updateError;
+
+      triggerFeedback('success'); 
+      setScanResult({ type: 'success', message: 'ACCESS GRANTED' });
+      if (isComponentMounted.current) setTotalScanned(prev => prev + (bookingData.team_name ? bookingData.fullMembers.length : 1));
+      
+      const newEntry = {
+        id: bookingData.id,
+        name: bookingData.team_name ? `TEAM: ${bookingData.team_name}` : `${bookingData.students?.name || 'Unknown'} ${bookingData.students?.surname || ''}`,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        event: bookingData.events?.title,
+        isTeam: !!bookingData.team_name
+      };
+      if (isComponentMounted.current) setHistory(prev => [newEntry, ...prev].slice(0, 5));
+      toast.success(bookingData.team_name ? `Team Verified: ${bookingData.team_name}` : `Verified: ${bookingData.students?.name}`, { position: "top-center" });
+    } catch (err) {
+      triggerFeedback('error');
+      toast.error("Database Update Failed");
+    } finally {
+      if (isComponentMounted.current) {
+        setPendingTeamVerification(null);
+        setTimeout(() => {
+            setScanResult(null);
+            setIsVerifying(false);
+            if (scannerRef.current && scannerRef.current.getState() !== 2) {
+                startAutomatedScanner();
+            }
+        }, 3000);
+      }
+    }
+  };
+
   const processCheckIn = useCallback(async (identifier) => {
     if (!identifier || isVerifying) return;
     setIsVerifying(true);
+    
+    // Pause scanner immediately to prevent duplicate rapid scans
+    if (scannerRef.current && scannerRef.current.getState() === 2) {
+      scannerRef.current.pause();
+    }
 
     try {
       const { data, error } = await supabase
@@ -60,10 +107,15 @@ const Scanner = () => {
       if (error || !data) {
         triggerFeedback('error'); 
         setScanResult({ type: 'error', message: 'INVALID CREDENTIALS' });
+        setTimeout(() => {
+            setIsVerifying(false);
+            setScanResult(null);
+            if (scannerRef.current && scannerRef.current.getState() !== 2) startAutomatedScanner();
+        }, 3000);
         return;
       } 
       
-      // NEW: SECURITY SCOPE CHECK
+      // SECURITY SCOPE CHECK
       const roleCtx = userRoleRef.current;
       const isSuperAdmin = roleCtx?.role === 'super_admin';
       const isMyOrg = roleCtx?.org_id === data.events?.org_id;
@@ -77,42 +129,62 @@ const Scanner = () => {
       if (!hasAuthority) {
         triggerFeedback('error');
         setScanResult({ type: 'error', message: 'UNAUTHORIZED SECTOR' });
+        setTimeout(() => {
+            setIsVerifying(false);
+            setScanResult(null);
+            if (scannerRef.current && scannerRef.current.getState() !== 2) startAutomatedScanner();
+        }, 3000);
         return;
       }
 
-      // Proceed with Check-in
       if (data.status === 'checked_in') {
         triggerFeedback('error'); 
         setScanResult({ type: 'warning', message: 'ALREADY VERIFIED' });
-      } else {
-        const { error: updateError } = await supabase
-          .from('bookings')
-          .update({ status: 'checked_in', checked_in_at: new Date().toISOString() })
-          .eq('id', data.id);
+        setTimeout(() => {
+            setIsVerifying(false);
+            setScanResult(null);
+            if (scannerRef.current && scannerRef.current.getState() !== 2) startAutomatedScanner();
+        }, 3000);
+        return;
+      } 
 
-        if (updateError) throw updateError;
-
-        triggerFeedback('success'); 
-        setScanResult({ type: 'success', message: 'ACCESS GRANTED' });
-        if (isComponentMounted.current) setTotalScanned(prev => prev + 1);
-        
-        const newEntry = {
-          id: data.id,
-          name: `${data.students?.name || 'Unknown'} ${data.students?.surname || ''}`,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          event: data.events?.title
-        };
-        if (isComponentMounted.current) setHistory(prev => [newEntry, ...prev].slice(0, 5));
-        toast.success(`Verified: ${data.students?.name}`, { position: "top-center" });
+      if (data.status === 'pending') {
+        triggerFeedback('error'); 
+        setScanResult({ type: 'warning', message: 'PAYMENT PENDING' });
+        setTimeout(() => {
+            setIsVerifying(false);
+            setScanResult(null);
+            if (scannerRef.current && scannerRef.current.getState() !== 2) startAutomatedScanner();
+        }, 3000);
+        return;
       }
+
+      // If it's a team ticket, fetch the roster and pause for human validation
+      if (data.team_name) {
+         const { data: memEmails } = await supabase.from('booking_members').select('student_email').eq('booking_id', data.id);
+         let fullMembers = [];
+         if (memEmails) {
+            const emails = memEmails.map(m => m.student_email);
+            const { data: profiles } = await supabase.from('students').select('email, name, surname').in('email', emails);
+            fullMembers = profiles || [];
+         }
+         
+         triggerFeedback('success'); 
+         setPendingTeamVerification({ ...data, fullMembers });
+      } else {
+         // It's an individual ticket, authorize immediately
+         await finalizeCheckIn(data);
+      }
+
     } catch (err) {
       triggerFeedback('error');
-    } finally {
-      if (isComponentMounted.current) {
-        setIsVerifying(false);
-        setTimeout(() => setScanResult(null), 3000);
-      }
+      setTimeout(() => {
+          setIsVerifying(false);
+          setScanResult(null);
+          if (scannerRef.current && scannerRef.current.getState() !== 2) startAutomatedScanner();
+      }, 3000);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isVerifying, triggerFeedback]);
 
   const stopScanner = useCallback(async () => {
@@ -145,7 +217,6 @@ const Scanner = () => {
   useEffect(() => {
     isComponentMounted.current = true;
     
-    // NEW: Initialize system with Role context and Scoped Counts
     const initSystem = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
@@ -159,7 +230,6 @@ const Scanner = () => {
 
       const today = new Date().toISOString().split('T')[0];
       
-      // Scoped Count Query
       let countQuery = supabase
         .from('bookings')
         .select('*, events!inner(org_id, club_id)', { count: 'exact', head: true })
@@ -191,11 +261,69 @@ const Scanner = () => {
     startAutomatedScanner();
   };
 
+  const handleCancelTeamVerification = () => {
+     setPendingTeamVerification(null);
+     setIsVerifying(false);
+     setScanResult(null);
+     startAutomatedScanner();
+  };
+
   // --- UI SECTION ---
 
   return (
-    <div className="min-h-screen bg-[#0B1120] text-slate-200 p-4 pb-20 flex flex-col items-center font-sans">
+    <div className="min-h-screen bg-[#0B1120] text-slate-200 p-4 pb-20 flex flex-col items-center font-sans overflow-hidden relative">
       
+      {/* TEAM VERIFICATION HUD (OVERLAY) */}
+      {pendingTeamVerification && (
+         <div className="fixed inset-0 z-600 bg-black/95 backdrop-blur-3xl flex flex-col items-center justify-center p-6 animate-in slide-in-from-bottom-full duration-300">
+            <div className="w-full max-w-md bg-[#111827] border border-indigo-500/30 rounded-4xl p-8 shadow-[0_0_80px_rgba(99,102,241,0.2)] flex flex-col relative overflow-hidden">
+               <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-transparent via-indigo-500 to-transparent" />
+               
+               <div className="text-center mb-6">
+                 <div className="w-16 h-16 bg-indigo-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-indigo-500/20 shadow-lg">
+                   <Users size={32} className="text-indigo-400" />
+                 </div>
+                 <h2 className="text-3xl font-black uppercase italic text-white tracking-tighter leading-none mb-2">Team Verification</h2>
+                 <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{pendingTeamVerification.events?.title}</p>
+               </div>
+
+               <div className="bg-slate-900/50 p-5 rounded-3xl border border-white/5 mb-6 text-left">
+                  <div className="flex justify-between items-start mb-4 border-b border-white/5 pb-4">
+                     <div>
+                       <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Team Name</p>
+                       <h3 className="text-lg font-black text-indigo-400 uppercase tracking-wider">{pendingTeamVerification.team_name}</h3>
+                     </div>
+                     {pendingTeamVerification.selected_game && (
+                       <div className="text-right">
+                         <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Tournament</p>
+                         <p className="text-xs font-bold text-cyan-400 flex items-center justify-end gap-1.5"><Gamepad2 size={12}/> {pendingTeamVerification.selected_game}</p>
+                       </div>
+                     )}
+                  </div>
+                  
+                  <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2"><Users size={12}/> Required Roster Count: {pendingTeamVerification.fullMembers?.length}</p>
+                  <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar pr-2">
+                     {pendingTeamVerification.fullMembers?.map((m, i) => (
+                        <div key={i} className="flex items-center gap-3 bg-[#1e293b] p-3 rounded-xl border border-white/5">
+                           <div className="w-6 h-6 rounded-full bg-indigo-500/20 flex items-center justify-center text-indigo-400 font-black text-[10px] uppercase shrink-0">{m.name?.charAt(0) || 'U'}</div>
+                           <p className="text-sm font-bold text-white truncate">{m.name} {m.surname}</p>
+                        </div>
+                     ))}
+                  </div>
+               </div>
+
+               <div className="flex flex-col gap-3">
+                  <button onClick={() => finalizeCheckIn(pendingTeamVerification)} className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black uppercase text-[11px] tracking-[0.2em] transition-all active:scale-95 shadow-lg shadow-indigo-500/20 flex justify-center items-center gap-2">
+                     <CheckCircle2 size={18}/> Authorize Team Entry
+                  </button>
+                  <button onClick={handleCancelTeamVerification} className="w-full py-4 bg-white/5 hover:bg-white/10 text-slate-300 rounded-2xl font-black uppercase text-[10px] tracking-[0.2em] transition-all border border-white/5">
+                     Cancel & Rescan
+                  </button>
+               </div>
+            </div>
+         </div>
+      )}
+
       {/* TOP NAVIGATION */}
       <div className="w-full max-w-lg flex items-center justify-between py-4 mb-6">
         <button 
@@ -249,7 +377,7 @@ const Scanner = () => {
 
         {/* CONTROLS */}
         <div className="absolute bottom-6 left-0 right-0 px-8 flex justify-between items-center z-30">
-          <button onClick={handleReScan} className="p-3 bg-black/40 backdrop-blur-md border border-white/10 rounded-full text-white hover:bg-white/10 transition-all">
+          <button onClick={handleReScan} className="p-3 bg-black/40 backdrop-blur-md border border-white/10 rounded-full text-white hover:bg-white/10 transition-all pointer-events-auto">
             <RefreshCw size={20} />
           </button>
           <button 
@@ -260,14 +388,14 @@ const Scanner = () => {
                 setIsTorchOn(newState);
               }
             }}
-            className={`p-3 backdrop-blur-md border border-white/10 rounded-full transition-all ${isTorchOn ? 'bg-yellow-500 text-black' : 'bg-black/40 text-white'}`}
+            className={`p-3 backdrop-blur-md border border-white/10 rounded-full transition-all pointer-events-auto ${isTorchOn ? 'bg-yellow-500 text-black' : 'bg-black/40 text-white'}`}
           >
             {isTorchOn ? <Flashlight size={20} /> : <FlashlightOff size={20} />}
           </button>
         </div>
 
-        {/* VERIFICATION OVERLAY */}
-        {isVerifying && (
+        {/* VERIFICATION OVERLAY (Spinner) */}
+        {isVerifying && !pendingTeamVerification && (
           <div className="absolute inset-0 bg-[#0B1120]/90 backdrop-blur-md flex flex-col items-center justify-center z-40 transition-all">
             <div className="relative">
                <div className="h-16 w-16 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
@@ -297,7 +425,7 @@ const Scanner = () => {
       </div>
 
       {/* SESSION LOG */}
-      <div className="mt-4 w-full max-w-md space-y-4">
+      <div className="mt-4 w-full max-w-md space-y-4 relative z-0">
         <div className="flex items-center justify-between px-2">
           <div className="flex items-center gap-2 text-slate-400">
             <History size={16} />
@@ -314,12 +442,15 @@ const Scanner = () => {
           ) : (
             history.map((entry, idx) => (
               <div key={idx} className="bg-[#161E2E] p-4 rounded-2xl border border-white/5 flex items-center justify-between hover:bg-[#1C2537] transition-colors group">
-                <div className="flex flex-col">
-                  <span className="text-sm font-bold text-white group-hover:text-blue-400 transition-colors uppercase">{entry.name}</span>
-                  <span className="text-[10px] text-slate-500 uppercase font-semibold">{entry.event}</span>
+                <div className="flex items-center gap-3">
+                   {entry.isTeam ? <Users size={16} className="text-indigo-500 shrink-0"/> : <ShieldCheck size={16} className="text-blue-500 shrink-0"/>}
+                   <div className="flex flex-col">
+                     <span className="text-sm font-bold text-white group-hover:text-blue-400 transition-colors uppercase truncate max-w-50">{entry.name}</span>
+                     <span className="text-[9px] text-slate-500 uppercase font-semibold truncate max-w-50">{entry.event}</span>
+                   </div>
                 </div>
-                <div className="bg-black/20 px-3 py-1 rounded-lg border border-white/5">
-                  <span className="text-blue-400 font-mono text-xs font-bold">{entry.time}</span>
+                <div className="bg-black/20 px-3 py-1 rounded-lg border border-white/5 shrink-0">
+                  <span className="text-blue-400 font-mono text-[10px] font-bold">{entry.time}</span>
                 </div>
               </div>
             ))
@@ -341,6 +472,8 @@ const Scanner = () => {
         }
         #reader__dashboard { display: none !important; }
         #reader__scan_region { background: transparent !important; }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(99, 102, 241, 0.6); border-radius: 10px; }
       `}</style>
     </div>
   );

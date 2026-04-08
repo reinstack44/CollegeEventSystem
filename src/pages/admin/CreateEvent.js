@@ -9,7 +9,7 @@ import {
   ArrowLeft, Bold, Italic, AlignJustify, Type, 
   Save, Eye, Layout, Calendar, MapPin, Clock, 
   Building, ChevronDown, UploadCloud, X, 
-  Image as ImageIcon, ChevronLeft, ChevronRight, Timer, Globe, Lock, FileText, Repeat, Layers
+  Image as ImageIcon, ChevronLeft, ChevronRight, Timer, Globe, Lock, FileText, Repeat, Layers, Users, Gamepad2, Plus, Settings
 } from 'lucide-react';
 
 const DEFAULT_PREVIEW_IMAGES = [
@@ -21,6 +21,8 @@ const CATEGORIES = [
   "Technical", "Cultural", "Sports", "E-Sports", 
   "Social & Welfare", "Entrepreneurship", "Literature", "Arts & Media", "Other"
 ];
+
+const POPULAR_GAMES = ["BGMI", "Valorant", "Fall Guys", "FIFA", "CS:GO 2", "Free Fire", "Call of Duty"];
 
 const CreateEvent = () => {
   const navigate = useNavigate();
@@ -39,35 +41,42 @@ const CreateEvent = () => {
   const [currentImgIndex, setCurrentImgIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   
+  const [customGame, setCustomGame] = useState('');
+  
   const [formData, setFormData] = useState({
     title: '', category: CATEGORIES[0], date: '', venue: '', description: '', 
     start_time: '', end_time: '', ticket_limit: '',
     reg_start_date: '', reg_start_time: '09:00',
     reg_end_date: '', reg_end_time: '23:59',
     event_type: 'free', price: '', merchant_upi: '',
-    is_open_to_all: true 
+    is_open_to_all: true,
+    participation_type: 'Individual', // Global participation (used if not E-sports)
+    team_size: '',
+    games_list: [] // Array of objects: { gameName, participation_type, team_size }
   });
 
   // CUSTOM DROPDOWN STATE
   const [isOrgDropdownOpen, setIsOrgDropdownOpen] = useState(false);
   const [isClubDropdownOpen, setIsClubDropdownOpen] = useState(false);
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
+  const [isParticipationDropdownOpen, setIsParticipationDropdownOpen] = useState(false);
+  
   const orgDropdownRef = useRef(null);
   const clubDropdownRef = useRef(null);
   const categoryDropdownRef = useRef(null);
+  const participationDropdownRef = useRef(null);
 
-  // Handle click outside for Custom Dropdowns
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (orgDropdownRef.current && !orgDropdownRef.current.contains(event.target)) setIsOrgDropdownOpen(false);
       if (clubDropdownRef.current && !clubDropdownRef.current.contains(event.target)) setIsClubDropdownOpen(false);
       if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(event.target)) setIsCategoryDropdownOpen(false);
+      if (participationDropdownRef.current && !participationDropdownRef.current.contains(event.target)) setIsParticipationDropdownOpen(false);
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // 1. Fetch User Context (Multi-Role Supported)
   useEffect(() => {
     const fetchContext = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -76,10 +85,7 @@ const CreateEvent = () => {
       const adminEmails = ['admin@nexuscircle.in', 'staff@adypu.edu.in', 'prathamesh@adypu.edu.in'];
       const isSuperAdmin = adminEmails.includes(user.email);
 
-      const { data: rolesData } = await supabase
-        .from('user_roles')
-        .select('*')
-        .eq('email', user.email);
+      const { data: rolesData } = await supabase.from('user_roles').select('*').eq('email', user.email);
 
       let currentRole = 'student';
       if (isSuperAdmin) {
@@ -91,7 +97,6 @@ const CreateEvent = () => {
 
       setCreatorContext({ role: currentRole });
 
-      // Pre-fill dropdowns based on role
       if (currentRole === 'super_admin') {
         const { data: orgData } = await supabase.from('organizations').select('id, name').eq('status', 'approved');
         setOrgs(orgData || []);
@@ -99,7 +104,6 @@ const CreateEvent = () => {
       else if (currentRole === 'org_head') {
         const orgRole = rolesData.find(r => r.role === 'org_head');
         setSelectedOrgId(orgRole.org_id);
-        
         const { data: orgData } = await supabase.from('organizations').select('id, name').eq('id', orgRole.org_id);
         setOrgs(orgData || []);
         const { data: clubData } = await supabase.from('clubs').select('id, name').eq('org_id', orgRole.org_id);
@@ -107,14 +111,12 @@ const CreateEvent = () => {
       } 
       else if (currentRole === 'club_head') {
         const clubRoles = rolesData.filter(r => r.role === 'club_head');
-        
         const activeClubId = localStorage.getItem('active_club_id');
         let activeRole = clubRoles.find(r => r.club_id === activeClubId) || clubRoles[0];
 
         if (activeRole) {
           setSelectedOrgId(activeRole.org_id);
           setSelectedClubId(activeRole.club_id);
-          
           const { data: orgData } = await supabase.from('organizations').select('id, name').eq('id', activeRole.org_id);
           setOrgs(orgData || []);
           const { data: clubData } = await supabase.from('clubs').select('id, name').eq('id', activeRole.club_id);
@@ -125,7 +127,6 @@ const CreateEvent = () => {
     fetchContext();
   }, []);
 
-  // 2. Dynamic Club Loading for Super Admin
   useEffect(() => {
     if (creatorContext.role === 'super_admin' && selectedOrgId) {
       supabase.from('clubs').select('id, name').eq('org_id', selectedOrgId).then(({ data }) => {
@@ -137,7 +138,6 @@ const CreateEvent = () => {
     }
   }, [selectedOrgId, creatorContext.role]);
 
-  // 3. Edit Mode Pre-Loader
   useEffect(() => {
     if (editId) {
       const fetchEventData = async () => {
@@ -145,6 +145,12 @@ const CreateEvent = () => {
         if (data && !error) {
           const start = new Date(data.reg_start_timestamp);
           const end = new Date(data.reg_end_timestamp);
+          
+          // Safe map for games if converting from string array to object array
+          const safeGamesList = Array.isArray(data.games_list) 
+            ? data.games_list.map(g => typeof g === 'string' ? { gameName: g, participation_type: 'Individual', team_size: '' } : g)
+            : [];
+
           setFormData({
             ...data,
             category: data.category || CATEGORIES[0],
@@ -155,7 +161,10 @@ const CreateEvent = () => {
             event_type: data.event_type || 'free',
             price: data.price || '',
             merchant_upi: data.merchant_upi || '',
-            is_open_to_all: data.is_open_to_all ?? true
+            is_open_to_all: data.is_open_to_all ?? true,
+            participation_type: data.participation_type || 'Individual',
+            team_size: data.team_size || '',
+            games_list: safeGamesList
           });
           setSelectedOrgId(data.org_id || '');
           setSelectedClubId(data.club_id || '');
@@ -218,27 +227,70 @@ const CreateEvent = () => {
     }
   };
 
+  // --- GAME LIST LOGIC ---
+  const isGameSelected = (gameName) => formData.games_list.some(g => g.gameName === gameName);
+
+  const toggleGame = (gameName) => {
+    setFormData(prev => {
+      if (isGameSelected(gameName)) {
+        return { ...prev, games_list: prev.games_list.filter(g => g.gameName !== gameName) };
+      } else {
+        return { ...prev, games_list: [...prev.games_list, { gameName, participation_type: 'Individual', team_size: '' }] };
+      }
+    });
+  };
+
+  const addCustomGame = () => {
+    if (customGame.trim() && !isGameSelected(customGame.trim())) {
+      setFormData(prev => ({
+        ...prev,
+        games_list: [...prev.games_list, { gameName: customGame.trim(), participation_type: 'Individual', team_size: '' }]
+      }));
+      setCustomGame('');
+    }
+  };
+
+  const updateGameConfig = (gameName, field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      games_list: prev.games_list.map(g => 
+        g.gameName === gameName ? { ...g, [field]: value } : g
+      )
+    }));
+  };
+  // -------------------------
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!selectedOrgId) return toast.error("Organization selection is strictly required.");
     
+    // VALIDATION LOGIC based on Category
+    if (formData.category === 'E-Sports') {
+      if (formData.games_list.length === 0) {
+        return toast.error("Please select at least one game for this E-Sports tournament.");
+      }
+      for (const game of formData.games_list) {
+        if ((game.participation_type === 'Team' || game.participation_type === 'Both') && (!game.team_size || game.team_size < 2)) {
+          return toast.error(`Please enter a valid Team Size (min 2) for ${game.gameName}.`);
+        }
+      }
+    } else {
+      if ((formData.participation_type === 'Team' || formData.participation_type === 'Both') && (!formData.team_size || formData.team_size < 2)) {
+        return toast.error("Please enter a valid Team Size (minimum 2 members).");
+      }
+    }
+
     setLoading(true);
     const loadToast = toast.loading(editId ? "Updating Event..." : "Publishing Event...");
     
     try {
       let finalImageUrls = [];
-
       for (const img of selectedImages) {
         if (img.file) {
           const fileExt = img.file.name.split('.').pop();
           const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
-          
-          const { error: uploadError } = await supabase.storage
-            .from('event-images')
-            .upload(fileName, img.file);
-
+          const { error: uploadError } = await supabase.storage.from('event-images').upload(fileName, img.file);
           if (uploadError) throw uploadError;
-
           const { data } = supabase.storage.from('event-images').getPublicUrl(fileName);
           finalImageUrls.push(data.publicUrl);
         } else {
@@ -262,20 +314,24 @@ const CreateEvent = () => {
         merchant_upi: formData.event_type === 'paid' ? formData.merchant_upi : null,
         is_open_to_all: formData.is_open_to_all,
         org_id: selectedOrgId,
-        club_id: selectedClubId || null 
+        club_id: selectedClubId || null,
+        // Only save global participation if it's NOT E-Sports
+        participation_type: formData.category === 'E-Sports' ? null : formData.participation_type, 
+        team_size: formData.category === 'E-Sports' ? null : ((formData.participation_type === 'Team' || formData.participation_type === 'Both') ? parseInt(formData.team_size) : null),
+        // Games list stores the specific configs for E-Sports
+        games_list: formData.category === 'E-Sports' ? formData.games_list : [] 
       };
 
       const { error } = editId 
         ? await supabase.from('events').update(submissionData).eq('id', editId)
         : await supabase.from('events').insert([submissionData]);
       
-      if (error) throw error; // THIS CAPTURES THE ERROR FROM SUPABASE
+      if (error) throw error; 
 
       toast.success(editId ? "Event Updated Successfully!" : "Event Published Successfully!", { id: loadToast });
       navigate(-1);
     } catch (error) {
       console.error("Event Creation Error:", error);
-      // DISPLAY THE EXACT SUPABASE ERROR MESSAGE NOW
       toast.error(error.message || "Operation Failed. Please verify inputs.", { id: loadToast, duration: 6000 });
     } finally {
       setLoading(false);
@@ -364,7 +420,6 @@ const CreateEvent = () => {
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2 flex items-center gap-2"><Building size={14} /> Hosting Club / Org</label>
                   
-                  {/* SUPER ADMIN VIEW */}
                   {creatorContext.role === 'super_admin' && (
                     <div className="flex gap-2">
                       <div className="relative w-1/2" ref={orgDropdownRef}>
@@ -435,7 +490,6 @@ const CreateEvent = () => {
                     </div>
                   )}
 
-                  {/* ORG HEAD VIEW */}
                   {creatorContext.role === 'org_head' && (
                     <div className="flex gap-2">
                       <div className="w-1/2 p-4 bg-[#1f2937]/50 border border-slate-700/50 rounded-2xl text-slate-400 text-xs truncate cursor-not-allowed border-dashed">
@@ -479,7 +533,6 @@ const CreateEvent = () => {
                     </div>
                   )}
 
-                  {/* CLUB HEAD VIEW */}
                   {creatorContext.role === 'club_head' && (
                     <div className="w-full p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl text-blue-400 font-bold uppercase text-[10px] tracking-widest truncate cursor-not-allowed">
                        {eventBadge}
@@ -488,13 +541,155 @@ const CreateEvent = () => {
                 </div>
               </div>
 
+              {/* --- STANDARD ENTRY OPTIONS (HIDDEN IF E-SPORTS) --- */}
+              {formData.category !== 'E-Sports' && (
+                <div className="space-y-4 text-left p-5 bg-indigo-900/10 border border-indigo-500/20 rounded-3xl transition-all">
+                  <div className="flex flex-col gap-4">
+                    <div className="flex justify-between items-center">
+                      <label className="text-[10px] font-black text-indigo-500 uppercase tracking-widest ml-2 flex items-center gap-2">
+                        <Users size={14} /> Global Entry Options
+                      </label>
+                      <div className="relative w-48" ref={participationDropdownRef}>
+                          <button
+                            type="button"
+                            onClick={() => setIsParticipationDropdownOpen(!isParticipationDropdownOpen)}
+                            className="flex items-center justify-between w-full p-2.5 bg-[#1f2937] border border-slate-700 hover:border-slate-600 focus:border-indigo-500 rounded-xl outline-none text-white text-xs transition-all shadow-sm cursor-pointer"
+                          >
+                            <span className="truncate pr-4 font-bold">{formData.participation_type}</span>
+                            <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform duration-200 ${isParticipationDropdownOpen ? 'rotate-180 text-indigo-500' : ''}`} />
+                          </button>
+                          {isParticipationDropdownOpen && (
+                            <div className="absolute top-full left-0 right-0 mt-2 bg-[#111827] border border-indigo-500/30 rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200 z-50">
+                              <div className="flex flex-col p-1.5">
+                                {['Individual', 'Team', 'Both'].map(type => (
+                                  <button
+                                    key={type}
+                                    type="button"
+                                    onClick={() => { setFormData({...formData, participation_type: type}); setIsParticipationDropdownOpen(false); }}
+                                    className={`text-left px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider rounded-lg transition-colors ${formData.participation_type === type ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-300 hover:bg-slate-800'}`}
+                                  >
+                                    {type}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                    </div>
+
+                    {(formData.participation_type === 'Team' || formData.participation_type === 'Both') && (
+                      <div className="flex justify-between items-center pt-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Mandatory Team Size</label>
+                          <input 
+                            type="number" min="2" max="20"
+                            value={formData.team_size} 
+                            onChange={e => setFormData({...formData, team_size: e.target.value})} 
+                            placeholder="e.g. 4" 
+                            className="w-48 p-2.5 bg-[#1f2937] border border-slate-700 rounded-xl outline-none focus:border-indigo-500 text-white text-xs font-bold" 
+                          />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* --- E-SPORTS TOURNAMENT GAMES SECTION --- */}
+              {formData.category === 'E-Sports' && (
+                <div className="space-y-4 text-left p-5 bg-cyan-900/10 border border-cyan-500/20 rounded-3xl transition-all animate-in fade-in slide-in-from-top-2">
+                  <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest ml-2 flex items-center gap-2">
+                    <Gamepad2 size={14} /> Tournament Games & Formats
+                  </label>
+                  <p className="text-[10px] text-slate-400 ml-2">Select games and configure individual/team settings for each.</p>
+                  
+                  {/* Game Tags */}
+                  <div className="flex flex-wrap gap-2">
+                    {Array.from(new Set([...POPULAR_GAMES, ...formData.games_list.map(g => g.gameName)])).map(gameName => (
+                      <button
+                        key={gameName} 
+                        type="button"
+                        onClick={() => toggleGame(gameName)}
+                        className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all border ${isGameSelected(gameName) ? 'bg-cyan-600 text-white border-cyan-500 shadow-md shadow-cyan-500/20' : 'bg-[#1f2937] text-slate-400 border-slate-700 hover:border-cyan-500/50'}`}
+                      >
+                        {gameName}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Add Custom Game */}
+                  <div className="flex items-center gap-2 mt-4 pt-4 border-t border-cyan-500/10">
+                    <input
+                      type="text"
+                      value={customGame}
+                      onChange={(e) => setCustomGame(e.target.value)}
+                      placeholder="Type custom game..."
+                      className="grow p-3 bg-[#1f2937] border border-slate-700 rounded-xl outline-none focus:border-cyan-500 text-white text-xs font-bold"
+                    />
+                    <button 
+                      type="button" 
+                      onClick={addCustomGame} 
+                      className="px-4 py-3 bg-cyan-600/20 text-cyan-400 hover:bg-cyan-600 hover:text-white rounded-xl font-black uppercase text-[10px] tracking-widest transition-all flex items-center gap-1 border border-cyan-500/30"
+                    >
+                      <Plus size={14}/> Add
+                    </button>
+                  </div>
+
+                  {/* Selected Games Configuration Cards */}
+                  {formData.games_list.length > 0 && (
+                    <div className="mt-6 space-y-4 border-t border-cyan-500/20 pt-6">
+                      <label className="text-[10px] font-black text-cyan-500 uppercase tracking-widest ml-2 flex items-center gap-2 mb-2">
+                        <Settings size={14} /> Configure Selected Games
+                      </label>
+                      {formData.games_list.map((gameObj, idx) => (
+                        <div key={idx} className="p-4 bg-[#111827] rounded-xl border border-cyan-500/30 flex flex-col gap-4 animate-in fade-in zoom-in-95">
+                          <h4 className="font-black text-cyan-400 uppercase tracking-wider text-xs border-b border-white/5 pb-2">
+                            {gameObj.gameName}
+                          </h4>
+                          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                            
+                            {/* Segmented Control for Participation Type */}
+                            <div className="flex bg-[#1f2937] rounded-lg p-1 w-full sm:w-auto border border-slate-700 shrink-0">
+                              {['Individual', 'Team', 'Both'].map(type => (
+                                <button
+                                  key={type}
+                                  type="button"
+                                  onClick={() => updateGameConfig(gameObj.gameName, 'participation_type', type)}
+                                  className={`px-3 py-1.5 rounded-md text-[9px] font-black uppercase tracking-widest transition-all flex-1 ${gameObj.participation_type === type ? 'bg-cyan-600 text-white shadow-md' : 'text-slate-500 hover:text-white'}`}
+                                >
+                                  {type}
+                                </button>
+                              ))}
+                            </div>
+
+                            {/* Team Size Input (Only shows if Team or Both) */}
+                            {(gameObj.participation_type === 'Team' || gameObj.participation_type === 'Both') && (
+                              <div className="flex items-center justify-between sm:justify-end w-full sm:w-auto gap-3">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Team Size:</span>
+                                <input 
+                                  type="number" min="2" max="20"
+                                  value={gameObj.team_size} 
+                                  onChange={e => updateGameConfig(gameObj.gameName, 'team_size', e.target.value)} 
+                                  placeholder="e.g. 5" 
+                                  className="w-20 p-2 bg-[#1f2937] border border-slate-700 rounded-lg outline-none focus:border-cyan-500 text-white text-xs font-bold text-center" 
+                                />
+                              </div>
+                            )}
+
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* --- END E-SPORTS SECTION --- */}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2 flex items-center gap-2"><MapPin size={14} /> Venue</label>
                   <input required value={formData.venue} onChange={e => setFormData({...formData, venue: e.target.value})} placeholder="Location" className="w-full p-4 bg-[#1f2937] border border-slate-700 rounded-2xl outline-none focus:border-blue-500 text-white text-sm" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2 flex items-center gap-2"><Ticket size={14} /> Ticket Limit</label>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2 flex items-center gap-2"><Ticket size={14} /> Global Ticket Limit</label>
                   <input type="number" min="1" value={formData.ticket_limit} onChange={e => setFormData({...formData, ticket_limit: e.target.value})} placeholder="Leave blank for unlimited" className="w-full p-4 bg-[#1f2937] border border-slate-700 rounded-2xl outline-none focus:border-blue-500 text-white text-sm" />
                 </div>
               </div>
@@ -661,7 +856,7 @@ const CreateEvent = () => {
 
         {/* --- PREVIEW SECTION (FLIPPABLE) --- */}
         <div className="space-y-4 lg:sticky lg:top-24">
-           
+            
            <div className="flex items-center justify-between">
              <div className="flex items-center gap-3 text-blue-500">
                <Eye size={20}/>
