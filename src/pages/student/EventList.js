@@ -588,16 +588,10 @@ const EventList = () => {
       {/* --- SPOTLIGHT EVENT PREVIEW --- */}
       {poppedEvent && (
         <div className="fixed inset-0 z-600 bg-black/95 backdrop-blur-3xl flex items-center justify-center p-4 overflow-hidden" onClick={closePoppedEvent}>
-          <div className={`relative w-full max-w-md animate-in zoom-in-95 fade-in duration-300 ${isClosing ? 'animate-flip-pop-out' : 'animate-flip-pop'}`} onClick={(e) => e.stopPropagation()}>
+          <div className={`relative w-full max-w-sm md:max-w-md animate-in zoom-in-95 fade-in duration-300 ${isClosing ? 'animate-flip-pop-out' : 'animate-flip-pop'}`} onClick={(e) => e.stopPropagation()}>
             <button onClick={closePoppedEvent} className="absolute -top-12 md:-top-16 right-0 p-3 bg-white/10 hover:bg-white/20 rounded-full text-white border border-white/10 transition-all active:scale-90 z-700"><X size={24} /></button>
-            <div className="flex flex-col gap-6">
-              <div className="text-center space-y-2">
-                <p className="text-blue-500 font-black uppercase tracking-[0.3em] text-[10px]">Spotlight Visualization</p>
-                <h3 className="text-white font-black uppercase text-xl italic tracking-tighter">Interactive Entry Point</h3>
-              </div>
-              <div className="md:scale-105 origin-center">
-                <FlipCard event={poppedEvent} onBook={startBookingWizard} onViewTicket={handleViewTicket} onZoomClub={setZoomedClub} availableClubs={availableClubs} spotlightMode={true} />
-              </div>
+            <div className="md:scale-105 origin-center w-full">
+              <FlipCard event={poppedEvent} onBook={startBookingWizard} onViewTicket={handleViewTicket} onZoomClub={setZoomedClub} availableClubs={availableClubs} spotlightMode={true} />
             </div>
           </div>
         </div>
@@ -843,13 +837,13 @@ const FlipCard = ({ event, onBook, onFlip, onViewTicket, onZoomClub, availableCl
   return (
     <div 
       onClick={() => { if(spotlightMode) setIsInternalFlipped(!isInternalFlipped); else onFlip(); }} 
-      className={`group relative h-125 bg-[#111827]/90 backdrop-blur-md rounded-[2.5rem] flex flex-col cursor-pointer transition-all duration-500 border border-transparent ${glowClass} ${!spotlightMode && 'hover:-translate-y-1'} perspective-2000`}
+      className={`group relative h-110 sm:h-115 lg:h-125 bg-[#111827]/90 backdrop-blur-md rounded-[2.5rem] flex flex-col cursor-pointer transition-all duration-500 border border-transparent ${glowClass} ${!spotlightMode && 'hover:-translate-y-1'} perspective-2000`}
     >
       <div className={`relative w-full h-full transition-transform duration-700 transform-style-3d ${isInternalFlipped ? 'rotate-y-180' : ''}`}>
         
         {/* FRONT FACE */}
         <div className="absolute inset-0 backface-hidden flex flex-col h-full rounded-[2.5rem] overflow-hidden bg-[#111827]/90">
-          <div className="relative w-full h-48 sm:h-52 shrink-0 bg-slate-900 overflow-hidden border-b border-white/5">
+          <div className="relative w-full h-44 sm:h-48 shrink-0 bg-slate-900 overflow-hidden border-b border-white/5">
             <img src={images[0]} alt="Cover" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"/>
             <div className="absolute inset-0 bg-linear-to-t from-[#111827] via-transparent to-transparent opacity-90"></div>
             <div className="absolute top-4 left-4"><span className="backdrop-blur-md bg-black/60 text-white px-3 py-1.5 rounded-full text-[10px] font-bold uppercase border border-white/10 truncate max-w-40">{event.orgName}</span></div>
@@ -859,24 +853,29 @@ const FlipCard = ({ event, onBook, onFlip, onViewTicket, onZoomClub, availableCl
             <div className="absolute bottom-3 left-4 flex items-center gap-1.5 bg-blue-600/90 text-white px-3 py-1.5 rounded-lg border border-blue-500/30 text-[9px] font-black uppercase shadow-lg z-10"><Layers size={12}/> {event.category || 'OTHER'}</div>
           </div>
 
-          <div className="p-5 md:p-6 flex flex-col grow">
-            <h4 className="text-xl font-black uppercase italic text-white mb-5 line-clamp-2">{event.title}</h4>
-            <div className="flex justify-between items-start gap-4 mb-6">
-                <div className="flex flex-col gap-3 min-w-0 grow">
-                    <div className="flex items-center gap-3 text-slate-300 text-[11px] font-bold uppercase"><Calendar size={14} className="text-blue-500"/><span className="truncate">{event.date}</span></div>
-                    <div className="flex items-center gap-3 text-slate-300 text-[11px] font-bold uppercase"><MapPin size={14} className="text-blue-500"/><span className="truncate pr-2">{event.venue}</span></div>
-                </div>
-                {clubName && (
-                    <div onClick={(e) => { e.stopPropagation(); onZoomClub(clubName); }} className="flex flex-col items-center justify-center gap-2 shrink-0 w-32 bg-slate-800/50 p-4 rounded-3xl border border-white/5 shadow-inner hover:bg-slate-700 transition-all active:scale-95 group/club">
-                       <div className="w-14 h-14 rounded-full bg-blue-500/10 flex items-center justify-center border border-blue-500/20 shadow-lg group-hover/club:bg-blue-500/20 transition-all"><ShieldCheck size={28} className="text-blue-500"/></div>
-                       <p className="text-[8px] font-black text-slate-500 uppercase text-center mt-1 leading-none">Hosted By</p>
-                       <p className="text-[11px] font-black text-white uppercase italic tracking-tighter text-center line-clamp-2 leading-tight w-full" title={clubName}>{clubName}</p>
-                    </div>
-                )}
+          <div className="p-4 sm:p-5 md:p-6 flex flex-col grow">
+            <div className="flex flex-col grow">
+              <h4 className="text-lg sm:text-xl font-black uppercase italic text-white mb-3 sm:mb-4 line-clamp-2">{event.title}</h4>
+              <div className="flex justify-between items-start gap-3 sm:gap-4">
+                  <div className="flex flex-col gap-2.5 min-w-0 grow">
+                      <div className="flex items-center gap-2 sm:gap-3 text-slate-300 text-[10px] sm:text-[11px] font-bold uppercase"><Calendar size={14} className="text-blue-500"/><span className="truncate">{event.date}</span></div>
+                      <div className="flex items-center gap-2 sm:gap-3 text-slate-300 text-[10px] sm:text-[11px] font-bold uppercase"><MapPin size={14} className="text-blue-500"/><span className="truncate pr-2">{event.venue}</span></div>
+                  </div>
+                  {clubName && (
+                      <div onClick={(e) => { e.stopPropagation(); onZoomClub(clubName); }} className="flex flex-col items-center justify-center gap-1.5 sm:gap-2 shrink-0 w-24 sm:w-28 bg-slate-800/50 p-2.5 sm:p-3 rounded-2xl sm:rounded-3xl border border-white/5 shadow-inner hover:bg-slate-700 transition-all active:scale-95 group/club">
+                         <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-blue-500/10 flex items-center justify-center border border-blue-500/20 shadow-lg group-hover/club:bg-blue-500/20 transition-all"><ShieldCheck className="text-blue-500 sm:w-6 sm:h-6"/></div>
+                         <div className="text-center w-full">
+                           <p className="text-[7px] sm:text-[8px] font-black text-slate-500 uppercase leading-none mb-0.5">Hosted By</p>
+                           <p className="text-[9px] sm:text-[10px] font-black text-white uppercase italic tracking-tighter line-clamp-2 leading-tight w-full" title={clubName}>{clubName}</p>
+                         </div>
+                      </div>
+                  )}
+              </div>
             </div>
-            <div className="mt-auto">
+            
+            <div className="mt-auto pt-3 sm:pt-4 shrink-0 w-full">
                <button disabled={(event.isSoldOut && !event.hasAnyBooking) || (!event.isOpen && !event.hasAnyBooking) || event.isPending} onClick={(e) => { e.stopPropagation(); if (event.isBooked || event.isCheckedIn) onViewTicket(event); else onBook(e, event); }}
-                 className={`w-full py-4 rounded-xl font-black uppercase text-xs transition-all tracking-widest shadow-lg ${event.isCheckedIn ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30' : event.isBooked ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 shadow-emerald-500/10' : event.isPending ? 'bg-yellow-600/20 text-yellow-500 border border-yellow-500/30' : !event.isOpen ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-white/5 shadow-none' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/30 active:scale-95'}`}>
+                 className={`w-full py-3.5 sm:py-4 rounded-xl font-black uppercase text-[10px] sm:text-xs transition-all tracking-widest shadow-lg ${event.isCheckedIn ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30' : event.isBooked ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 shadow-emerald-500/10' : event.isPending ? 'bg-yellow-600/20 text-yellow-500 border border-yellow-500/30' : !event.isOpen ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-white/5 shadow-none' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/30 active:scale-95'}`}>
                  {event.isCheckedIn ? "Checked In" : event.isBooked ? "View Ticket" : event.isPending ? "Verifying" : !event.isOpen ? "Closed" : "Get Ticket"}
                </button>
             </div>
@@ -884,7 +883,7 @@ const FlipCard = ({ event, onBook, onFlip, onViewTicket, onZoomClub, availableCl
         </div>
 
         {/* BACK FACE (Details + Specifications inside the card) */}
-        <div className="absolute inset-0 backface-hidden rotate-y-180 bg-slate-900 rounded-[2.5rem] flex flex-col p-6 md:p-8 overflow-hidden border border-white/5">
+        <div className="absolute inset-0 backface-hidden rotate-y-180 bg-slate-900 rounded-[2.5rem] flex flex-col p-5 sm:p-6 md:p-8 overflow-hidden border border-white/5">
              <div className="flex justify-between items-center border-b border-white/10 pb-4 mb-4 shrink-0">
                <h4 className="text-blue-500 font-black uppercase tracking-widest text-[11px]">Event Details</h4>
                <Layers size={16} className="text-slate-500" />
@@ -926,7 +925,7 @@ const FlipCard = ({ event, onBook, onFlip, onViewTicket, onZoomClub, availableCl
                 )}
              </div>
              
-             <p className="mt-4 pt-4 border-t border-white/10 shrink-0 text-center text-slate-500 text-[10px] font-bold uppercase animate-pulse">Tap anywhere to flip back</p>
+             <p className="mt-4 pt-3 sm:pt-4 border-t border-white/10 shrink-0 text-center text-slate-500 text-[9px] sm:text-[10px] font-bold uppercase animate-pulse">Tap anywhere to flip back</p>
         </div>
 
       </div>

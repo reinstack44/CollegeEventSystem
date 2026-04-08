@@ -13,6 +13,7 @@ import MyTickets from './pages/student/MyTickets';
 import CompleteRegistration from './pages/student/CompleteRegistration';
 import Login from './pages/student/Login';
 import Profile from './pages/student/Profile';
+import ForgotPassword from './pages/student/ForgotPassword'; // New Import
 import ResetPassword from './pages/student/ResetPassword';
 
 // Admin Pages
@@ -92,6 +93,7 @@ function App() {
             <Route path="/my-tickets" element={session ? <MyTickets /> : <Navigate to="/" replace />} />
             <Route path="/profile" element={session ? <Profile /> : <Navigate to="/" replace />} />
             <Route path="/complete-registration" element={session ? <CompleteRegistration /> : <Navigate to="/" replace />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
 
             {/* SUPER ADMIN ROUTES */}

@@ -55,6 +55,12 @@ const Login = () => {
               <Lock className="absolute left-4 text-slate-500" size={18} />
               <input type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full pl-12 pr-4 py-4 bg-slate-900/50 border border-slate-800 rounded-2xl text-white text-sm focus:border-blue-500 outline-none transition-all" required />
             </div>
+            {/* FORGOT PASSWORD LINK */}
+            <div className="flex justify-end pr-2">
+              <Link to="/forgot-password" size={14} className="text-[10px] font-black text-blue-500/80 hover:text-blue-500 uppercase tracking-widest transition-colors">
+                Forgot Password?
+              </Link>
+            </div>
           </div>
 
           <button type="submit" disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-black text-base flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all">
