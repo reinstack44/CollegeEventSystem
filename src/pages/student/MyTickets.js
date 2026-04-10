@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { supabase } from '../../sbclient/supabaseClient';
 import { QRCodeCanvas } from 'qrcode.react'; 
 import { 
@@ -8,6 +8,35 @@ import {
 import toast from 'react-hot-toast';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
+
+const PLATFORM_FEE = 25;
+
+const getTicketPrice = (ticket) => {
+  if (!ticket || !ticket.events) return 0;
+  if (ticket.events.category === 'E-Sports' && ticket.selected_game) {
+     const gameObj = ticket.events.games_list?.find(g => g.gameName === ticket.selected_game);
+     if (gameObj && gameObj.ticket_type === 'paid') return Number(gameObj.ticket_price || 0) + PLATFORM_FEE;
+     return 0;
+  }
+  if (ticket.events.event_type === 'paid') return Number(ticket.events.price || 0) + PLATFORM_FEE;
+  return 0;
+};
+
+const formatEventTime = (timeStr) => {
+  if (!timeStr) return '';
+  if (timeStr.toLowerCase().includes('m')) return timeStr; 
+  const [hours, minutes] = timeStr.split(':');
+  let h = parseInt(hours, 10);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `${h}:${minutes} ${ampm}`;
+};
+
+const formatTimeRange = (start, end) => {
+  if (!start) return 'TBA';
+  if (!end) return formatEventTime(start);
+  return `${formatEventTime(start)} - ${formatEventTime(end)}`;
+};
 
 const MyTickets = () => {
   const [tickets, setTickets] = useState([]);
@@ -24,31 +53,68 @@ const MyTickets = () => {
 
   const printRef = useRef(null);
 
-  const getDisplayAmount = (ticket) => {
-    if (ticket.events?.event_type === 'paid') {
-      const ticketFee = Number(ticket.events?.price || 0);
-      const platformFee = 5;
-      const gatewayFee = Number(((ticketFee + platformFee) * 0.025).toFixed(2));
-      return (ticketFee + platformFee + gatewayFee).toFixed(2);
-    }
-    return "0.00";
-  };
+  const fetchUserTickets = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-  const formatTime = (timeStr) => {
-    if (!timeStr) return '';
-    if (timeStr.toLowerCase().includes('m')) return timeStr; 
-    const [hours, minutes] = timeStr.split(':');
-    let h = parseInt(hours, 10);
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    h = h % 12 || 12;
-    const formattedH = h < 10 ? `0${h}` : h;
-    return `${formattedH}:${minutes} ${ampm}`;
-  };
+      const { data: profile } = await supabase.from('students').select('name, surname').eq('email', user.email).single();
+      setStudentName(`${profile?.name || 'Student'} ${profile?.surname || ''}`);
+
+      const { data: memberships } = await supabase.from('booking_members').select('booking_id').eq('student_email', user.email);
+      const bookingIds = memberships ? memberships.map(m => m.booking_id) : [];
+
+      if (bookingIds.length === 0) {
+        setTickets([]);
+        setLoading(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('bookings')
+        .select(`
+          id, status, amount_expected, team_name, selected_game, student_email,
+          events ( id, title, date, venue, school, start_time, end_time, registration_deadline, event_type, price, org_id, club_id, category, games_list )
+        `)
+        .in('id', bookingIds)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const orgIds = [...new Set((data || []).map(b => b.events?.org_id).filter(Boolean))];
+      const clubIds = [...new Set((data || []).map(b => b.events?.club_id).filter(Boolean))];
+      
+      let orgMap = {};
+      let clubMap = {};
+      
+      if (orgIds.length > 0) {
+        const { data: orgData } = await supabase.from('organizations').select('id, name').in('id', orgIds);
+        if (orgData) orgData.forEach(o => { orgMap[o.id] = o.name; });
+      }
+      
+      if (clubIds.length > 0) {
+        const { data: clubData } = await supabase.from('clubs').select('id, name').in('id', clubIds);
+        if (clubData) clubData.forEach(c => { clubMap[c.id] = c.name; });
+      }
+
+      const validTickets = (data || []).filter(ticket => ticket.events !== null).map(t => ({
+        ...t,
+        orgName: orgMap[t.events.org_id] || 'Organization',
+        clubName: clubMap[t.events.club_id] || null,
+        isLead: t.student_email === user.email 
+      }));
+
+      setTickets(validTickets);
+    } catch (error) {
+      toast.error("Failed to load tickets.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     fetchUserTickets();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchUserTickets]);
 
   useEffect(() => {
     if (!loading && tickets.length > 0) {
@@ -69,55 +135,8 @@ const MyTickets = () => {
         }
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, tickets]);
-
-  const fetchUserTickets = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: profile } = await supabase.from('students').select('name, surname').eq('email', user.email).single();
-      setStudentName(`${profile?.name || 'Student'} ${profile?.surname || ''}`);
-
-      const { data: memberships } = await supabase.from('booking_members').select('booking_id').eq('student_email', user.email);
-      const bookingIds = memberships ? memberships.map(m => m.booking_id) : [];
-
-      if (bookingIds.length === 0) {
-        setTickets([]);
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from('bookings')
-        .select(`
-          id, status, amount_expected, team_name, selected_game, student_email,
-          events ( id, title, date, venue, school, start_time, end_time, registration_deadline, event_type, price, org_id )
-        `)
-        .in('id', bookingIds)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      const orgIds = [...new Set((data || []).map(b => b.events?.org_id).filter(Boolean))];
-      let orgMap = {};
-      if (orgIds.length > 0) {
-        const { data: orgData } = await supabase.from('organizations').select('id, name').in('id', orgIds);
-        if (orgData) orgData.forEach(o => { orgMap[o.id] = o.name; });
-      }
-
-      const validTickets = (data || []).filter(ticket => ticket.events !== null).map(t => ({
-        ...t,
-        orgName: orgMap[t.events.org_id] || 'Organization',
-        isLead: t.student_email === user.email 
-      }));
-
-      setTickets(validTickets);
-    } catch (error) {
-      toast.error("Failed to load tickets.");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -148,10 +167,19 @@ const MyTickets = () => {
     let fullMembers = [];
     if (ticket.team_name) {
        const { data: memEmails } = await supabase.from('booking_members').select('student_email').eq('booking_id', ticket.id);
-       if (memEmails) {
+       if (memEmails && memEmails.length > 0) {
           const emails = memEmails.map(m => m.student_email);
           const { data: profiles } = await supabase.from('students').select('email, name, surname').in('email', emails);
-          fullMembers = profiles || [];
+          
+          fullMembers = memEmails.map(bm => {
+             const prof = profiles?.find(p => p.email?.toLowerCase() === bm.student_email?.toLowerCase()) || {};
+             const fallbackName = prof.name || bm.student_email.split('@')[0];
+             return { 
+                email: bm.student_email, 
+                name: fallbackName, 
+                surname: prof.surname || '' 
+             };
+          });
        }
     }
 
@@ -180,6 +208,7 @@ const MyTickets = () => {
     const isCheckedIn = ticket.status === 'checked_in';
     const isPending = ticket.status === 'pending';
     const isExpired = new Date(ticket.events?.date) < today;
+    const price = getTicketPrice(ticket);
 
     const handleCardClick = () => {
       if (isPending) {
@@ -195,7 +224,7 @@ const MyTickets = () => {
         onClick={handleCardClick}
       >
         <div className={`absolute inset-0 bg-linear-to-br ${isExpired ? 'from-slate-600/10' : isPending ? 'from-yellow-600/5' : 'from-blue-600/10'} via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500`} />
-        <div className={`absolute top-0 left-0 w-full h-0.5 bg-linear-to-r from-transparent ${isExpired ? 'via-slate-500' : isPending ? 'via-yellow-500' : 'via-blue-500'} to-transparent ${!isExpired && !isPending && 'shadow-[0_0_15px_rgba(59,130,246,0.8)]'}`} />
+        <div className={`absolute top-0 left-0 w-full h-0.5 bg-linear-to-r from-transparent ${isExpired ? 'via-slate-500' : isPending ? 'via-yellow-500' : 'via-blue-500'} to-transparent ${!isExpired && !isPending ? 'shadow-[0_0_15px_rgba(59,130,246,0.8)]' : ''}`} />
 
         <div className="relative z-10 flex justify-between items-start">
           <span className={`text-[9px] font-black uppercase tracking-widest px-4 py-1.5 rounded-full border ${isExpired ? 'text-slate-400 bg-slate-500/10 border-slate-400/30' : isPending ? 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' : 'text-blue-400 bg-blue-500/20 border-blue-400/30'}`}>
@@ -207,28 +236,28 @@ const MyTickets = () => {
           </span>
         </div>
 
-        <div className="relative z-10 space-y-4 text-left">
+        <div className="relative z-10 space-y-4 text-left mt-4 mb-2">
           <h3 className={`text-3xl font-black uppercase tracking-tighter leading-[0.85] transition-colors line-clamp-2 ${isExpired ? 'text-slate-500' : isPending ? 'text-yellow-500/80' : 'group-hover:text-blue-400'}`}>
             {ticket.events?.title}
           </h3>
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             {ticket.team_name && <p className="flex items-center gap-2 text-[10px] font-bold text-indigo-400 uppercase tracking-widest"><Users size={12}/> TEAM: {ticket.team_name}</p>}
             {ticket.selected_game && <p className="flex items-center gap-2 text-[10px] font-bold text-cyan-400 uppercase tracking-widest"><Gamepad2 size={12}/> {ticket.selected_game}</p>}
             <p className="flex items-center gap-2 text-[10px] font-bold text-slate-300 uppercase tracking-widest"><Calendar size={12} className={isExpired ? "text-slate-500" : isPending ? "text-yellow-600" : "text-blue-500"}/> {ticket.events?.date}</p>
+            <p className="flex items-center gap-2 text-[10px] font-bold text-slate-300 uppercase tracking-widest"><Clock size={12} className={isExpired ? "text-slate-500" : isPending ? "text-yellow-600" : "text-blue-500"}/> {formatTimeRange(ticket.events?.start_time, ticket.events?.end_time)}</p>
             <div className="flex items-start gap-2 text-[10px] font-bold text-slate-300 uppercase tracking-widest">
                <MapPin size={12} className={`shrink-0 mt-0.5 ${isExpired ? "text-slate-500" : isPending ? "text-yellow-600" : "text-blue-500"}`} /> 
                <span className="truncate">{ticket.events?.venue}</span>
             </div>
             
-            {/* PRICE TAG RESTORED */}
-            <p className={`flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest pt-1 ${isExpired ? "text-slate-500" : isPending ? "text-yellow-600" : ticket.events?.event_type === 'paid' ? "text-emerald-400" : "text-blue-400"}`}>
-              {ticket.events?.event_type === 'paid' ? <CreditCard size={12} /> : <Ticket size={12} />} 
-              {ticket.events?.event_type === 'paid' ? `PAID: ₹${getDisplayAmount(ticket)}` : 'FREE ENTRY'}
+            <p className={`flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest pt-1 ${isExpired ? "text-slate-500" : isPending ? "text-yellow-600" : price > 0 ? "text-emerald-400" : "text-blue-400"}`}>
+              {price > 0 ? <CreditCard size={12} /> : <Ticket size={12} />} 
+              {price > 0 ? `PAID: ₹${price}` : 'FREE ENTRY'}
             </p>
           </div>
         </div>
 
-        <div className="relative z-10 pt-6 border-t border-white/5 flex items-center justify-between">
+        <div className="relative z-10 pt-4 border-t border-white/5 flex items-center justify-between mt-auto">
           <div className={`flex items-center gap-2 font-black text-[9px] uppercase tracking-widest ${isExpired ? 'text-slate-500' : isPending ? 'text-yellow-500 animate-pulse' : 'text-blue-400 animate-pulse'}`}>
              {isPending ? <Clock size={12} /> : <Info size={12} />} 
              {isExpired ? 'View Details' : isPending ? 'Pending Approval' : 'Tap to View Ticket'}
@@ -344,7 +373,7 @@ const MyTickets = () => {
                       {selectedTicket.orgName} {selectedTicket.clubName ? `• ${selectedTicket.clubName}` : ''} <br/> EVENT PASS
                    </p>
                    <div className="bg-blue-600/10 text-blue-400 border border-blue-500/20 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest">
-                      VERIFIED
+                      {selectedTicket.status?.replace('_', ' ') || 'VERIFIED'}
                    </div>
                 </div>
 
@@ -364,23 +393,22 @@ const MyTickets = () => {
                    </div>
                    <div>
                      <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Time</p>
-                     <p className="text-sm font-bold text-white">{formatTime(selectedTicket.events?.start_time)}</p>
+                     <p className="text-sm font-bold text-white">{formatTimeRange(selectedTicket.events?.start_time, selectedTicket.events?.end_time)}</p>
                    </div>
                    <div>
-                     <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Venue</p>
+                     <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Venue Location</p>
                      <p className="text-sm font-bold text-white">{selectedTicket.events?.venue}</p>
                    </div>
                    <div>
                      <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Payment Status</p>
-                     {/* MODAL PRICE TAG RESTORED */}
                      <p className="text-sm font-black text-emerald-400 uppercase">
-                        {selectedTicket.events?.event_type === 'paid' ? `PAID: ₹${getDisplayAmount(selectedTicket)}` : 'FREE ENTRY'}
+                       {getTicketPrice(selectedTicket) > 0 ? `PAID: ₹${getTicketPrice(selectedTicket)}` : 'FREE ENTRY'}
                      </p>
                    </div>
                 </div>
 
                 <div className="mb-6">
-                   <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">{selectedTicket.team_name ? 'Team Name' : 'Attendee'}</p>
+                   <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">{selectedTicket.team_name ? 'Team Name' : 'Authorized Attendee'}</p>
                    <p className="text-xl font-black text-white uppercase truncate">{selectedTicket.team_name || studentName}</p>
                 </div>
 
@@ -389,7 +417,10 @@ const MyTickets = () => {
                       <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5"><Users size={12}/> Team Members</p>
                       <div className="space-y-1">
                         {selectedTicket.fullMembers.map((m, idx) => (
-                           <p key={idx} className="text-xs font-bold text-slate-300">• {m.name} {m.surname}</p>
+                           <p key={idx} className="text-xs font-bold text-slate-300">
+                             • {m.name} {m.surname}
+                             {m.email === selectedTicket.student_email && <span style={{ marginLeft: '8px', backgroundColor: 'rgba(234, 179, 8, 0.2)', color: '#eab308', padding: '2px 6px', borderRadius: '4px', fontSize: '8px', textTransform: 'uppercase' }}>Lead</span>}
+                           </p>
                         ))}
                       </div>
                    </div>
@@ -400,7 +431,7 @@ const MyTickets = () => {
                    <div className="absolute top-0 left-0 w-4 h-4 bg-[#0a0f1d] rounded-full -translate-x-1/2 -translate-y-1/2"></div>
                    <div className="absolute top-0 right-0 w-4 h-4 bg-[#0a0f1d] rounded-full translate-x-1/2 -translate-y-1/2"></div>
 
-                   <p className="text-[12px] font-black text-slate-900 uppercase tracking-[0.4em] mb-4">A D M I T &nbsp; O N E</p>
+                   <p className="text-[12px] font-black text-slate-900 uppercase tracking-[0.4em] mb-4">S C A N &nbsp; Q R</p>
                    <QRCodeCanvas value={selectedTicket.id || "error"} size={140} level="H" className="mb-4" />
                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Ticket ID</p>
                    <p className="text-[9px] font-mono font-bold text-slate-900">{selectedTicket.id}</p>
@@ -426,7 +457,7 @@ const MyTickets = () => {
                          {selectedTicket.orgName} <br/> EVENT PASS
                       </p>
                       <div style={{ backgroundColor: 'rgba(37, 99, 235, 0.1)', color: '#60a5fa', border: '1px solid rgba(37, 99, 235, 0.2)', padding: '6px 12px', borderRadius: '8px', fontSize: '10px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '2px' }}>
-                         VERIFIED
+                         {selectedTicket.status?.replace('_', ' ') || 'VERIFIED'}
                       </div>
                    </div>
 
@@ -446,31 +477,33 @@ const MyTickets = () => {
                       </div>
                       <div style={{ width: '40%' }}>
                         <p style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Time</p>
-                        <p style={{ fontSize: '14px', fontWeight: 'bold', color: '#ffffff' }}>{formatTime(selectedTicket.events?.start_time)}</p>
+                        <p style={{ fontSize: '14px', fontWeight: 'bold', color: '#ffffff' }}>{formatTimeRange(selectedTicket.events?.start_time, selectedTicket.events?.end_time)}</p>
                       </div>
                       <div style={{ width: '40%' }}>
-                        <p style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Venue</p>
+                        <p style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Venue Location</p>
                         <p style={{ fontSize: '14px', fontWeight: 'bold', color: '#ffffff' }}>{selectedTicket.events?.venue}</p>
                       </div>
                       <div style={{ width: '40%' }}>
                         <p style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Payment Status</p>
-                        {/* PDF PRICE TAG RESTORED */}
                         <p style={{ fontSize: '14px', fontWeight: '900', color: '#34d399', textTransform: 'uppercase' }}>
-                           {selectedTicket.events?.event_type === 'paid' ? `PAID: ₹${getDisplayAmount(selectedTicket)}` : 'FREE ENTRY'}
+                           {getTicketPrice(selectedTicket) > 0 ? `PAID: ₹${getTicketPrice(selectedTicket)}` : 'FREE ENTRY'}
                         </p>
                       </div>
                    </div>
 
                    <div style={{ marginBottom: '24px' }}>
-                      <p style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>{selectedTicket.team_name ? 'Team Name' : 'Attendee'}</p>
+                      <p style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>{selectedTicket.team_name ? 'Team Name' : 'Authorized Attendee'}</p>
                       <p style={{ fontSize: '20px', fontWeight: '900', color: '#ffffff', textTransform: 'uppercase' }}>{selectedTicket.team_name || studentName}</p>
                    </div>
 
                    {selectedTicket.team_name && selectedTicket.fullMembers && selectedTicket.fullMembers.length > 0 && (
                       <div style={{ padding: '16px', backgroundColor: 'rgba(30, 41, 59, 0.4)', borderRadius: '16px', border: '1px solid rgba(51, 65, 85, 0.5)', marginBottom: '24px' }}>
-                         <p style={{ fontSize: '10px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '8px' }}>Team Members</p>
+                         <p style={{ fontSize: '10px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '8px' }}>Official Roster</p>
                          {selectedTicket.fullMembers.map((m, idx) => (
-                            <p key={idx} style={{ fontSize: '14px', fontWeight: 'bold', color: '#cbd5e1', margin: '4px 0' }}>• {m.name} {m.surname}</p>
+                            <p key={idx} style={{ fontSize: '14px', fontWeight: 'bold', color: '#cbd5e1', margin: '4px 0' }}>
+                              • {m.name} {m.surname}
+                              {m.email === selectedTicket.student_email && <span style={{ marginLeft: '8px', backgroundColor: 'rgba(234, 179, 8, 0.2)', color: '#eab308', padding: '2px 6px', borderRadius: '4px', fontSize: '8px', textTransform: 'uppercase' }}>Lead</span>}
+                            </p>
                          ))}
                       </div>
                    )}
@@ -478,7 +511,7 @@ const MyTickets = () => {
 
                 <div style={{ backgroundColor: '#ffffff', padding: '32px', display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
                    <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '0', borderTop: '2px dashed #94a3b8' }}></div>
-                   <p style={{ fontSize: '14px', fontWeight: '900', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '6px', marginBottom: '16px' }}>A D M I T &nbsp; O N E</p>
+                   <p style={{ fontSize: '14px', fontWeight: '900', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '6px', marginBottom: '16px' }}>S C A N &nbsp; Q R</p>
                    <QRCodeCanvas value={selectedTicket.id || "error"} size={140} level="H" style={{ marginBottom: '16px' }} />
                    <p style={{ fontSize: '9px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Ticket ID</p>
                    <p style={{ fontSize: '10px', fontFamily: 'monospace', fontWeight: 'bold', color: '#0f172a' }}>{selectedTicket.id}</p>

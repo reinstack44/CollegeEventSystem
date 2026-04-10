@@ -13,7 +13,7 @@ import MyTickets from './pages/student/MyTickets';
 import CompleteRegistration from './pages/student/CompleteRegistration';
 import Login from './pages/student/Login';
 import Profile from './pages/student/Profile';
-import ForgotPassword from './pages/student/ForgotPassword'; // New Import
+import ForgotPassword from './pages/student/ForgotPassword'; 
 import ResetPassword from './pages/student/ResetPassword';
 
 // Admin Pages
@@ -122,7 +122,8 @@ function App() {
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/refunds" element={<Refunds />} />
 
-            <Route path="*" element={<Navigate to="/" replace />} />
+            {/* SECURE CATCH-ALL ROUTE (404 Fallback) */}
+            <Route path="*" element={<Navigate to={session ? "/events" : "/"} replace />} />
           </Routes>
         </main>
         <Footer />

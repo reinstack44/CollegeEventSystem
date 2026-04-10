@@ -13,15 +13,12 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState(null);
   
-  // Context state for Club Heads managing multiple clubs
   const [myClubs, setMyClubs] = useState([]);
   const [activeClubId, setActiveClubId] = useState(localStorage.getItem('active_club_id'));
 
-  // CUSTOM DROPDOWN STATE
   const [isClubDropdownOpen, setIsClubDropdownOpen] = useState(false);
   const clubDropdownRef = useRef(null);
 
-  // Handle click outside for Custom Dropdown
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (clubDropdownRef.current && !clubDropdownRef.current.contains(event.target)) {
@@ -38,16 +35,15 @@ const Dashboard = () => {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return navigate('/adminlogin');
 
-        // 1. Identify Super Admin via Custom Emails
-        const adminEmails = ['admin@nexuscircle.in', 'staff@adypu.edu.in', 'prathamesh@adypu.edu.in'];
-        const isSuperAdmin = adminEmails.includes(user.email);
-
-        // 2. Fetch Database Roles (Supports Multi-Role)
+        // 1. Secure Role Fetch (No hardcoded emails)
+        const { data: profile } = await supabase.from('students').select('role').eq('email', user.email).single();
         const { data: roles } = await supabase.from('user_roles').select('*').eq('email', user.email);
+        
+        const isSuperAdmin = profile?.role === 'super_admin' || roles?.some(r => r.role === 'super_admin');
         const isOrgHead = roles?.some(r => r.role === 'org_head');
         const isClubHead = roles?.some(r => r.role === 'club_head');
 
-        // 3. Determine Highest Authority
+        // 2. Determine Highest Authority
         let role = 'student';
         if (isSuperAdmin) role = 'super_admin';
         else if (isOrgHead) role = 'org_head';
@@ -60,14 +56,13 @@ const Dashboard = () => {
 
         setUserRole(role);
 
-        // 4. Initialize Workspace for Club Heads
+        // 3. Initialize Workspace for Club Heads
         if (role === 'club_head') {
           const clubIds = roles.filter(r => r.role === 'club_head').map(r => r.club_id);
           const { data: clubsData } = await supabase.from('clubs').select('*').in('id', clubIds);
           
           if (clubsData && clubsData.length > 0) {
             setMyClubs(clubsData);
-            // Auto-set the first club if none is active
             if (!localStorage.getItem('active_club_id')) {
               localStorage.setItem('active_club_id', clubsData[0].id);
               localStorage.setItem('active_club_name', clubsData[0].name);
@@ -100,8 +95,6 @@ const Dashboard = () => {
 
   return (
     <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 max-w-7xl text-left">
-      
-      {/* TOP NAVIGATION / BACK BUTTON */}
       <div className="w-full mb-4 sm:mb-6 flex justify-start">
         <button onClick={() => navigate('/')} className="flex items-center gap-2 text-slate-500 hover:text-blue-500 transition-all font-black text-[10px] uppercase tracking-widest">
           <ArrowLeft size={14} /> Back to Home
@@ -126,14 +119,12 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* WORKSPACE SWITCHER (For Club Heads only) */}
         {userRole === 'club_head' && myClubs.length > 0 && (
           <div className="flex items-center gap-3 bg-[#111827] border border-slate-800 p-3 rounded-2xl shadow-lg shrink-0 relative z-50">
             <div className="p-2 bg-pink-500/10 rounded-lg"><Flag className="text-pink-500 w-4 h-4"/></div>
             <div className="flex flex-col relative w-full sm:w-48" ref={clubDropdownRef}>
               <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">Active Club</span>
               
-              {/* CUSTOM REACT DROPDOWN */}
               <button 
                 onClick={() => setIsClubDropdownOpen(!isClubDropdownOpen)}
                 className="flex items-center justify-between w-full bg-transparent outline-none text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
@@ -165,29 +156,19 @@ const Dashboard = () => {
         )}
       </div>
 
-      {/* DYNAMIC ADMIN CONTROL CARDS */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6">
-        
-        {/* Core Tools (Visible to all Admin Roles) */}
         <AdminCard to="/admin/create" icon={<PlusCircle className="text-green-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Create" desc="New Event." color="border-green-500" />
         <AdminCard to="/admin/events" icon={<Edit3 className="text-orange-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Manage Events" desc="Modify & Delete." color="border-orange-500" />
         <AdminCard to="/admin/scan" icon={<ScanLine className="text-blue-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Scanner" desc="QR Ticket Check-in." color="border-blue-500" />
-        
-        {/* Database Tool (Visible to all Admin Roles - Fixes Goal #5) */}
         <AdminCard to="/admin/master-registry" icon={<Database className="text-purple-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Database" desc="View Registrations." color="border-purple-500" /> 
         
-        {/* Org Head & Super Admin Only: Manage Factions/Clubs */}
         {(userRole === 'super_admin' || userRole === 'org_head') && (
           <AdminCard to="/club/my-clubs" icon={<Users className="text-pink-500 w-5 h-5 sm:w-7 sm:h-7" />} title={userRole === 'org_head' ? 'Manage Clubs' : 'Clubs'} desc="Assign Leaders." color="border-pink-500" /> 
         )}
-
-        {/* Super Admin Only: Organization Applications */}
         {userRole === 'super_admin' && (
           <AdminCard to="/admin/applications" icon={<Building className="text-emerald-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Applications" desc="Org Approvals." color="border-emerald-500" /> 
         )}
-
       </div>
-
     </div>
   );
 };

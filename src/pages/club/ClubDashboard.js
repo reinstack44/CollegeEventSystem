@@ -83,7 +83,6 @@ const ClubDashboard = () => {
       </div>
 
       {/* CLUB CONTROL CARDS */}
-      {/* Note: In Phase 6, we will update these routes to pass the ?clubId param so the tools scope automatically */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         <ClubCard to={`/admin/create?club_id=${clubId}`} icon={<PlusCircle className="text-green-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Create" desc="New Club Event." color="border-green-500" />
         <ClubCard to={`/admin/events?club_id=${clubId}`} icon={<Edit3 className="text-orange-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Manage Events" desc="Modify & Delete." color="border-orange-500" />

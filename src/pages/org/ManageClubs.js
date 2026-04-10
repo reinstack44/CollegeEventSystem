@@ -26,7 +26,7 @@ const ManageClubs = () => {
   const [clubs, setClubs] = useState([]);
   const [clubHeads, setClubHeads] = useState({}); 
   
-  // WORKSPACE CONTEXT (For Club Heads)
+  // WORKSPACE CONTEXT (For Club Leads)
   const [activeWorkspaceId, setActiveWorkspaceId] = useState(localStorage.getItem('active_club_id'));
 
   // FORM & EDIT STATE
@@ -63,14 +63,14 @@ const ManageClubs = () => {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return navigate('/login');
 
-        // 1. Fetch ALL roles for the user (supports multi-club)
+        // 1. Fetch ALL roles for the user
         const { data: userRoles, error: rolesError } = await supabase
           .from('user_roles')
           .select('*')
           .eq('email', user.email);
 
         if (rolesError || !userRoles || userRoles.length === 0) {
-          toast.error("Unauthorized Access");
+          toast.error("Access Denied");
           return navigate('/');
         }
 
@@ -83,7 +83,7 @@ const ManageClubs = () => {
         setIsOrgHead(isOH);
 
         if (!isOH && !isCH) {
-          toast.error("Access Restricted.");
+          toast.error("Access Denied.");
           return navigate('/');
         }
 
@@ -98,7 +98,7 @@ const ManageClubs = () => {
         let clubQuery = supabase.from('clubs').select('*').eq('org_id', currentOrgId).order('created_at', { ascending: false });
         
         if (!isOH && isCH) {
-          // If purely a club head, ONLY show the clubs they manage
+          // If purely a club lead, ONLY show the clubs they manage
           const allowedClubIds = clubRoles.map(r => r.club_id);
           clubQuery = clubQuery.in('id', allowedClubIds);
         }
@@ -107,8 +107,11 @@ const ManageClubs = () => {
         if (clubError) throw clubError;
         setClubs(clubData || []);
 
-        // 4. Map Club Heads
-        const { data: headsData } = await supabase.from('user_roles').select('email, club_id').eq('role', 'club_head').eq('org_id', currentOrgId);
+        // 4. Map Club Leads
+        const { data: headsData, error: headsError } = await supabase.from('user_roles').select('email, club_id').eq('role', 'club_head').eq('org_id', currentOrgId);
+        
+        if (headsError) console.error("RLS Blocked reading club leads:", headsError);
+        
         if (headsData) {
           const headsMap = {};
           headsData.forEach(h => { if (h.club_id) headsMap[h.club_id] = h.email; });
@@ -117,7 +120,7 @@ const ManageClubs = () => {
 
       } catch (error) {
         console.error("Fetch Error:", error);
-        toast.error("Failed to load organization data.");
+        toast.error("Failed to load clubs.");
       } finally {
         setLoading(false);
       }
@@ -161,7 +164,7 @@ const ManageClubs = () => {
 
     setSubmitting(true);
     const isEditing = !!editClubId;
-    const loadToast = toast.loading(isEditing ? "Updating club details..." : "Creating new club...");
+    const loadToast = toast.loading(isEditing ? "Saving changes..." : "Creating new club...");
 
     try {
       if (isEditing) {
@@ -228,10 +231,11 @@ const ManageClubs = () => {
   const handleAssignHead = async (userEmail) => {
     if (!assignModal.club) return;
     setAssigningEmail(userEmail);
-    const loadToast = toast.loading(`Assigning ${userEmail.split('@')[0]} as Club Head...`);
+    const loadToast = toast.loading(`Assigning ${userEmail.split('@')[0]} as Club Lead...`);
 
     try {
-      await supabase.from('user_roles').delete().eq('club_id', assignModal.club.id);
+      // Safely delete ONLY the club_head role for this specific club
+      await supabase.from('user_roles').delete().match({ club_id: assignModal.club.id, role: 'club_head' });
 
       const { error } = await supabase
         .from('user_roles')
@@ -243,16 +247,16 @@ const ManageClubs = () => {
         });
 
       if (error) {
-        if (error.message.includes('unique constraint')) throw new Error("This student is already managing this exact club.");
+        if (error.message.includes('unique constraint')) throw new Error("This student is already managing this club.");
         throw error;
       }
 
       setClubHeads(prev => ({ ...prev, [assignModal.club.id]: userEmail }));
-      toast.success("Club Head Assigned Successfully!", { id: loadToast });
+      toast.success("Club Lead Assigned!", { id: loadToast });
       closeModal();
     } catch (error) {
       console.error("Assignment Error:", error);
-      toast.error(error.message || "Failed to assign Club Head.", { id: loadToast });
+      toast.error(error.message || "Failed to assign Club Lead.", { id: loadToast });
     } finally {
       setAssigningEmail(null);
     }
@@ -266,13 +270,13 @@ const ManageClubs = () => {
   // ACTUAL DELETION LOGIC
   const confirmRemoveHead = async () => {
     const { clubId, headEmail } = confirmModal;
-    const loadToast = toast.loading(`Removing access for ${headEmail}...`);
+    const loadToast = toast.loading(`Removing lead access...`);
 
     try {
       const { error } = await supabase
         .from('user_roles')
         .delete()
-        .match({ club_id: clubId, role: 'club_head' });
+        .match({ club_id: clubId, role: 'club_head', email: headEmail });
 
       if (error) throw error;
 
@@ -282,10 +286,10 @@ const ManageClubs = () => {
         return newHeads;
       });
 
-      toast.success("Club Head removed successfully.", { id: loadToast });
+      toast.success("Club Lead removed.", { id: loadToast });
     } catch (error) {
       console.error("Removal Error:", error);
-      toast.error("Failed to remove Club Head.", { id: loadToast });
+      toast.error("Failed to remove Club Lead.", { id: loadToast });
     } finally {
       setConfirmModal({ isOpen: false, clubId: null, headEmail: null });
     }
@@ -314,13 +318,13 @@ const ManageClubs = () => {
   return (
     <div className="min-h-screen bg-[#0a0f1d] text-slate-300 p-4 md:p-8 relative">
       
-      {/* --- CUSTOM CONFIRMATION MODAL (No HTML Window.Confirm) --- */}
+      {/* --- CUSTOM CONFIRMATION MODAL --- */}
       {confirmModal.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-[#111827] border border-slate-800 rounded-3xl w-full max-w-sm shadow-[0_0_50px_rgba(239,68,68,0.15)] flex flex-col overflow-hidden relative">
             <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-[#0a0f1d]/50">
               <h3 className="text-white font-black uppercase tracking-widest text-base flex items-center gap-2">
-                <AlertTriangle className="text-red-500" size={18} /> Remove Club Head
+                <AlertTriangle className="text-red-500" size={18} /> Remove Club Lead
               </h3>
               <button onClick={() => setConfirmModal({ isOpen: false, clubId: null, headEmail: null })} className="text-slate-500 hover:text-white bg-white/5 p-2 rounded-full transition-colors">
                 <X size={18} />
@@ -333,7 +337,7 @@ const ManageClubs = () => {
                 <span className="inline-block text-white bg-slate-800 px-3 py-1.5 rounded-lg my-2 border border-slate-700">{confirmModal.headEmail}</span><br/> 
                 from managing this club?
               </p>
-              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">This action revokes their dashboard access immediately.</p>
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">They will lose access to the club dashboard immediately.</p>
               
               <div className="flex gap-3 mt-6 pt-2 border-t border-slate-800">
                 <button onClick={() => setConfirmModal({ isOpen: false, clubId: null, headEmail: null })} className="flex-1 px-4 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-black uppercase tracking-widest text-[10px] transition-all active:scale-95">
@@ -355,7 +359,7 @@ const ManageClubs = () => {
             <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-[#0a0f1d]/50">
               <div>
                 <h3 className="text-white font-black uppercase tracking-widest text-lg flex items-center gap-2">
-                  <ShieldCheck className="text-purple-500" size={20} /> Assign Club Head
+                  <ShieldCheck className="text-purple-500" size={20} /> Assign Club Lead
                 </h3>
                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">For: <span className="text-purple-400">{assignModal.club.name}</span></p>
               </div>
@@ -368,7 +372,7 @@ const ManageClubs = () => {
               <div className="relative w-full">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
                 <input 
-                  type="text" autoFocus placeholder={`Search ${orgDomain} users...`}
+                  type="text" autoFocus placeholder={`Search students...`}
                   value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-12 pr-4 py-4 bg-[#1f2937] border border-slate-700 rounded-2xl outline-none text-sm font-black tracking-widest uppercase focus:border-purple-500 transition-all text-white"
                 />
@@ -379,11 +383,11 @@ const ManageClubs = () => {
                 {searchQuery.length < 2 ? (
                   <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-2">
                     <Users size={32} className="opacity-50" />
-                    <p className="text-[10px] font-black uppercase tracking-widest text-center px-4">Begin typing to search the <br/>university database</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-center px-4">Type to search students</p>
                   </div>
                 ) : searchResults.length === 0 && !isSearching ? (
                   <div className="h-full flex items-center justify-center text-slate-500 text-[10px] font-black uppercase tracking-widest">
-                    No authorized users found
+                    No students found
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -410,7 +414,7 @@ const ManageClubs = () => {
 
             <div className="p-4 border-t border-slate-800 bg-[#0a0f1d]/50 text-center">
               <p className="text-[8px] font-black text-slate-500 uppercase tracking-[0.2em] flex items-center justify-center gap-1.5">
-                <ShieldCheck size={12} className="text-purple-500" /> Securely locked to {orgDomain}
+                <ShieldCheck size={12} className="text-purple-500" /> Only students from {orgDomain} can be assigned
               </p>
             </div>
           </div>
@@ -428,7 +432,7 @@ const ManageClubs = () => {
               <Users className="text-purple-500" size={32} /> {isOrgHead ? 'Organization Clubs' : 'My Assigned Clubs'}
             </h1>
             <p className="text-xs text-slate-400 mt-2 tracking-wide uppercase font-bold">
-              {isOrgHead ? 'Manage Clubs and Assign Leadership' : 'Manage your assigned clubs.'}
+              {isOrgHead ? 'Manage Clubs and Assign Leads' : 'Manage your assigned clubs.'}
             </p>
           </div>
         </div>
@@ -441,7 +445,7 @@ const ManageClubs = () => {
               <div className="flex items-center justify-between mb-6 border-b border-white/5 pb-4">
                 <h2 className="text-xl font-black uppercase tracking-widest text-white flex items-center gap-2">
                   {editClubId ? <Edit3 className="text-blue-500" size={20} /> : <Plus className="text-emerald-500" size={20} />} 
-                  {editClubId ? 'Update Club' : 'Create Club'}
+                  {editClubId ? 'Edit Club' : 'Create Club'}
                 </h2>
                 {editClubId && (
                   <button onClick={handleCancelEdit} className="text-slate-500 hover:text-red-400 transition-colors" title="Cancel Edit">
@@ -514,7 +518,7 @@ const ManageClubs = () => {
           {/* Existing Clubs Grid */}
           <div className={isOrgHead ? "lg:col-span-2 space-y-6" : "lg:col-span-3 space-y-6"}>
             <h2 className="text-sm font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
-              <LayoutGrid size={16} /> Active Clubs ({clubs.length})
+              <LayoutGrid size={16} /> Created Clubs ({clubs.length})
             </h2>
 
             {clubs.length === 0 ? (
@@ -522,9 +526,9 @@ const ManageClubs = () => {
                 <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mb-4">
                   <Building2 size={24} className="text-slate-500" />
                 </div>
-                <h3 className="text-xl font-bold text-white mb-2">No Clubs Found</h3>
+                <h3 className="text-xl font-bold text-white mb-2">No Clubs Yet</h3>
                 <p className="text-slate-500 text-sm max-w-sm">
-                  {isOrgHead ? "Use the form to create official clubs. Once created, you can assign Club Heads to manage them." : "You have not been assigned to manage any clubs yet."}
+                  {isOrgHead ? "Use the form to create official clubs. Once created, you can assign Club Leads to manage them." : "You have not been assigned to manage any clubs yet."}
                 </p>
               </div>
             ) : (
@@ -561,21 +565,21 @@ const ManageClubs = () => {
                           headEmail ? (
                             <div className="flex items-center justify-between bg-slate-900 p-3 rounded-xl border border-slate-800">
                               <div className="truncate pr-2">
-                                <p className="text-[9px] font-black text-emerald-500 uppercase tracking-widest flex items-center gap-1.5 mb-0.5"><CheckCircle size={10}/> Active Head</p>
+                                <p className="text-[9px] font-black text-emerald-500 uppercase tracking-widest flex items-center gap-1.5 mb-0.5"><CheckCircle size={10}/> Club Lead</p>
                                 <p className="text-xs text-white font-mono truncate">{headEmail}</p>
                               </div>
                               <div className="flex items-center gap-1 shrink-0">
-                                <button onClick={() => openModal(club)} className="p-2 text-slate-500 hover:text-purple-400 hover:bg-purple-500/10 rounded-lg transition-colors" title="Change Head">
+                                <button onClick={() => openModal(club)} className="p-2 text-slate-500 hover:text-purple-400 hover:bg-purple-500/10 rounded-lg transition-colors" title="Change Lead">
                                   <UserPlus size={16} />
                                 </button>
-                                <button onClick={() => handleRemoveHeadClick(club.id, headEmail)} className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors" title="Remove Head">
+                                <button onClick={() => handleRemoveHeadClick(club.id, headEmail)} className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors" title="Remove Lead">
                                   <UserMinus size={16} />
                                 </button>
                               </div>
                             </div>
                           ) : (
                             <button onClick={() => openModal(club)} className="w-full py-3 bg-slate-800 hover:bg-purple-600 text-slate-300 hover:text-white rounded-xl font-black uppercase text-[9px] tracking-widest transition-all flex items-center justify-center gap-2">
-                              <UserPlus size={14} /> Assign Club Head
+                              <UserPlus size={14} /> Assign Club Lead
                             </button>
                           )
                         ) : (

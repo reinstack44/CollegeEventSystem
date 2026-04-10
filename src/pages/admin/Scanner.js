@@ -16,15 +16,13 @@ const Scanner = () => {
   const [totalScanned, setTotalScanned] = useState(0);
   const [isTorchOn, setIsTorchOn] = useState(false);
   
-  // NEW: State for the Team Roster Verification Screen
   const [pendingTeamVerification, setPendingTeamVerification] = useState(null);
   
   const audioCtx = useRef(null);
   const scannerRef = useRef(null);
   const isComponentMounted = useRef(true);
   const userRoleRef = useRef(null); 
-
-  // --- LOGIC SECTION ---
+  const isLockedRef = useRef(false); // Prevents continuous scanning
 
   const triggerFeedback = useCallback((type) => {
     if (audioCtx.current) {
@@ -51,35 +49,46 @@ const Scanner = () => {
 
   const finalizeCheckIn = async (bookingData) => {
     try {
-      const { error: updateError } = await supabase
+      const { data, error: updateError } = await supabase
         .from('bookings')
         .update({ status: 'checked_in', checked_in_at: new Date().toISOString() })
-        .eq('id', bookingData.id);
+        .eq('id', bookingData.id)
+        .neq('status', 'checked_in') 
+        .select();
 
       if (updateError) throw updateError;
 
+      if (!data || data.length === 0) {
+        triggerFeedback('error');
+        setScanResult({ type: 'warning', message: 'Already Checked In' });
+        toast.error("Ticket already used!");
+        return; 
+      }
+
       triggerFeedback('success'); 
-      setScanResult({ type: 'success', message: 'ACCESS GRANTED' });
+      setScanResult({ type: 'success', message: 'Entry Approved' });
       if (isComponentMounted.current) setTotalScanned(prev => prev + (bookingData.team_name ? bookingData.fullMembers.length : 1));
       
       const newEntry = {
         id: bookingData.id,
-        name: bookingData.team_name ? `TEAM: ${bookingData.team_name}` : `${bookingData.students?.name || 'Unknown'} ${bookingData.students?.surname || ''}`,
+        name: bookingData.team_name ? `Team: ${bookingData.team_name}` : `${bookingData.students?.name || 'Student'} ${bookingData.students?.surname || ''}`,
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         event: bookingData.events?.title,
         isTeam: !!bookingData.team_name
       };
       if (isComponentMounted.current) setHistory(prev => [newEntry, ...prev].slice(0, 5));
-      toast.success(bookingData.team_name ? `Team Verified: ${bookingData.team_name}` : `Verified: ${bookingData.students?.name}`, { position: "top-center" });
+      toast.success(bookingData.team_name ? `Team Entry Approved: ${bookingData.team_name}` : `Approved: ${bookingData.students?.name}`, { position: "top-center" });
     } catch (err) {
       triggerFeedback('error');
-      toast.error("Database Update Failed");
+      console.error("DEBUG: Database Update Error Details:", err);
+      toast.error(`Update Failed: ${err.message || 'Check console'}`);
     } finally {
       if (isComponentMounted.current) {
         setPendingTeamVerification(null);
         setTimeout(() => {
             setScanResult(null);
             setIsVerifying(false);
+            isLockedRef.current = false; // Unlock scanner
             if (scannerRef.current && scannerRef.current.getState() !== 2) {
                 startAutomatedScanner();
             }
@@ -89,10 +98,11 @@ const Scanner = () => {
   };
 
   const processCheckIn = useCallback(async (identifier) => {
-    if (!identifier || isVerifying) return;
+    if (!identifier || isVerifying || isLockedRef.current) return;
+    
+    isLockedRef.current = true; // Instantly lock the scanner
     setIsVerifying(true);
     
-    // Pause scanner immediately to prevent duplicate rapid scans
     if (scannerRef.current && scannerRef.current.getState() === 2) {
       scannerRef.current.pause();
     }
@@ -100,22 +110,22 @@ const Scanner = () => {
     try {
       const { data, error } = await supabase
         .from('bookings')
-        .select('*, events(title, org_id, club_id), students(name, surname)')
+        .select('*, events(title, org_id, club_id), students(name, surname, email)')
         .eq('id', identifier)
         .single();
 
       if (error || !data) {
         triggerFeedback('error'); 
-        setScanResult({ type: 'error', message: 'INVALID CREDENTIALS' });
+        setScanResult({ type: 'error', message: 'Invalid Ticket' });
         setTimeout(() => {
             setIsVerifying(false);
             setScanResult(null);
+            isLockedRef.current = false; // Unlock scanner
             if (scannerRef.current && scannerRef.current.getState() !== 2) startAutomatedScanner();
         }, 3000);
         return;
       } 
       
-      // SECURITY SCOPE CHECK
       const roleCtx = userRoleRef.current;
       const isSuperAdmin = roleCtx?.role === 'super_admin';
       const isMyOrg = roleCtx?.org_id === data.events?.org_id;
@@ -128,10 +138,11 @@ const Scanner = () => {
 
       if (!hasAuthority) {
         triggerFeedback('error');
-        setScanResult({ type: 'error', message: 'UNAUTHORIZED SECTOR' });
+        setScanResult({ type: 'error', message: 'Wrong Event Scanner' });
         setTimeout(() => {
             setIsVerifying(false);
             setScanResult(null);
+            isLockedRef.current = false; // Unlock scanner
             if (scannerRef.current && scannerRef.current.getState() !== 2) startAutomatedScanner();
         }, 3000);
         return;
@@ -139,10 +150,11 @@ const Scanner = () => {
 
       if (data.status === 'checked_in') {
         triggerFeedback('error'); 
-        setScanResult({ type: 'warning', message: 'ALREADY VERIFIED' });
+        setScanResult({ type: 'warning', message: 'Already Checked In' });
         setTimeout(() => {
             setIsVerifying(false);
             setScanResult(null);
+            isLockedRef.current = false; // Unlock scanner
             if (scannerRef.current && scannerRef.current.getState() !== 2) startAutomatedScanner();
         }, 3000);
         return;
@@ -150,29 +162,33 @@ const Scanner = () => {
 
       if (data.status === 'pending') {
         triggerFeedback('error'); 
-        setScanResult({ type: 'warning', message: 'PAYMENT PENDING' });
+        setScanResult({ type: 'warning', message: 'Payment Not Done' });
         setTimeout(() => {
             setIsVerifying(false);
             setScanResult(null);
+            isLockedRef.current = false; // Unlock scanner
             if (scannerRef.current && scannerRef.current.getState() !== 2) startAutomatedScanner();
         }, 3000);
         return;
       }
 
-      // If it's a team ticket, fetch the roster and pause for human validation
       if (data.team_name) {
+         // Fetch all team members for display
          const { data: memEmails } = await supabase.from('booking_members').select('student_email').eq('booking_id', data.id);
          let fullMembers = [];
-         if (memEmails) {
+         
+         if (memEmails && memEmails.length > 0) {
             const emails = memEmails.map(m => m.student_email);
             const { data: profiles } = await supabase.from('students').select('email, name, surname').in('email', emails);
             fullMembers = profiles || [];
+         } else if (data.students) {
+            // Fallback to just show the leader if member list fails
+            fullMembers = [{ name: data.students.name, surname: data.students.surname, email: data.students.email }];
          }
          
          triggerFeedback('success'); 
          setPendingTeamVerification({ ...data, fullMembers });
       } else {
-         // It's an individual ticket, authorize immediately
          await finalizeCheckIn(data);
       }
 
@@ -181,6 +197,7 @@ const Scanner = () => {
       setTimeout(() => {
           setIsVerifying(false);
           setScanResult(null);
+          isLockedRef.current = false; // Unlock scanner
           if (scannerRef.current && scannerRef.current.getState() !== 2) startAutomatedScanner();
       }, 3000);
     }
@@ -201,9 +218,10 @@ const Scanner = () => {
   const startAutomatedScanner = useCallback(async () => {
     try {
       await stopScanner(); 
+      isLockedRef.current = false; // Ensure unlocked when starting
       const html5QrCode = new Html5Qrcode("reader");
       scannerRef.current = html5QrCode;
-      const config = { fps: 30, qrbox: { width: 250, height: 250 } };
+      const config = { fps: 10, qrbox: { width: 250, height: 250 } }; // Lowered FPS slightly to prevent double-read crashes
       await html5QrCode.start(
         { facingMode: "environment" }, 
         config,
@@ -257,7 +275,10 @@ const Scanner = () => {
   }, [startAutomatedScanner, stopScanner]);
 
   const handleReScan = () => {
-    toast.loading("Re-calibrating...", { duration: 1000 });
+    isLockedRef.current = false;
+    setScanResult(null);
+    setIsVerifying(false);
+    toast.loading("Refreshing scanner...", { duration: 1000 });
     startAutomatedScanner();
   };
 
@@ -265,15 +286,14 @@ const Scanner = () => {
      setPendingTeamVerification(null);
      setIsVerifying(false);
      setScanResult(null);
+     isLockedRef.current = false;
      startAutomatedScanner();
   };
-
-  // --- UI SECTION ---
 
   return (
     <div className="min-h-screen bg-[#0B1120] text-slate-200 p-4 pb-20 flex flex-col items-center font-sans overflow-hidden relative">
       
-      {/* TEAM VERIFICATION HUD (OVERLAY) */}
+      {/* TEAM VERIFICATION HUD */}
       {pendingTeamVerification && (
          <div className="fixed inset-0 z-600 bg-black/95 backdrop-blur-3xl flex flex-col items-center justify-center p-6 animate-in slide-in-from-bottom-full duration-300">
             <div className="w-full max-w-md bg-[#111827] border border-indigo-500/30 rounded-4xl p-8 shadow-[0_0_80px_rgba(99,102,241,0.2)] flex flex-col relative overflow-hidden">
@@ -283,7 +303,7 @@ const Scanner = () => {
                  <div className="w-16 h-16 bg-indigo-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-indigo-500/20 shadow-lg">
                    <Users size={32} className="text-indigo-400" />
                  </div>
-                 <h2 className="text-3xl font-black uppercase italic text-white tracking-tighter leading-none mb-2">Team Verification</h2>
+                 <h2 className="text-3xl font-black uppercase italic text-white tracking-tighter leading-none mb-2">Team Check-In</h2>
                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{pendingTeamVerification.events?.title}</p>
                </div>
 
@@ -295,13 +315,13 @@ const Scanner = () => {
                      </div>
                      {pendingTeamVerification.selected_game && (
                        <div className="text-right">
-                         <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Tournament</p>
+                         <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Game</p>
                          <p className="text-xs font-bold text-cyan-400 flex items-center justify-end gap-1.5"><Gamepad2 size={12}/> {pendingTeamVerification.selected_game}</p>
                        </div>
                      )}
                   </div>
                   
-                  <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2"><Users size={12}/> Required Roster Count: {pendingTeamVerification.fullMembers?.length}</p>
+                  <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2"><Users size={12}/> Roster List ({pendingTeamVerification.fullMembers?.length} Members)</p>
                   <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar pr-2">
                      {pendingTeamVerification.fullMembers?.map((m, i) => (
                         <div key={i} className="flex items-center gap-3 bg-[#1e293b] p-3 rounded-xl border border-white/5">
@@ -314,7 +334,7 @@ const Scanner = () => {
 
                <div className="flex flex-col gap-3">
                   <button onClick={() => finalizeCheckIn(pendingTeamVerification)} className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black uppercase text-[11px] tracking-[0.2em] transition-all active:scale-95 shadow-lg shadow-indigo-500/20 flex justify-center items-center gap-2">
-                     <CheckCircle2 size={18}/> Authorize Team Entry
+                     <CheckCircle2 size={18}/> Approve Team Entry
                   </button>
                   <button onClick={handleCancelTeamVerification} className="w-full py-4 bg-white/5 hover:bg-white/10 text-slate-300 rounded-2xl font-black uppercase text-[10px] tracking-[0.2em] transition-all border border-white/5">
                      Cancel & Rescan
@@ -335,7 +355,7 @@ const Scanner = () => {
         <div className="flex items-center gap-2 bg-blue-500/10 px-3 py-1 rounded-full border border-blue-500/20">
           <Lock size={10} className="text-blue-400" />
           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-          <span className="text-[10px] font-bold text-blue-400 tracking-widest uppercase">System Online</span>
+          <span className="text-[10px] font-bold text-blue-400 tracking-widest uppercase">Scanner Active</span>
         </div>
       </div>
 
@@ -344,7 +364,7 @@ const Scanner = () => {
         <div className="bg-[#161E2E] p-4 rounded-2xl border border-white/5 shadow-xl">
           <div className="flex items-center gap-2 text-slate-400 mb-1">
             <Users size={14} />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Attendance</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Checked In</span>
           </div>
           <h2 className="text-3xl font-bold text-white tracking-tight">
             {totalScanned.toString().padStart(2, '0')}
@@ -355,7 +375,7 @@ const Scanner = () => {
             <ShieldCheck size={14} />
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Security</span>
           </div>
-          <h2 className="text-xl font-bold text-blue-400 tracking-tight leading-tight">Identity Check</h2>
+          <h2 className="text-xl font-bold text-blue-400 tracking-tight leading-tight">Ticket Check</h2>
         </div>
       </div>
 
@@ -401,7 +421,7 @@ const Scanner = () => {
                <div className="h-16 w-16 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
                <ScanLine className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-blue-500 animate-pulse" size={24} />
             </div>
-            <p className="text-xs font-bold uppercase tracking-[0.3em] text-blue-400 mt-6 animate-pulse">Validating...</p>
+            <p className="text-xs font-bold uppercase tracking-[0.3em] text-blue-400 mt-6 animate-pulse">Checking...</p>
           </div>
         )}
       </div>
@@ -420,7 +440,7 @@ const Scanner = () => {
             </span>
           </div>
         ) : (
-          <p className="text-[10px] font-bold uppercase tracking-[0.4em] text-slate-600">Scan QR Code To Check-In</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.4em] text-slate-600">Scan QR To Verify</p>
         )}
       </div>
 
@@ -429,15 +449,15 @@ const Scanner = () => {
         <div className="flex items-center justify-between px-2">
           <div className="flex items-center gap-2 text-slate-400">
             <History size={16} />
-            <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500">Session_Log</h3>
+            <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500">Recent Scans</h3>
           </div>
-          <span className="text-[10px] text-slate-500 font-medium">Last 5 Verified</span>
+          <span className="text-[10px] text-slate-500 font-medium">Last 5</span>
         </div>
 
         <div className="space-y-2">
           {history.length === 0 ? (
             <div className="py-8 text-center border border-dashed border-white/5 rounded-3xl opacity-30">
-              <p className="text-xs text-slate-500 font-medium italic uppercase tracking-tighter">Waiting for data...</p>
+              <p className="text-xs text-slate-500 font-medium italic uppercase tracking-tighter">Waiting for scans...</p>
             </div>
           ) : (
             history.map((entry, idx) => (

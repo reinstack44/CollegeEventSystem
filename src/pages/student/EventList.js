@@ -2,10 +2,10 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '../../sbclient/supabaseClient';
 import { QRCodeCanvas } from 'qrcode.react'; 
 import { 
-  Calendar, Search, Zap, Clock,
+  Calendar, Search, Zap, Clock, RefreshCw,
   CheckCircle, MapPin, X, Loader2, ShieldCheck,
   Download, ChevronDown, Layers, Share2, 
-  Users, Gamepad2, ArrowRight, UserPlus, UserMinus, Ticket, FileText, Filter
+  Users, Gamepad2, ArrowRight, UserPlus, UserMinus, Filter, FileText
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import html2canvas from 'html2canvas';
@@ -26,15 +26,44 @@ const CATEGORIES = [
   "Social & Welfare", "Entrepreneurship", "Literature", "Arts & Media", "Other"
 ];
 
-// Helper function to dynamically calculate the exact total price
-const getDisplayAmount = (eventObj) => {
-  if (eventObj?.event_type === 'paid') {
-    const ticketFee = Number(eventObj.price || 0);
-    const platformFee = 5;
-    const gatewayFee = Number(((ticketFee + platformFee) * 0.025).toFixed(2));
-    return (ticketFee + platformFee + gatewayFee).toFixed(2);
+const PLATFORM_FEE = 25;
+
+const getBaseAmount = (eventObj, selectedGameObj) => {
+  if (eventObj?.category === 'E-Sports' && selectedGameObj) {
+     return selectedGameObj.ticket_type === 'paid' ? Number(selectedGameObj.ticket_price || 0) : 0;
   }
-  return "0.00";
+  return eventObj?.event_type === 'paid' ? Number(eventObj.price || 0) : 0;
+};
+
+const getDisplayAmount = (eventObj, selectedGameObj) => {
+  const base = getBaseAmount(eventObj, selectedGameObj);
+  return base > 0 ? base + PLATFORM_FEE : 0;
+};
+
+const getTicketViewerPrice = (ticket) => {
+  if (!ticket) return 0;
+  if (ticket.category === 'E-Sports' && ticket.selectedGame) {
+     const gameObj = ticket.games_list?.find(g => g.gameName === ticket.selectedGame);
+     if (gameObj && gameObj.ticket_type === 'paid') return Number(gameObj.ticket_price || 0) + PLATFORM_FEE;
+     return 0;
+  }
+  if (Number(ticket.price) > 0) return Number(ticket.price) + PLATFORM_FEE;
+  return 0;
+};
+
+const formatEventTime = (timeStr) => {
+  if (!timeStr) return '';
+  const [hours, minutes] = timeStr.split(':');
+  let h = parseInt(hours, 10);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `${h}:${minutes} ${ampm}`;
+};
+
+const formatTimeRange = (start, end) => {
+  if (!start && !end) return 'TBA';
+  if (start && !end) return formatEventTime(start);
+  return `${formatEventTime(start)} - ${formatEventTime(end)}`;
 };
 
 const EventList = () => {
@@ -54,7 +83,6 @@ const EventList = () => {
   const [isAdminUser, setIsAdminUser] = useState(false);
   const [userDomain, setUserDomain] = useState("");
   
-  const [zoomedClub, setZoomedClub] = useState(null);
   const [now, setNow] = useState(new Date());
 
   const [paymentSuccess, setPaymentSuccess] = useState(false);
@@ -62,6 +90,11 @@ const EventList = () => {
   const [isDownloading, setIsDownloading] = useState(false);
 
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
+
+  // MODAL FLIP STATE
+  const [expandedEvent, setExpandedEvent] = useState(null);
+  const [isCardFlipped, setIsCardFlipped] = useState(false);
+  const [zoomedClub, setZoomedClub] = useState(null);
 
   const printRef = useRef(null);
   const filterMenuRef = useRef(null);
@@ -238,11 +271,11 @@ const EventList = () => {
   };
 
   const addMember = async (userObj) => {
-    if (wizard.members.find(m => m.email === userObj.email)) return toast.error("User already in roster!");
+    if (wizard.members.find(m => m.email === userObj.email)) return toast.error("Friend already in team!");
     const requiredSize = parseInt(wizard.selectedGame.team_size);
-    if (wizard.members.length >= requiredSize) return toast.error(`Max size is ${requiredSize}.`);
+    if (wizard.members.length >= requiredSize) return toast.error(`Max team size is ${requiredSize}.`);
     
-    const loadToast = toast.loading("Verifying availability...");
+    const loadToast = toast.loading("Checking their availability...");
     try {
       const { data: evBookings } = await supabase.from('bookings').select('id').eq('event_id', wizard.event.id).eq('selected_game', wizard.selectedGame.gameName);
       const bIds = evBookings ? evBookings.map(b => b.id) : [];
@@ -254,16 +287,16 @@ const EventList = () => {
       }
 
       if (isRegistered) {
-        toast.error(`User already registered for ${wizard.selectedGame.gameName}!`, { id: loadToast });
+        toast.error(`They are already registered for ${wizard.selectedGame.gameName}!`, { id: loadToast });
       } else {
         setWizard(p => ({ 
           ...p, members: [...p.members, { email: userObj.email, name: `${userObj.name} ${userObj.surname}`.trim() }],
           searchTerm: '', searchResults: []
         }));
-        toast.success("Member secured!", { id: loadToast });
+        toast.success("Friend added to team!", { id: loadToast });
       }
     } catch (err) {
-      toast.error("Verification failed.", { id: loadToast });
+      toast.error("Check failed.", { id: loadToast });
     }
   };
 
@@ -274,10 +307,12 @@ const EventList = () => {
   const processFinalCheckout = async () => {
     setWizard(p => ({ ...p, processing: true }));
     const { event, selectedGame, entryMode, teamName, members } = wizard;
-    const isPaid = event.event_type === 'paid';
+    
+    const baseAmount = getBaseAmount(event, selectedGame);
+    const isPaidEvent = baseAmount > 0;
     
     try {
-      if (!isPaid) {
+      if (!isPaidEvent) {
         const { data: booking, error } = await supabase.from('bookings').insert({
           event_id: event.id, student_email: currentUserEmail, status: 'confirmed',
           team_name: entryMode === 'Team' ? teamName.trim() : null,
@@ -294,38 +329,64 @@ const EventList = () => {
         setTimeout(() => {
           setPaymentSuccess(false); 
           setWizard(p => ({ ...p, open: false }));
-          handleViewTicket(event, { ...booking, status: 'confirmed', team_name: entryMode === 'Team' ? teamName : null, selected_game: selectedGame?.gameName }, members);
+          handleViewTicket(event, { ...booking, status: 'confirmed', team_name: entryMode === 'Team' ? teamName : null, selected_game: selectedGame?.gameName, student_email: currentUserEmail }, members);
         }, 3500);
 
       } else {
-        const totalAmount = getDisplayAmount(event);
         const res = await loadRazorpayScript();
-        if (!res) throw new Error("Razorpay failed.");
+        if (!res) throw new Error("Razorpay SDK failed to load.");
 
-        const { data: orderData } = await supabase.functions.invoke('create-razorpay-order', { body: { event_id: event.id, amount: Number(totalAmount) } });
+        const { data: orderData, error: orderError } = await supabase.functions.invoke('create-razorpay-order', { 
+           body: { event_id: event.id, amount: Number(baseAmount) } 
+        });
+
+        if (orderError) {
+           console.error("Full Server Error:", orderError);
+           const serverMsg = await orderError.context?.json();
+           throw new Error(serverMsg?.error || "Payment server is offline.");
+        }
+        
+        if (!orderData || !orderData.amount) {
+           console.error("Invalid Order Data:", orderData);
+           throw new Error("Payment server returned invalid data. Check your Edge Function logs.");
+        }
+        
         const options = {
-          key: process.env.REACT_APP_RAZORPAY_KEY_ID, amount: orderData.amount, currency: "INR", name: "Nexus Circle", order_id: orderData.id, 
+          key: process.env.REACT_APP_RAZORPAY_KEY_ID, 
+          amount: orderData.amount, 
+          currency: "INR", 
+          name: "Nexus Circle", 
+          order_id: orderData.id, 
           handler: async function (response) {
-            const { data: booking, error } = await supabase.from('bookings').insert({
-              event_id: event.id, student_email: currentUserEmail, status: 'verified',
-              team_name: entryMode === 'Team' ? teamName.trim() : null, selected_game: selectedGame?.gameName || null,
-              razorpay_payment_id: response.razorpay_payment_id, razorpay_order_id: response.razorpay_order_id, razorpay_signature: response.razorpay_signature
-            }).select().single();
+            try {
+               const verificationPayload = {
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_signature: response.razorpay_signature,
+                  event_id: event.id,
+                  student_email: currentUserEmail,
+                  team_name: entryMode === 'Team' ? teamName.trim() : null,
+                  selected_game: selectedGame?.gameName || null,
+                  members: members.map(m => m.email)
+               };
 
-            if (!error) {
-              const memPayload = members.map(m => ({ booking_id: booking.id, event_id: event.id, student_email: m.email }));
-              const { error: memErr } = await supabase.from('booking_members').insert(memPayload);
-              if (memErr) console.error("Roster Insert Error:", memErr);
+               const { data: verifyData, error: verifyError } = await supabase.functions.invoke('verify-payment', { body: verificationPayload });
+               
+               if (verifyError || !verifyData?.success) {
+                  throw new Error("Payment verification failed at server level.");
+               }
 
-              setPaymentSuccess(true); 
-              fetchEvents();
-              setTimeout(() => {
-                setPaymentSuccess(false); 
-                setWizard(p => ({ ...p, open: false }));
-                handleViewTicket(event, { ...booking, status: 'verified', team_name: entryMode === 'Team' ? teamName : null, selected_game: selectedGame?.gameName }, members);
-              }, 3500);
-            } else {
-              toast.error("Payment went through but booking failed. Please contact support.");
+               setPaymentSuccess(true); 
+               fetchEvents();
+               setTimeout(() => {
+                  setPaymentSuccess(false); 
+                  setWizard(p => ({ ...p, open: false }));
+                  handleViewTicket(event, { ...verifyData.booking, student_email: currentUserEmail }, members);
+               }, 3500);
+
+            } catch (err) {
+               console.error(err);
+               toast.error("Payment received, but verification failed. Please contact support.");
             }
           },
           prefill: { email: currentUserEmail }, theme: { color: "#2563eb" } 
@@ -355,7 +416,16 @@ const EventList = () => {
        if (memEmails && memEmails.length > 0) {
           const emails = memEmails.map(m => m.student_email);
           const { data: profiles } = await supabase.from('students').select('email, name, surname').in('email', emails);
-          fullMembers = profiles || [];
+          
+          fullMembers = memEmails.map(bm => {
+             const prof = profiles?.find(p => p.email?.toLowerCase() === bm.student_email?.toLowerCase()) || {};
+             const fallbackName = prof.name || bm.student_email.split('@')[0];
+             return { 
+                email: bm.student_email, 
+                name: fallbackName, 
+                surname: prof.surname || '' 
+             };
+          });
        } else {
           const { data: leadProfile } = await supabase.from('students').select('email, name, surname').eq('email', currentUserEmail).single();
           if (leadProfile) fullMembers = [leadProfile];
@@ -368,15 +438,9 @@ const EventList = () => {
       bookingStatus: targetBooking.status,
       teamName: targetBooking.team_name,
       selectedGame: targetBooking.selected_game,
+      student_email: targetBooking.student_email,
       fullMembers 
     });
-  };
-
-  const formatTime = (timeStr) => {
-    if (!timeStr) return '';
-    const [hours, minutes] = timeStr.split(':');
-    let h = parseInt(hours, 10);
-    return `${h % 12 || 12}:${minutes} ${h >= 12 ? 'PM' : 'AM'}`;
   };
 
   const downloadPDF = async () => {
@@ -409,6 +473,14 @@ const EventList = () => {
 
   const isFilterActive = scopeFilter !== 'all' || categoryFilter !== 'all' || statusFilter !== 'all';
 
+  const expandedClubName = expandedEvent?.club_id && availableClubs ? availableClubs.find(c => c.id === expandedEvent.club_id)?.name : null;
+  const expandedDisplayPrice = React.useMemo(() => {
+     if (!expandedEvent) return null;
+     if (expandedEvent.category === 'E-Sports') return null; 
+     if (expandedEvent.event_type === 'free') return "FREE ENTRY";
+     return `₹${Number(expandedEvent.price || 0) + PLATFORM_FEE}`;
+  }, [expandedEvent]);
+
   if (loading) return <div className="h-screen bg-[#0a0f1d] flex items-center justify-center"><Zap className="animate-pulse text-blue-500" size={48}/></div>;
 
   return (
@@ -432,7 +504,7 @@ const EventList = () => {
           <div className="bg-[#111827] border border-slate-700 rounded-4xl flex flex-col w-full max-w-2xl max-h-[95vh] overflow-hidden shadow-2xl relative animate-in fade-in zoom-in-95 duration-300">
             <div className="flex items-center justify-between p-6 border-b border-slate-800 shrink-0">
                <div>
-                  <h3 className="text-blue-500 font-black uppercase tracking-widest text-[10px] mb-1">Registration Portal</h3>
+                  <h3 className="text-blue-500 font-black uppercase tracking-widest text-[10px] mb-1">Registration</h3>
                   <h2 className="text-white font-bold text-xl line-clamp-1 italic">{wizard.event.title}</h2>
                </div>
                <button onClick={() => setWizard(p => ({...p, open: false}))} className="p-2 bg-white/5 hover:bg-white/10 rounded-full text-slate-400 transition-colors"><X size={20}/></button>
@@ -444,7 +516,7 @@ const EventList = () => {
                  <div className="space-y-6 animate-in slide-in-from-right-4">
                     <div className="text-center space-y-2 mb-8">
                        <div className="w-16 h-16 bg-cyan-500/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-cyan-500/20"><Gamepad2 size={32} className="text-cyan-500"/></div>
-                       <h3 className="text-2xl font-black text-white uppercase">Select Tournament</h3>
+                       <h3 className="text-2xl font-black text-white uppercase">Choose Your Game</h3>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                        {wizard.event.games_list.map((game, idx) => {
@@ -473,16 +545,16 @@ const EventList = () => {
                  <div className="space-y-6 animate-in slide-in-from-right-4">
                     <div className="text-center space-y-2 mb-8">
                        <div className="w-16 h-16 bg-indigo-500/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-indigo-500/20"><Users size={32} className="text-indigo-500"/></div>
-                       <h3 className="text-2xl font-black text-white uppercase">Entry Strategy</h3>
+                       <h3 className="text-2xl font-black text-white uppercase">How are you joining?</h3>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                        <button onClick={() => setWizard(p => ({...p, entryMode: 'Individual', step: 4}))} className="p-6 bg-[#1f2937] border border-slate-700 hover:border-indigo-500 rounded-2xl flex flex-col items-center text-center gap-3 transition-all group">
                           <div className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center group-hover:bg-indigo-500/20"><Users size={20} className="text-slate-400 group-hover:text-indigo-400"/></div>
-                          <div><h4 className="text-white font-bold text-lg">Lone Wolf</h4></div>
+                          <div><h4 className="text-white font-bold text-lg">Just Me</h4></div>
                        </button>
                        <button onClick={() => setWizard(p => ({...p, entryMode: 'Team', step: 3}))} className="p-6 bg-[#1f2937] border border-slate-700 hover:border-indigo-500 rounded-2xl flex flex-col items-center text-center gap-3 transition-all group">
                           <div className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center group-hover:bg-indigo-500/20"><ShieldCheck size={20} className="text-slate-400 group-hover:text-indigo-400"/></div>
-                          <div><h4 className="text-white font-bold text-lg">Squad Up</h4></div>
+                          <div><h4 className="text-white font-bold text-lg">With a Team</h4></div>
                        </button>
                     </div>
                  </div>
@@ -492,19 +564,19 @@ const EventList = () => {
                {wizard.step === 3 && (
                  <div className="space-y-6 animate-in slide-in-from-right-4 flex flex-col h-full grow">
                     <div className="flex items-center justify-between border-b border-slate-800 pb-4 shrink-0 text-left">
-                       <h3 className="text-xl font-black text-white uppercase italic tracking-tighter">Assemble Team</h3>
+                       <h3 className="text-xl font-black text-white uppercase italic tracking-tighter">Build Your Team</h3>
                        <span className="px-3 py-1 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-lg text-[10px] font-black uppercase tracking-widest">Size: {wizard.members.length} / {wizard.selectedGame.team_size}</span>
                     </div>
                     
                     <div className="space-y-4 shrink-0">
                        <div className="space-y-2 text-left">
-                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Unique Team Name</label>
-                         <input type="text" value={wizard.teamName} onChange={e => handleTeamNameCheck(e.target.value)} placeholder="Team Name" className={`w-full p-3.5 bg-[#1f2937] border ${wizard.teamNameError ? 'border-red-500' : 'border-slate-700'} rounded-xl outline-none text-white text-sm`} />
+                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Team Name</label>
+                         <input type="text" value={wizard.teamName} onChange={e => handleTeamNameCheck(e.target.value)} placeholder="Type a cool team name" className={`w-full p-3.5 bg-[#1f2937] border ${wizard.teamNameError ? 'border-red-500' : 'border-slate-700'} rounded-xl outline-none text-white text-sm`} />
                          {wizard.teamNameError && <p className="text-xs text-red-400 font-bold ml-1">{wizard.teamNameError}</p>}
                        </div>
 
                        <div className="space-y-2 text-left">
-                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Recruit Members (By Name or Email)</label>
+                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Add Friends (By Name or Email)</label>
                          <div className="relative z-50">
                             <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"/>
                             <input type="text" value={wizard.searchTerm} onChange={e => handleMemberSearch(e.target.value)} placeholder={`Search students...`} className="w-full pl-11 pr-4 py-3.5 bg-[#1f2937] border border-slate-700 rounded-xl outline-none text-white text-sm" disabled={wizard.members.length >= parseInt(wizard.selectedGame.team_size)} />
@@ -525,7 +597,7 @@ const EventList = () => {
                     </div>
 
                     <div className="bg-[#1f2937]/50 rounded-2xl p-4 border border-white/5 grow overflow-y-auto custom-scrollbar">
-                       <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 text-left">Current Roster</h4>
+                       <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 text-left">Your Team</h4>
                        <div className="space-y-2">
                           {wizard.members.map((m, i) => (
                              <div key={i} className="flex items-center justify-between bg-[#111827] p-3 rounded-xl border border-white/5 text-left">
@@ -541,9 +613,9 @@ const EventList = () => {
 
                     <div className="pt-4 border-t border-slate-800 shrink-0 mt-auto">
                        {wizard.members.length < parseInt(wizard.selectedGame.team_size) && (
-                         <p className="text-[10px] text-yellow-500 font-black uppercase tracking-widest text-center mb-3 animate-pulse">Add {parseInt(wizard.selectedGame.team_size) - wizard.members.length} more member(s) to unlock</p>
+                         <p className="text-[10px] text-yellow-500 font-black uppercase tracking-widest text-center mb-3 animate-pulse">Add {parseInt(wizard.selectedGame.team_size) - wizard.members.length} more friend(s) to unlock</p>
                        )}
-                       <button onClick={() => setWizard(p => ({...p, step: 4}))} disabled={wizard.members.length !== parseInt(wizard.selectedGame.team_size) || !wizard.teamName.trim() || !!wizard.teamNameError} className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white rounded-xl font-black uppercase text-[11px] tracking-widest transition-all shadow-lg active:scale-95">Proceed to Checkout <ArrowRight size={16} className="inline"/></button>
+                       <button onClick={() => setWizard(p => ({...p, step: 4}))} disabled={wizard.members.length !== parseInt(wizard.selectedGame.team_size) || !wizard.teamName.trim() || !!wizard.teamNameError} className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white rounded-xl font-black uppercase text-[11px] tracking-widest transition-all shadow-lg active:scale-95">Next Step <ArrowRight size={16} className="inline"/></button>
                     </div>
                  </div>
                )}
@@ -553,10 +625,9 @@ const EventList = () => {
                  <div className="space-y-6 animate-in slide-in-from-right-4 grow flex flex-col">
                     <div className="bg-[#1f2937]/50 rounded-2xl p-6 border border-slate-700/50 space-y-6 text-left grow">
                        <div className="flex justify-between items-start border-b border-white/5 pb-6 text-left">
-                          <div><h4 className="text-[10px] font-black text-slate-500 uppercase mb-1">Final Review</h4><h3 className="text-2xl font-black text-white italic">{wizard.event.title}</h3></div>
+                          <div><h4 className="text-[10px] font-black text-slate-500 uppercase mb-1">Review Ticket</h4><h3 className="text-2xl font-black text-white italic">{wizard.event.title}</h3></div>
                           <div className="text-right">
-                            {/* DYNAMIC CHECKOUT PRICE */}
-                            {wizard.event.event_type === 'paid' ? <p className="text-2xl font-black text-emerald-400">₹{getDisplayAmount(wizard.event)}</p> : <p className="text-2xl font-black text-blue-400 uppercase">FREE</p>}
+                            {getBaseAmount(wizard.event, wizard.selectedGame) > 0 ? <p className="text-2xl font-black text-emerald-400">₹{getDisplayAmount(wizard.event, wizard.selectedGame)}</p> : <p className="text-2xl font-black text-blue-400 uppercase">FREE</p>}
                             <p className="text-[9px] font-black text-slate-500 uppercase">Total Due</p>
                           </div>
                        </div>
@@ -569,10 +640,236 @@ const EventList = () => {
                     </div>
                     <button onClick={processFinalCheckout} disabled={wizard.processing} className="w-full py-4 mt-auto bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 text-white rounded-xl font-black uppercase text-[11px] shadow-lg active:scale-95 flex justify-center items-center gap-2">
                        {wizard.processing ? <Loader2 className="animate-spin" size={16} /> : null}
-                       {wizard.processing ? "Securing Allocation..." : "Confirm Pass"}
+                       {wizard.processing ? "Booking Ticket..." : "Get Ticket"}
                     </button>
                  </div>
                )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- UNIFIED TICKET VIEWER MODAL --- */}
+      {selectedTicket && (
+        <div className="fixed inset-0 z-600 bg-black/95 backdrop-blur-3xl flex items-center justify-center p-4 overflow-hidden">
+          <button onClick={() => setSelectedTicket(null)} className="absolute top-6 right-6 p-2.5 bg-white/10 hover:bg-white/20 rounded-full text-white z-610 border border-white/10 transition-all"><X size={24} /></button>
+          <div className="w-full max-w-[90vw] md:max-w-md max-h-[90vh] overflow-y-auto custom-scrollbar relative animate-in zoom-in-95 duration-300">
+             
+             <div className="bg-[#0f172a] rounded-[2.5rem] border border-slate-800 p-6 md:p-8 flex flex-col w-full text-left relative overflow-hidden shadow-2xl">
+                <div className="flex justify-between items-start border-b border-slate-800 pb-4 mb-6">
+                   <p className="text-[9px] font-black text-blue-500 uppercase tracking-[0.2em] leading-relaxed max-w-[60%]">
+                      {selectedTicket.orgName} {selectedTicket.clubName ? `• ${selectedTicket.clubName}` : ''} <br/> EVENT PASS
+                   </p>
+                   <div className="bg-blue-600/10 text-blue-400 border border-blue-500/20 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest">
+                      {selectedTicket.bookingStatus?.replace('_', ' ') || 'VERIFIED'}
+                   </div>
+                </div>
+
+                <h2 className="text-3xl font-black text-white italic uppercase tracking-tighter mb-6">{selectedTicket.title}</h2>
+
+                {selectedTicket.selectedGame && (
+                   <div className="mb-4">
+                      <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Tournament</p>
+                      <p className="text-sm font-black text-cyan-400 uppercase">{selectedTicket.selectedGame}</p>
+                   </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-y-6 gap-x-4 mb-6">
+                   <div>
+                     <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Date</p>
+                     <p className="text-sm font-bold text-white">{selectedTicket.date}</p>
+                   </div>
+                   <div>
+                     <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Time</p>
+                     <p className="text-sm font-bold text-white">{formatTimeRange(selectedTicket.start_time, selectedTicket.end_time)}</p>
+                   </div>
+                   <div>
+                     <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Venue Location</p>
+                     <p className="text-sm font-bold text-white">{selectedTicket.venue}</p>
+                   </div>
+                   <div>
+                     <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Payment Status</p>
+                     <p className="text-sm font-black text-emerald-400 uppercase">
+                       {getTicketViewerPrice(selectedTicket) > 0 ? `PAID: ₹${getTicketViewerPrice(selectedTicket)}` : 'FREE ENTRY'}
+                     </p>
+                   </div>
+                </div>
+
+                <div className="mb-6">
+                   <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">{selectedTicket.teamName ? 'Team Name' : 'Authorized Attendee'}</p>
+                   <p className="text-xl font-black text-white uppercase truncate">{selectedTicket.teamName || studentName}</p>
+                </div>
+
+                {selectedTicket.teamName && selectedTicket.fullMembers && selectedTicket.fullMembers.length > 0 && (
+                   <div className="mb-6 p-4 bg-slate-800/40 rounded-2xl border border-slate-700/50">
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5"><Users size={12}/> Team Members</p>
+                      <div className="space-y-1">
+                        {selectedTicket.fullMembers.map((m, idx) => (
+                           <p key={idx} className="text-xs font-bold text-slate-300">
+                             • {m.name} {m.surname}
+                             {m.email === selectedTicket.student_email && <span style={{ marginLeft: '8px', backgroundColor: 'rgba(234, 179, 8, 0.2)', color: '#eab308', padding: '2px 6px', borderRadius: '4px', fontSize: '8px', textTransform: 'uppercase' }}>Lead</span>}
+                           </p>
+                        ))}
+                      </div>
+                   </div>
+                )}
+
+                <div className="bg-white -mx-6 md:-mx-8 -mb-6 md:-mb-8 p-6 pt-8 relative flex flex-col items-center mt-auto shrink-0">
+                   <div className="absolute top-0 left-0 w-full h-0 border-t-2 border-dashed border-slate-800" style={{ transform: 'translateY(-50%)' }}></div>
+                   <div className="absolute top-0 left-0 w-4 h-4 bg-[#0a0f1d] rounded-full -translate-x-1/2 -translate-y-1/2"></div>
+                   <div className="absolute top-0 right-0 w-4 h-4 bg-[#0a0f1d] rounded-full translate-x-1/2 -translate-y-1/2"></div>
+
+                   <p className="text-[12px] font-black text-slate-900 uppercase tracking-[0.4em] mb-4">S C A N &nbsp; Q R</p>
+                   <QRCodeCanvas value={selectedTicket.bookingId || "error"} size={140} level="H" className="mb-4" />
+                   <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Ticket ID</p>
+                   <p className="text-[9px] font-mono font-bold text-slate-900">{selectedTicket.bookingId}</p>
+                   
+                   <button onClick={(e) => { e.stopPropagation(); downloadPDF(); }} disabled={isDownloading} className="w-full mt-6 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black uppercase text-[10px] tracking-widest transition-all active:scale-95 shadow-lg flex items-center justify-center gap-2">
+                     {isDownloading ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
+                     {isDownloading ? "Generating..." : "Download PDF"}
+                   </button>
+                </div>
+             </div>
+          </div>
+        </div>
+      )}
+
+      {/* HIDDEN PRINTABLE PDF LAYER */}
+      {selectedTicket && (
+        <div style={{ position: 'absolute', top: '-20000px', left: '-20000px', zIndex: -9999 }}>
+          <div ref={printRef} style={{ width: '400px', backgroundColor: '#0a0f1d', padding: '20px' }}>
+            <div style={{ backgroundColor: '#0f172a', borderRadius: '40px', border: '1px solid #1e293b', display: 'flex', flexDirection: 'column', width: '100%', textAlign: 'left', position: 'relative', overflow: 'hidden' }}>
+                <div style={{ padding: '32px' }}>
+                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #1e293b', paddingBottom: '16px', marginBottom: '24px' }}>
+                      <p style={{ fontSize: '12px', fontWeight: '900', color: '#3b82f6', textTransform: 'uppercase', letterSpacing: '2px', lineHeight: '1.5', maxWidth: '60%' }}>
+                         {selectedTicket.orgName} <br/> EVENT PASS
+                      </p>
+                      <div style={{ backgroundColor: 'rgba(37, 99, 235, 0.1)', color: '#60a5fa', border: '1px solid rgba(37, 99, 235, 0.2)', padding: '6px 12px', borderRadius: '8px', fontSize: '10px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '2px' }}>
+                         {selectedTicket.bookingStatus?.replace('_', ' ') || 'VERIFIED'}
+                      </div>
+                   </div>
+
+                   <h2 style={{ fontSize: '32px', fontWeight: '900', color: '#ffffff', fontStyle: 'italic', textTransform: 'uppercase', letterSpacing: '-1px', marginBottom: '24px' }}>{selectedTicket.title}</h2>
+
+                   {selectedTicket.selectedGame && (
+                      <div style={{ marginBottom: '16px' }}>
+                         <p style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Tournament</p>
+                         <p style={{ fontSize: '16px', fontWeight: '900', color: '#22d3ee', textTransform: 'uppercase' }}>{selectedTicket.selectedGame}</p>
+                      </div>
+                   )}
+
+                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '24px', marginBottom: '24px' }}>
+                      <div style={{ width: '40%' }}>
+                        <p style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Date</p>
+                        <p style={{ fontSize: '14px', fontWeight: 'bold', color: '#ffffff' }}>{selectedTicket.date}</p>
+                      </div>
+                      <div style={{ width: '40%' }}>
+                        <p style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Time</p>
+                        <p style={{ fontSize: '14px', fontWeight: 'bold', color: '#ffffff' }}>{formatTimeRange(selectedTicket.start_time, selectedTicket.end_time)}</p>
+                      </div>
+                      <div style={{ width: '40%' }}>
+                        <p style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Venue Location</p>
+                        <p style={{ fontSize: '14px', fontWeight: 'bold', color: '#ffffff' }}>{selectedTicket.venue}</p>
+                      </div>
+                      <div style={{ width: '40%' }}>
+                        <p style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Payment Status</p>
+                        <p style={{ fontSize: '14px', fontWeight: '900', color: '#34d399', textTransform: 'uppercase' }}>
+                           {getTicketViewerPrice(selectedTicket) > 0 ? `PAID: ₹${getTicketViewerPrice(selectedTicket)}` : 'FREE ENTRY'}
+                        </p>
+                      </div>
+                   </div>
+
+                   <div style={{ marginBottom: '24px' }}>
+                      <p style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>{selectedTicket.teamName ? 'Team Name' : 'Authorized Attendee'}</p>
+                      <p style={{ fontSize: '20px', fontWeight: '900', color: '#ffffff', textTransform: 'uppercase' }}>{selectedTicket.teamName || studentName}</p>
+                   </div>
+
+                   {selectedTicket.teamName && selectedTicket.fullMembers && selectedTicket.fullMembers.length > 0 && (
+                      <div style={{ padding: '16px', backgroundColor: 'rgba(30, 41, 59, 0.4)', borderRadius: '16px', border: '1px solid rgba(51, 65, 85, 0.5)', marginBottom: '24px' }}>
+                         <p style={{ fontSize: '10px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '8px' }}>Official Roster</p>
+                         {selectedTicket.fullMembers.map((m, idx) => (
+                            <p key={idx} style={{ fontSize: '14px', fontWeight: 'bold', color: '#cbd5e1', margin: '4px 0' }}>
+                              • {m.name} {m.surname}
+                              {m.email === selectedTicket.student_email && <span style={{ marginLeft: '8px', backgroundColor: 'rgba(234, 179, 8, 0.2)', color: '#eab308', padding: '2px 6px', borderRadius: '4px', fontSize: '8px', textTransform: 'uppercase' }}>Lead</span>}
+                            </p>
+                         ))}
+                      </div>
+                   )}
+                </div>
+
+                <div style={{ backgroundColor: '#ffffff', padding: '32px', display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+                   <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '0', borderTop: '2px dashed #94a3b8' }}></div>
+                   <p style={{ fontSize: '14px', fontWeight: '900', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '6px', marginBottom: '16px' }}>S C A N &nbsp; Q R</p>
+                   <QRCodeCanvas value={selectedTicket.bookingId || "error"} size={140} level="H" style={{ marginBottom: '16px' }} />
+                   <p style={{ fontSize: '9px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Ticket ID</p>
+                   <p style={{ fontSize: '10px', fontFamily: 'monospace', fontWeight: 'bold', color: '#0f172a' }}>{selectedTicket.bookingId}</p>
+                </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL FLIP CARD --- */}
+      {expandedEvent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8 bg-black/90 backdrop-blur-md" onClick={() => { setExpandedEvent(null); setIsCardFlipped(false); }}>
+          <button onClick={() => { setExpandedEvent(null); setIsCardFlipped(false); }} className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all z-100">
+            <X size={24} />
+          </button>
+          
+          <div className="w-full max-w-95 h-[80vh] min-h-125 perspective-2000 cursor-pointer" onClick={(e) => { e.stopPropagation(); setIsCardFlipped(!isCardFlipped); }}>
+            <div className={`relative w-full h-full transition-transform duration-700 transform-style-3d ${isCardFlipped ? 'rotate-y-180' : ''}`}>
+              
+              {/* FRONT OF MODAL CARD */}
+              <div className="absolute inset-0 backface-hidden bg-[#111827] rounded-[2.5rem] border border-white/10 shadow-2xl flex flex-col overflow-hidden">
+                <div className="relative h-56 shrink-0 bg-slate-900">
+                  <img src={Array.isArray(expandedEvent.images) && expandedEvent.images.length > 0 ? expandedEvent.images[0] : "https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&q=80&w=800"} alt="Cover" className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-linear-to-t from-[#111827] via-transparent opacity-90"></div>
+                  <div className="absolute top-4 left-4"><span className="backdrop-blur-md bg-black/60 text-white px-3 py-1.5 rounded-full text-[10px] font-bold border border-white/10">{expandedEvent.orgName}</span></div>
+                  <div className="absolute bottom-3 left-4 flex items-center gap-1.5 bg-blue-600/90 text-white px-3 py-1.5 rounded-lg border border-blue-500/30 text-[9px] font-black shadow-lg"><Layers size={12}/> {expandedEvent.category || 'OTHER'}</div>
+                </div>
+                
+                <div className="p-6 flex flex-col grow text-left">
+                  <h3 className="text-2xl font-black uppercase italic text-white mb-4 line-clamp-2">{expandedEvent.title}</h3>
+                  
+                  {expandedClubName && (
+                    <div className="inline-flex items-center gap-1.5 bg-slate-800/40 border border-white/5 py-1.5 px-3 rounded-lg mb-5 w-fit">
+                        <ShieldCheck size={14} className="text-blue-400"/>
+                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{expandedClubName}</span>
+                    </div>
+                  )}
+
+                  <div className="space-y-3.5">
+                    <div className="flex items-center justify-between gap-3">
+                       <div className="flex items-center gap-3 text-slate-300 text-sm font-bold uppercase"><Calendar size={16} className="text-blue-500 shrink-0"/> {expandedEvent.date}</div>
+                       {expandedDisplayPrice && (
+                         <div className={`px-2.5 py-1 rounded-md border text-[10px] font-black tracking-widest uppercase ${expandedDisplayPrice === 'FREE ENTRY' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'}`}>
+                           {expandedDisplayPrice}
+                         </div>
+                       )}
+                    </div>
+                    <div className="flex items-center gap-3 text-slate-300 text-sm font-bold uppercase"><Clock size={16} className="text-blue-500 shrink-0"/> {formatTimeRange(expandedEvent.start_time, expandedEvent.end_time)}</div>
+                    <div className="flex items-center gap-3 text-slate-300 text-sm font-bold uppercase"><MapPin size={16} className="text-blue-500 shrink-0"/> <span className="truncate">{expandedEvent.venue}</span></div>
+                  </div>
+                  
+                  <div className="mt-auto pt-6 border-t border-white/5 text-center shrink-0">
+                    <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest flex items-center justify-center gap-2 animate-pulse"><RefreshCw size={14}/> Tap anywhere to read description</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* BACK OF MODAL CARD */}
+              <div className="absolute inset-0 backface-hidden rotate-y-180 bg-[#111827] rounded-[2.5rem] border border-white/10 shadow-2xl flex flex-col overflow-hidden" onClick={(e) => { e.stopPropagation(); setIsCardFlipped(false); }}>
+                <div className="p-6 md:p-8 flex flex-col h-full text-left">
+                  <div className="flex items-center gap-2 border-b border-white/10 pb-4 mb-4 shrink-0 text-blue-400 font-black uppercase tracking-widest text-sm">
+                    <FileText size={18}/> Event Description
+                  </div>
+                  <div className="grow overflow-y-auto custom-scrollbar pr-2 event-description text-slate-300 text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: expandedEvent.description || "No description provided." }} />
+                  <div className="mt-4 pt-4 border-t border-white/5 text-center shrink-0">
+                    <button className="text-[10px] w-full py-3.5 font-black text-white uppercase tracking-widest flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 rounded-xl transition-colors"><RefreshCw size={14}/> Tap here to flip back</button>
+                  </div>
+                </div>
+              </div>
+
             </div>
           </div>
         </div>
@@ -589,12 +886,9 @@ const EventList = () => {
         </div>
       )}
 
-      {/* --- NEW CONDENSED FILTER BAR --- */}
       <div className="sticky top-18 z-40 bg-[#0a0f1d]/80 backdrop-blur-2xl border-b border-white/5 py-4 px-4 md:px-6 shadow-xl mb-8">
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center gap-3 relative w-full z-40" ref={filterMenuRef}>
-            
-            {/* Search Input */}
             <div className="relative flex-1">
               <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
               <input 
@@ -606,7 +900,6 @@ const EventList = () => {
               />
             </div>
             
-            {/* Filter Toggle Button */}
             <button 
                onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
                className={`flex items-center gap-2 px-5 py-3.5 rounded-2xl font-bold text-sm transition-all border shrink-0 ${isFilterActive || isFilterMenuOpen ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-500/20' : 'bg-white/5 text-white border-white/10 hover:bg-white/10'}`}
@@ -618,7 +911,6 @@ const EventList = () => {
                )}
             </button>
 
-            {/* Filter Popover Menu */}
             {isFilterMenuOpen && (
               <div className="absolute top-full right-0 mt-3 w-full sm:w-85 bg-[#111827] border border-white/10 rounded-3xl shadow-2xl p-6 z-50 animate-in fade-in zoom-in-95">
                  <div className="flex items-center justify-between mb-5 border-b border-white/5 pb-4">
@@ -634,7 +926,6 @@ const EventList = () => {
                  </div>
 
                  <div className="space-y-6">
-                   {/* Event Scope */}
                    <div>
                      <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-2.5 block text-left">Event Scope</span>
                      <div className="flex flex-wrap gap-2">
@@ -653,7 +944,6 @@ const EventList = () => {
                      )}
                    </div>
 
-                   {/* Category */}
                    <div>
                      <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-2.5 block text-left">Category</span>
                      <div className="relative">
@@ -665,7 +955,6 @@ const EventList = () => {
                      </div>
                    </div>
 
-                   {/* Availability */}
                    <div>
                      <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-2.5 block text-left">Availability</span>
                      <div className="flex flex-wrap gap-2">
@@ -690,176 +979,14 @@ const EventList = () => {
           {filteredEvents.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-24 bg-[#111827]/50 rounded-[2.5rem] border border-white/5 border-dashed"><p className="text-slate-400 font-bold text-sm text-center px-4">No events found.</p></div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8 animate-in fade-in duration-500">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8 animate-in fade-in duration-500 items-stretch">
               {filteredEvents.map(event => (
-                <FlipCard key={event.id} event={event} onBook={startBookingWizard} onViewTicket={handleViewTicket} onZoomClub={setZoomedClub} availableClubs={availableClubs} />
+                <EventCard key={event.id} event={event} onBook={startBookingWizard} onViewTicket={handleViewTicket} availableClubs={availableClubs} onExpand={setExpandedEvent} />
               ))}
             </div>
           )}
         </section>
       </div>
-
-      {/* --- UNIFIED TICKET VIEWER MODAL (MATCHES MY TICKETS DESGIN) --- */}
-      {selectedTicket && (
-        <div className="fixed inset-0 z-600 bg-black/95 backdrop-blur-3xl flex items-center justify-center p-4 overflow-hidden">
-          <button onClick={() => setSelectedTicket(null)} className="absolute top-6 right-6 p-2.5 bg-white/10 hover:bg-white/20 rounded-full text-white z-610 border border-white/10 transition-all"><X size={24} /></button>
-          <div className="w-full max-w-[90vw] md:max-w-md max-h-[90vh] overflow-y-auto custom-scrollbar relative animate-in zoom-in-95 duration-300">
-             
-             {/* THE SECURITY PASS UI */}
-             <div className="bg-[#0f172a] rounded-[2.5rem] border border-slate-800 p-6 md:p-8 flex flex-col w-full text-left relative overflow-hidden shadow-2xl">
-                {/* Top Badges */}
-                <div className="flex justify-between items-start border-b border-slate-800 pb-4 mb-6">
-                   <p className="text-[9px] font-black text-blue-500 uppercase tracking-[0.2em] leading-relaxed max-w-[60%]">
-                      {selectedTicket.orgName} {selectedTicket.clubName ? `• ${selectedTicket.clubName}` : ''} <br/> SECURITY PASS
-                   </p>
-                   <div className="bg-blue-600/10 text-blue-400 border border-blue-500/20 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest">
-                      {selectedTicket.bookingStatus?.replace('_', ' ') || 'VERIFIED'}
-                   </div>
-                </div>
-
-                <h2 className="text-3xl font-black text-white italic uppercase tracking-tighter mb-6">{selectedTicket.title}</h2>
-
-                {selectedTicket.selectedGame && (
-                   <div className="mb-4">
-                      <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Tournament</p>
-                      <p className="text-sm font-black text-cyan-400 uppercase">{selectedTicket.selectedGame}</p>
-                   </div>
-                )}
-
-                <div className="grid grid-cols-2 gap-y-6 gap-x-4 mb-6">
-                   <div>
-                     <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Date</p>
-                     <p className="text-sm font-bold text-white">{selectedTicket.date}</p>
-                   </div>
-                   <div>
-                     <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Time</p>
-                     <p className="text-sm font-bold text-white">{formatTime(selectedTicket.start_time)}</p>
-                   </div>
-                   <div>
-                     <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Venue Location</p>
-                     <p className="text-sm font-bold text-white">{selectedTicket.venue}</p>
-                   </div>
-                   <div>
-                     <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Payment Status</p>
-                     <p className="text-sm font-black text-emerald-400 uppercase">
-                       {selectedTicket.event_type === 'paid' ? `PAID: ₹${getDisplayAmount(selectedTicket)}` : 'FREE ENTRY'}
-                     </p>
-                   </div>
-                </div>
-
-                <div className="mb-6">
-                   <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">{selectedTicket.teamName ? 'Team Name' : 'Authorized Attendee'}</p>
-                   <p className="text-xl font-black text-white uppercase truncate">{selectedTicket.teamName || studentName}</p>
-                </div>
-
-                {/* ROSTER INTEGRATION */}
-                {selectedTicket.teamName && selectedTicket.fullMembers && selectedTicket.fullMembers.length > 0 && (
-                   <div className="mb-6 p-4 bg-slate-800/40 rounded-2xl border border-slate-700/50">
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5"><Users size={12}/> Verified Roster</p>
-                      <div className="space-y-1">
-                        {selectedTicket.fullMembers.map((m, idx) => (
-                           <p key={idx} className="text-xs font-bold text-slate-300">• {m.name} {m.surname}</p>
-                        ))}
-                      </div>
-                   </div>
-                )}
-
-                {/* Bottom white section */}
-                <div className="bg-white -mx-6 md:-mx-8 -mb-6 md:-mb-8 p-6 pt-8 relative flex flex-col items-center mt-auto shrink-0">
-                   {/* Dashed line top border simulation */}
-                   <div className="absolute top-0 left-0 w-full h-0 border-t-2 border-dashed border-slate-800" style={{ transform: 'translateY(-50%)' }}></div>
-                   {/* Semi circles */}
-                   <div className="absolute top-0 left-0 w-4 h-4 bg-[#0a0f1d] rounded-full -translate-x-1/2 -translate-y-1/2"></div>
-                   <div className="absolute top-0 right-0 w-4 h-4 bg-[#0a0f1d] rounded-full translate-x-1/2 -translate-y-1/2"></div>
-
-                   <p className="text-[12px] font-black text-slate-900 uppercase tracking-[0.4em] mb-4">A D M I T &nbsp; O N E</p>
-                   <QRCodeCanvas value={selectedTicket.bookingId || "error"} size={140} level="H" className="mb-4" />
-                   <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Secure Token ID</p>
-                   <p className="text-[9px] font-mono font-bold text-slate-900">{selectedTicket.bookingId}</p>
-                   
-                   <button onClick={(e) => { e.stopPropagation(); downloadPDF(); }} disabled={isDownloading} className="w-full mt-6 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black uppercase text-[10px] tracking-widest transition-all active:scale-95 shadow-lg flex items-center justify-center gap-2">
-                     {isDownloading ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
-                     {isDownloading ? "Generating..." : "Download PDF"}
-                   </button>
-                </div>
-             </div>
-          </div>
-        </div>
-      )}
-
-      {/* HIDDEN PRINTABLE PDF LAYER */}
-      {selectedTicket && (
-        <div style={{ position: 'absolute', top: '-20000px', left: '-20000px', zIndex: -9999 }}>
-          <div ref={printRef} style={{ width: '400px', backgroundColor: '#0a0f1d', padding: '20px' }}>
-            <div style={{ backgroundColor: '#0f172a', borderRadius: '40px', border: '1px solid #1e293b', display: 'flex', flexDirection: 'column', width: '100%', textAlign: 'left', position: 'relative', overflow: 'hidden' }}>
-                <div style={{ padding: '32px' }}>
-                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #1e293b', paddingBottom: '16px', marginBottom: '24px' }}>
-                      <p style={{ fontSize: '12px', fontWeight: '900', color: '#3b82f6', textTransform: 'uppercase', letterSpacing: '2px', lineHeight: '1.5', maxWidth: '60%' }}>
-                         {selectedTicket.orgName} <br/> SECURITY PASS
-                      </p>
-                      <div style={{ backgroundColor: 'rgba(37, 99, 235, 0.1)', color: '#60a5fa', border: '1px solid rgba(37, 99, 235, 0.2)', padding: '6px 12px', borderRadius: '8px', fontSize: '10px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '2px' }}>
-                         VERIFIED
-                      </div>
-                   </div>
-
-                   <h2 style={{ fontSize: '32px', fontWeight: '900', color: '#ffffff', fontStyle: 'italic', textTransform: 'uppercase', letterSpacing: '-1px', marginBottom: '24px' }}>{selectedTicket.title}</h2>
-
-                   {selectedTicket.selectedGame && (
-                      <div style={{ marginBottom: '16px' }}>
-                         <p style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Tournament</p>
-                         <p style={{ fontSize: '16px', fontWeight: '900', color: '#22d3ee', textTransform: 'uppercase' }}>{selectedTicket.selectedGame}</p>
-                      </div>
-                   )}
-
-                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '24px', marginBottom: '24px' }}>
-                      <div style={{ width: '40%' }}>
-                        <p style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Date</p>
-                        <p style={{ fontSize: '14px', fontWeight: 'bold', color: '#ffffff' }}>{selectedTicket.date}</p>
-                      </div>
-                      <div style={{ width: '40%' }}>
-                        <p style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Time</p>
-                        <p style={{ fontSize: '14px', fontWeight: 'bold', color: '#ffffff' }}>{formatTime(selectedTicket.start_time)}</p>
-                      </div>
-                      <div style={{ width: '40%' }}>
-                        <p style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Venue Location</p>
-                        <p style={{ fontSize: '14px', fontWeight: 'bold', color: '#ffffff' }}>{selectedTicket.venue}</p>
-                      </div>
-                      <div style={{ width: '40%' }}>
-                        <p style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Payment Status</p>
-                        {/* DYNAMIC PDF PRICE TAG */}
-                        <p style={{ fontSize: '14px', fontWeight: '900', color: '#34d399', textTransform: 'uppercase' }}>
-                           {selectedTicket.event_type === 'paid' ? `PAID: ₹${getDisplayAmount(selectedTicket)}` : 'FREE ENTRY'}
-                        </p>
-                      </div>
-                   </div>
-
-                   <div style={{ marginBottom: '24px' }}>
-                      <p style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>{selectedTicket.teamName ? 'Team Name' : 'Authorized Attendee'}</p>
-                      <p style={{ fontSize: '20px', fontWeight: '900', color: '#ffffff', textTransform: 'uppercase' }}>{selectedTicket.teamName || studentName}</p>
-                   </div>
-
-                   {/* PDF ROSTER INJECTION */}
-                   {selectedTicket.teamName && selectedTicket.fullMembers && selectedTicket.fullMembers.length > 0 && (
-                      <div style={{ padding: '16px', backgroundColor: 'rgba(30, 41, 59, 0.4)', borderRadius: '16px', border: '1px solid rgba(51, 65, 85, 0.5)', marginBottom: '24px' }}>
-                         <p style={{ fontSize: '10px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '8px' }}>Official Roster</p>
-                         {selectedTicket.fullMembers.map((m, idx) => (
-                            <p key={idx} style={{ fontSize: '14px', fontWeight: 'bold', color: '#cbd5e1', margin: '4px 0' }}>• {m.name} {m.surname}</p>
-                         ))}
-                      </div>
-                   )}
-                </div>
-
-                <div style={{ backgroundColor: '#ffffff', padding: '32px', display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
-                   <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '0', borderTop: '2px dashed #94a3b8' }}></div>
-                   <p style={{ fontSize: '14px', fontWeight: '900', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '6px', marginBottom: '16px' }}>A D M I T &nbsp; O N E</p>
-                   <QRCodeCanvas value={selectedTicket.bookingId || "error"} size={140} level="H" style={{ marginBottom: '16px' }} />
-                   <p style={{ fontSize: '9px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Secure Token ID</p>
-                   <p style={{ fontSize: '10px', fontFamily: 'monospace', fontWeight: 'bold', color: '#0f172a' }}>{selectedTicket.bookingId}</p>
-                </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       <style>{`
         @keyframes successPop { 0% { transform: scale(0.5); opacity: 0; } 50% { transform: scale(1.1); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
@@ -871,19 +998,23 @@ const EventList = () => {
         .custom-scrollbar::-webkit-scrollbar { width: 4px; } 
         .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.05); }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(59, 130, 246, 0.6); border-radius: 10px; }
+        
         .perspective-2000 { perspective: 2000px; }
-        .transform-style-3d { transform-style: preserve-3d; }
-        .backface-hidden { backface-visibility: hidden; }
+        .transform-style-3d { transform-style: preserve-3d; -webkit-transform-style: preserve-3d; }
+        .backface-hidden { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
         .rotate-y-180 { transform: rotateY(180deg); }
+        .event-description p { margin-bottom: 0.75rem; }
+        .event-description strong, .event-description b { font-weight: 700; color: #ffffff; }
+        .event-description em, .event-description i { font-style: italic; }
+        .event-description ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 0.75rem; color: #94a3b8;}
+        .event-description ol { list-style-type: decimal; padding-left: 1.5rem; margin-bottom: 0.75rem; color: #94a3b8;}
       `}</style>
     </div>
   );
 };
 
-const FlipCard = ({ event, onBook, onViewTicket, onZoomClub, availableClubs }) => {
-  const [isInternalFlipped, setIsInternalFlipped] = useState(false);
-  const images = Array.isArray(event.images) && event.images.length > 0 ? event.images : ["https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&q=80&w=800"];
-  
+// STATIC, NON-FLIPPING GRID CARD
+const EventCard = ({ event, onBook, onViewTicket, availableClubs, onExpand }) => {
   const handleShare = async (e) => {
     e.stopPropagation();
     const deepLink = `${window.location.origin}${window.location.pathname}?event=${event.id}`;
@@ -891,12 +1022,11 @@ const FlipCard = ({ event, onBook, onViewTicket, onZoomClub, availableClubs }) =
     else { await navigator.clipboard.writeText(deepLink); toast.success("Copied!"); }
   };
 
-  const formatEventTime = (timeStr) => {
-    if (!timeStr) return '';
-    const [hours, minutes] = timeStr.split(':');
-    let h = parseInt(hours, 10);
-    return `${h % 12 || 12}:${minutes} ${h >= 12 ? 'PM' : 'AM'}`;
-  };
+  const displayPrice = React.useMemo(() => {
+     if (event.category === 'E-Sports') return null; // NO PRICE FOR E-SPORTS
+     if (event.event_type === 'free') return "FREE ENTRY";
+     return `₹${Number(event.price || 0) + PLATFORM_FEE}`;
+  }, [event]);
 
   const clubName = event.club_id && availableClubs ? availableClubs.find(c => c.id === event.club_id)?.name : null;
   const glowClass = event.isCheckedIn ? 'ring-1 ring-indigo-500 shadow-indigo-500/10' : event.isFullyBooked ? 'ring-1 ring-emerald-500 shadow-emerald-500/10' : event.isPending ? 'ring-1 ring-yellow-500 shadow-yellow-500/10' : 'border border-white/5 hover:border-blue-500/30';
@@ -907,52 +1037,43 @@ const FlipCard = ({ event, onBook, onViewTicket, onZoomClub, availableClubs }) =
   else if (!event.isOpen) btnText = "Closed";
 
   return (
-    <div onClick={() => setIsInternalFlipped(!isInternalFlipped)} className={`group relative h-110 sm:h-115 lg:h-125 bg-[#111827]/90 backdrop-blur-md rounded-[2.5rem] flex flex-col cursor-pointer transition-all duration-500 border border-transparent ${glowClass} hover:-translate-y-1 perspective-2000`}>
-      <div className={`relative w-full h-full transition-transform duration-700 transform-style-3d ${isInternalFlipped ? 'rotate-y-180' : ''}`}>
+    <div onClick={() => onExpand(event)} className={`group flex flex-col h-full bg-[#111827]/90 backdrop-blur-md rounded-[2.5rem] overflow-hidden border ${glowClass} hover:-translate-y-1 transition-all cursor-pointer shadow-xl relative`}>
+      <div className="relative h-48 shrink-0 bg-slate-900 border-b border-white/5">
+        <img src={Array.isArray(event.images) && event.images.length > 0 ? event.images[0] : "https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&q=80&w=800"} alt="Cover" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"/>
+        <div className="absolute inset-0 bg-linear-to-t from-[#111827] via-transparent opacity-90"></div>
+        <div className="absolute top-4 left-4"><span className="backdrop-blur-md bg-black/60 text-white px-3 py-1.5 rounded-full text-[10px] font-bold border border-white/10">{event.orgName}</span></div>
+        <div className="absolute top-4 right-4"><button onClick={handleShare} className="p-2.5 bg-black/60 hover:bg-blue-600 text-white rounded-full transition-all"><Share2 size={16}/></button></div>
+        <div className="absolute bottom-3 left-4 flex items-center gap-1.5 bg-blue-600/90 text-white px-3 py-1.5 rounded-lg border border-blue-500/30 text-[9px] font-black shadow-lg"><Layers size={12}/> {event.category || 'OTHER'}</div>
+      </div>
+      
+      <div className="p-5 flex flex-col grow text-left">
+        <h4 className="text-xl font-black uppercase italic text-white mb-3 line-clamp-2">{event.title}</h4>
         
-        {/* FRONT FACE */}
-        <div className="absolute inset-0 backface-hidden flex flex-col h-full rounded-[2.5rem] overflow-hidden bg-[#111827]/90">
-          <div className="relative w-full h-44 sm:h-48 shrink-0 bg-slate-900 overflow-hidden border-b border-white/5">
-            <img src={images[0]} alt="Cover" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"/>
-            <div className="absolute inset-0 bg-linear-to-t from-[#111827] via-transparent opacity-90"></div>
-            <div className="absolute top-4 left-4"><span className="backdrop-blur-md bg-black/60 text-white px-3 py-1.5 rounded-full text-[10px] font-bold border border-white/10">{event.orgName}</span></div>
-            <div className="absolute top-4 right-4"><button onClick={handleShare} className="p-2.5 bg-black/60 hover:bg-blue-600 text-white rounded-full transition-all"><Share2 size={16}/></button></div>
-            <div className="absolute bottom-3 left-4 flex items-center gap-1.5 bg-blue-600/90 text-white px-3 py-1.5 rounded-lg border border-blue-500/30 text-[9px] font-black shadow-lg"><Layers size={12}/> {event.category || 'OTHER'}</div>
+        {/* BEAUTIFUL CLUB PILL BADGE */}
+        {clubName && (
+          <div className="inline-flex items-center gap-1.5 bg-slate-800/50 border border-white/5 py-1.5 px-3 rounded-lg mb-5 w-fit">
+            <ShieldCheck size={14} className="text-blue-400"/>
+            <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{clubName}</span>
           </div>
-          <div className="p-4 sm:p-5 md:p-6 flex flex-col grow text-left">
-            <div className="flex flex-col grow">
-              <h4 className="text-lg sm:text-xl font-black uppercase italic text-white mb-3 sm:mb-4 line-clamp-2">{event.title}</h4>
-              <div className="flex justify-between items-start gap-3 sm:gap-4">
-                <div className="flex flex-col gap-2.5 min-w-0 grow">
-                  <div className="flex items-center gap-2 sm:gap-3 text-slate-300 text-[10px] sm:text-[11px] font-bold uppercase"><Calendar size={14} className="text-blue-500"/><span className="truncate">{event.date}</span></div>
-                  <div className="flex items-center gap-2 sm:gap-3 text-slate-300 text-[10px] sm:text-[11px] font-bold uppercase"><MapPin size={14} className="text-blue-500"/><span className="truncate pr-2">{event.venue}</span></div>
-                </div>
-                {clubName && (
-                  <div onClick={(e) => { e.stopPropagation(); onZoomClub(clubName); }} className="flex flex-col items-center justify-center gap-1.5 shrink-0 w-24 bg-slate-800/50 p-2.5 rounded-2xl border border-white/5 shadow-inner hover:bg-slate-700 transition-all">
-                    <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center border border-blue-500/20 shadow-lg"><ShieldCheck size={20} className="text-blue-500 sm:w-6 sm:h-6"/></div>
-                    <p className="text-[7px] font-black text-slate-500 uppercase leading-none mb-0.5">Hosted By</p>
-                    <p className="text-[9px] font-black text-white uppercase italic tracking-tighter line-clamp-2 w-full text-center">{clubName}</p>
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="mt-auto pt-4 shrink-0 w-full">
-              <button disabled={(event.isSoldOut && !event.hasAnyBooking) || (!event.isOpen && !event.hasAnyBooking) || event.isPending} onClick={(e) => { e.stopPropagation(); if (event.isFullyBooked || (event.hasAnyBooking && event.category !== 'E-Sports')) onViewTicket(event); else onBook(e, event); }} className={`w-full py-3.5 sm:py-4 rounded-xl font-black uppercase text-[10px] sm:text-xs transition-all tracking-widest shadow-lg ${event.isCheckedIn ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30' : event.isFullyBooked ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 shadow-emerald-500/10' : event.hasAnyBooking && event.category === 'E-Sports' ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/30' : event.isPending ? 'bg-yellow-600/20 text-yellow-500 border border-yellow-500/30' : !event.isOpen ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-white/5 shadow-none' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/30 active:scale-95'}`}>{btnText}</button>
-            </div>
-          </div>
+        )}
+
+        <div className="flex flex-col gap-3 mb-5 text-left">
+           <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5 text-slate-300 text-xs font-bold uppercase"><Calendar size={14} className="text-blue-500 shrink-0"/> {event.date}</div>
+              
+              {/* CLEAN PRICE BADGE (HIDDEN IF E-SPORTS) */}
+              {displayPrice && (
+                <span className={`${displayPrice === 'FREE ENTRY' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'} px-2 py-0.5 rounded border text-[10px] font-black tracking-widest uppercase`}>
+                  {displayPrice}
+                </span>
+              )}
+           </div>
+           <div className="flex items-center gap-2.5 text-slate-300 text-xs font-bold uppercase"><Clock size={14} className="text-blue-500 shrink-0"/> <span className="truncate">{formatTimeRange(event.start_time, event.end_time)}</span></div>
+           <div className="flex items-center gap-2.5 text-slate-300 text-xs font-bold uppercase"><MapPin size={14} className="text-blue-500 shrink-0"/> <span className="truncate">{event.venue}</span></div>
         </div>
 
-        {/* BACK FACE (Details) */}
-        <div className="absolute inset-0 backface-hidden rotate-y-180 bg-slate-900 rounded-[2.5rem] flex flex-col p-5 sm:p-6 md:p-8 overflow-hidden border border-white/5 text-left">
-             <div className="flex justify-between items-center border-b border-white/10 pb-4 mb-4 shrink-0"><h4 className="text-blue-500 font-black uppercase tracking-widest text-[11px]">Details</h4><Layers size={16} className="text-slate-500" /></div>
-             <div className="flex flex-col gap-6 text-left grow overflow-y-auto custom-scrollbar pr-2 pb-2">
-                <div className="space-y-4 shrink-0">
-                  <div className="flex items-center gap-4 text-white font-bold text-sm truncate"><div className="w-10 h-10 rounded-xl bg-blue-600/20 flex items-center justify-center shrink-0"><Clock size={20} className="text-blue-500"/></div>{formatEventTime(event.start_time)}</div>
-                  <div className="flex items-center gap-4 text-white font-bold text-sm"><div className="w-10 h-10 rounded-xl bg-emerald-600/20 flex items-center justify-center shrink-0"><Ticket size={20} className="text-emerald-500"/></div>{event.event_type?.toUpperCase()} ENTRY</div>
-                </div>
-                {event.description && (<div className="pt-4 border-t border-white/5"><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-1.5"><FileText size={12}/> Event Specification</p><div className="event-description text-slate-300 text-xs leading-relaxed" dangerouslySetInnerHTML={{ __html: event.description }} /></div>)}
-             </div>
-             <p className="mt-4 pt-3 border-t border-white/10 shrink-0 text-center text-slate-500 text-[9px] font-bold uppercase animate-pulse">Tap to flip back</p>
+        <div className="mt-auto pt-4 border-t border-white/5 w-full shrink-0">
+          <button disabled={(event.isSoldOut && !event.hasAnyBooking) || (!event.isOpen && !event.hasAnyBooking) || event.isPending} onClick={(e) => { e.stopPropagation(); if (event.isFullyBooked || (event.hasAnyBooking && event.category !== 'E-Sports')) onViewTicket(event); else onBook(e, event); }} className={`w-full py-3.5 sm:py-4 rounded-xl font-black uppercase text-[10px] sm:text-xs transition-all tracking-widest shadow-lg ${event.isCheckedIn ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30' : event.isFullyBooked ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 shadow-emerald-500/10' : event.hasAnyBooking && event.category === 'E-Sports' ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/30' : event.isPending ? 'bg-yellow-600/20 text-yellow-500 border border-yellow-500/30' : !event.isOpen ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-white/5 shadow-none' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/30 active:scale-95'}`}>{btnText}</button>
         </div>
       </div>
     </div>

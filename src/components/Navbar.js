@@ -123,6 +123,18 @@ const Navbar = ({ session }) => {
     }
   };
 
+  const handleOrgComingSoon = () => {
+    setIsOpen(false);
+    toast("Coming Soon!!", { 
+      icon: '🚀',
+      style: { 
+        borderRadius: '10px', 
+        background: '#1e293b', 
+        color: '#34d399' 
+      }
+    });
+  };
+
   return (
     <>
       <nav className="sticky top-0 z-50 backdrop-blur-xl bg-[#0a0f1d]/90 border-b border-white/5 selection:bg-blue-500/30">
@@ -176,9 +188,9 @@ const Navbar = ({ session }) => {
                           <MenuLink to="/my-tickets" icon={<Ticket size={18} className="text-blue-500"/>} label="Your Passes" onClick={() => setIsOpen(false)} />
                           <MenuLink to="/profile" icon={<User size={18} className="text-blue-500"/>} label="My Profile" onClick={() => setIsOpen(false)} />
                           
-                          {/* Club Head Exclusive Button */}
+                          {/* Club Head Exclusive Button (Fixed Route) */}
                           {userRole === 'club_head' && (
-                            <MenuLink to="/admin" icon={<Flag size={18} className="text-pink-500"/>} label="Club Dashboard" onClick={() => setIsOpen(false)} />
+                            <MenuLink to="/club/my-clubs" icon={<Flag size={18} className="text-pink-500"/>} label="Club Dashboard" onClick={() => setIsOpen(false)} />
                           )}
                         </>
                       )}
@@ -190,18 +202,28 @@ const Navbar = ({ session }) => {
                         
                         {/* HIDE IF ALREADY ORG HEAD OR ADMIN */}
                         {userRole !== 'org_head' && userRole !== 'super_admin' && (
-                          <Link to="/register-org" onClick={() => setIsOpen(false)} className="w-full flex items-center gap-4 px-4 py-4 text-emerald-400 hover:bg-emerald-500/10 rounded-2xl font-black text-[10px] transition-all uppercase tracking-[0.2em]">
+                          <button 
+                            type="button"
+                            onClick={handleOrgComingSoon} 
+                            className="w-full text-left flex items-center gap-4 px-4 py-4 text-emerald-400/80 hover:bg-emerald-500/10 rounded-2xl font-black text-[10px] transition-all uppercase tracking-[0.2em]"
+                          >
                             <Building size={18} /> Register Your Org
-                          </Link>
+                          </button>
                         )}
                       </div>
                     </>
                   ) : (
                     <div className="px-4 mt-2 mb-2 flex flex-col gap-2">
                       <MenuLink to="/login" icon={<User size={18}/>} label="Student Login" onClick={() => setIsOpen(false)} primary />
-                      <Link to="/register-org" onClick={() => setIsOpen(false)} className="w-full flex items-center gap-4 px-8 py-4 text-emerald-400 hover:bg-emerald-500/10 rounded-2xl font-black text-[10px] transition-all uppercase tracking-[0.2em]">
+                      
+                      {/* UNIVERSAL COMING SOON FOR LOGGED OUT USERS */}
+                      <button 
+                        type="button"
+                        onClick={handleOrgComingSoon} 
+                        className="w-full text-left flex items-center justify-start gap-4 px-8 py-4 text-emerald-400/80 hover:bg-emerald-500/10 rounded-2xl font-black text-[10px] transition-all uppercase tracking-[0.2em]"
+                      >
                         <Building size={18} /> Register Your Org
-                      </Link>
+                      </button>
                     </div>
                   )}
                 </div>

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../sbclient/supabaseClient';
 import { 
   Search, Edit3, Trash2, Zap, ArrowLeft, Activity, CalendarX,
-  ShieldAlert, Globe, Lock, Building2, Flag, ChevronDown, AlertTriangle, X
+  ShieldAlert, Globe, Lock, AlertTriangle, X, Filter, ChevronDown, Gamepad2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -13,47 +13,37 @@ const ManageEvents = () => {
   const [events, setEvents] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // ROLE & CONTEXT STATE
   const [userRole, setUserRole] = useState(null);
   const [orgs, setOrgs] = useState([]);
   const [clubs, setClubs] = useState([]);
-  const [userClubIds, setUserClubIds] = useState([]); // For multi-club heads
+  const [userClubIds, setUserClubIds] = useState([]); 
   
-  // SLICER STATE
   const [selectedOrgId, setSelectedOrgId] = useState('all');
   const [selectedClubId, setSelectedClubId] = useState('all');
 
-  // CUSTOM DROPDOWN STATES
-  const [isOrgDropdownOpen, setIsOrgDropdownOpen] = useState(false);
-  const [isClubDropdownOpen, setIsClubDropdownOpen] = useState(false);
-  const orgDropdownRef = useRef(null);
-  const clubDropdownRef = useRef(null);
+  const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
+  const filterMenuRef = useRef(null);
 
-  // CUSTOM MODAL STATE
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, eventId: null, eventTitle: '' });
 
-  // Handle clicking outside custom dropdowns
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (orgDropdownRef.current && !orgDropdownRef.current.contains(event.target)) setIsOrgDropdownOpen(false);
-      if (clubDropdownRef.current && !clubDropdownRef.current.contains(event.target)) setIsClubDropdownOpen(false);
+      if (filterMenuRef.current && !filterMenuRef.current.contains(event.target)) setIsFilterMenuOpen(false);
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // 1. INITIALIZATION: Fetch Roles & Slicer Context
   useEffect(() => {
     const initializeManagement = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return navigate('/login');
 
-        // Fetch ALL roles (Supports Multi-Club Head)
+        const { data: profile } = await supabase.from('students').select('role').eq('email', user.email).single();
         const { data: roles } = await supabase.from('user_roles').select('*').eq('email', user.email);
         
-        const adminEmails = ['admin@nexuscircle.in', 'staff@adypu.edu.in', 'prathamesh@adypu.edu.in'];
-        const isSuperAdmin = adminEmails.includes(user.email);
+        const isSuperAdmin = profile?.role === 'super_admin' || roles?.some(r => r.role === 'super_admin');
         const isOrgHead = roles?.some(r => r.role === 'org_head');
         const isClubHead = roles?.some(r => r.role === 'club_head');
 
@@ -69,7 +59,6 @@ const ManageEvents = () => {
 
         setUserRole(highestRole);
 
-        // Pre-load top level slicer data based on role
         if (highestRole === 'super_admin') {
           const { data } = await supabase.from('organizations').select('id, name').eq('status', 'approved').order('name');
           setOrgs(data || []);
@@ -84,7 +73,6 @@ const ManageEvents = () => {
           setUserClubIds(myClubIds);
           setSelectedOrgId(myOrgId);
           
-          // Let them switch between their assigned clubs
           const { data } = await supabase.from('clubs').select('id, name').in('id', myClubIds).order('name');
           setClubs(data || []);
         }
@@ -95,7 +83,6 @@ const ManageEvents = () => {
     initializeManagement();
   }, [navigate]);
 
-  // 2. CASCADING SLICER: Org -> Clubs (Super Admin Only)
   useEffect(() => {
     if (userRole === 'super_admin') {
       if (selectedOrgId !== 'all') {
@@ -110,7 +97,6 @@ const ManageEvents = () => {
     }
   }, [selectedOrgId, userRole]);
 
-  // 3. FETCH EVENTS: Strictly scoped based on Role & Slicers
   useEffect(() => {
     const fetchScopedEvents = async () => {
       setLoading(true);
@@ -124,17 +110,15 @@ const ManageEvents = () => {
           q = q.eq('org_id', selectedOrgId);
           if (selectedClubId !== 'all') q = q.eq('club_id', selectedClubId);
         } else if (userRole === 'club_head') {
-          // STRICT SECURITY LOCK: Can only see events in their assigned clubs
           if (selectedClubId !== 'all') {
-             // Verify the requested club is actually one they own before querying
              if (userClubIds.includes(selectedClubId)) {
                q = q.eq('club_id', selectedClubId);
              } else {
-               q = q.eq('club_id', '00000000-0000-0000-0000-000000000000'); // Force fail
+               q = q.eq('club_id', '00000000-0000-0000-0000-000000000000'); 
              }
           } else {
             if (userClubIds.length > 0) q = q.in('club_id', userClubIds);
-            else q = q.eq('club_id', '00000000-0000-0000-0000-000000000000'); // Force fail if no clubs
+            else q = q.eq('club_id', '00000000-0000-0000-0000-000000000000'); 
           }
         }
 
@@ -174,11 +158,13 @@ const ManageEvents = () => {
 
   const filteredEvents = events.filter(event => 
     event.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    event.school.toLowerCase().includes(searchQuery.toLowerCase())
+    event.school.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (event.category && event.category.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   const showOrgSelect = userRole === 'super_admin';
   const showClubSelect = userRole === 'super_admin' || userRole === 'org_head' || (userRole === 'club_head' && clubs.length > 1);
+  const isFilterActive = selectedOrgId !== 'all' || selectedClubId !== 'all';
 
   return (
     <div className="min-h-screen bg-[#0a0f1d] text-white p-4 sm:p-6 md:p-12 selection:bg-blue-500/30">
@@ -235,96 +221,71 @@ const ManageEvents = () => {
           </div>
         </header>
 
-        {/* --- CUSTOM CASCADING SLICER FILTERS --- */}
-        <div className="flex flex-col lg:flex-row flex-wrap items-center gap-4 bg-[#111827] p-4 rounded-3xl border border-white/5 shadow-xl relative z-40">
-          
-          <div className="relative w-full lg:w-80 shrink-0">
-            <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-            <input 
-              type="text" placeholder="Search events..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-12 pr-4 py-3.5 bg-[#0a0f1d] border border-white/5 hover:border-blue-500/50 rounded-2xl outline-none text-xs font-bold tracking-wider text-white transition-colors shadow-inner focus:border-blue-500"
-            />
-          </div>
+        {/* --- CONDENSED FILTER BAR --- */}
+        <div className="flex flex-col md:flex-row flex-wrap items-center gap-4 bg-[#111827] p-4 rounded-3xl border border-white/5 shadow-xl relative z-40">
+          <div className="flex items-center gap-3 relative w-full z-40" ref={filterMenuRef}>
+            <div className="relative flex-1">
+              <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+              <input 
+                type="text" placeholder="Search events..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-12 pr-4 py-3.5 bg-[#0a0f1d] border border-white/5 hover:border-blue-500/50 rounded-2xl outline-none text-xs font-bold tracking-wider text-white transition-colors shadow-inner focus:border-blue-500"
+              />
+            </div>
 
-          <div className="flex flex-col sm:flex-row gap-4 w-full lg:w-auto ml-auto">
-            {/* CUSTOM ORG DROPDOWN */}
-            {showOrgSelect && (
-              <div className="relative w-full sm:w-64 z-50" ref={orgDropdownRef}>
-                <button 
-                  onClick={() => setIsOrgDropdownOpen(!isOrgDropdownOpen)}
-                  className="flex items-center justify-between w-full px-5 py-3.5 bg-[#0a0f1d] border border-white/5 hover:border-blue-500/50 rounded-2xl outline-none text-[10px] font-black tracking-widest uppercase transition-all text-white shadow-sm"
-                >
-                  <div className="flex items-center gap-3 truncate">
-                    <Building2 size={16} className="text-slate-500 shrink-0"/>
-                    <span className="truncate">
-                      {selectedOrgId === 'all' ? 'All Organizations' : orgs.find(o => o.id === selectedOrgId)?.name}
-                    </span>
-                  </div>
-                  <ChevronDown size={14} className={`text-slate-500 transition-transform duration-200 shrink-0 ${isOrgDropdownOpen ? 'rotate-180 text-blue-500' : ''}`} />
-                </button>
-
-                {isOrgDropdownOpen && (
-                  <div className="absolute top-full left-0 mt-2 w-full bg-[#111827] border border-blue-500/30 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200">
-                    <div className="max-h-60 overflow-y-auto custom-scrollbar flex flex-col">
-                      <button
-                        onClick={() => { setSelectedOrgId('all'); setIsOrgDropdownOpen(false); }}
-                        className={`text-left px-5 py-3 text-[10px] font-black uppercase tracking-widest transition-colors border-b border-white/5 last:border-0 ${selectedOrgId === 'all' ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}
-                      >
-                        All Organizations
-                      </button>
-                      {orgs.map(o => (
-                        <button
-                          key={o.id}
-                          onClick={() => { setSelectedOrgId(o.id); setIsOrgDropdownOpen(false); }}
-                          className={`text-left px-5 py-3 text-[10px] font-black uppercase tracking-widest transition-colors border-b border-white/5 last:border-0 ${selectedOrgId === o.id ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}
-                        >
-                          {o.name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
+            {(showOrgSelect || showClubSelect) && (
+              <button 
+                 onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
+                 className={`flex items-center gap-2 px-5 py-3.5 rounded-2xl font-bold text-sm transition-all border shrink-0 ${isFilterActive || isFilterMenuOpen ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-500/20' : 'bg-white/5 text-white border-white/10 hover:bg-white/10'}`}
+              >
+                 <Filter size={18} />
+                 <span className="hidden sm:inline">Filter</span>
+                 {isFilterActive && (
+                   <span className="w-2 h-2 rounded-full bg-white ml-1 animate-pulse"></span>
+                 )}
+              </button>
             )}
 
-            {/* CUSTOM CLUB DROPDOWN */}
-            {showClubSelect && (
-              <div className="relative w-full sm:w-64 z-40" ref={clubDropdownRef}>
-                <button 
-                  onClick={() => setIsClubDropdownOpen(!isClubDropdownOpen)}
-                  disabled={selectedOrgId === 'all' && userRole === 'super_admin'}
-                  className="flex items-center justify-between w-full px-5 py-3.5 bg-[#0a0f1d] border border-white/5 hover:border-blue-500/50 rounded-2xl outline-none text-[10px] font-black tracking-widest uppercase transition-all text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <div className="flex items-center gap-3 truncate">
-                    <Flag size={16} className="text-slate-500 shrink-0"/>
-                    <span className="truncate">
-                      {selectedClubId === 'all' ? 'All Clubs' : clubs.find(c => c.id === selectedClubId)?.name}
-                    </span>
-                  </div>
-                  <ChevronDown size={14} className={`text-slate-500 transition-transform duration-200 shrink-0 ${isClubDropdownOpen ? 'rotate-180 text-blue-500' : ''}`} />
-                </button>
+            {isFilterMenuOpen && (
+              <div className="absolute top-full right-0 mt-3 w-full sm:w-85 bg-[#111827] border border-white/10 rounded-3xl shadow-2xl p-6 z-50 animate-in fade-in zoom-in-95">
+                 <div className="flex items-center justify-between mb-5 border-b border-white/5 pb-4">
+                    <h3 className="text-white font-black uppercase tracking-widest text-xs flex items-center gap-2">
+                       <Filter size={14} className="text-blue-500"/> Search Filters
+                    </h3>
+                    <button 
+                       onClick={() => { setSelectedOrgId('all'); setSelectedClubId('all'); }} 
+                       className="text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-red-400 transition-colors"
+                    >
+                       Reset All
+                    </button>
+                 </div>
 
-                {isClubDropdownOpen && (
-                  <div className="absolute top-full left-0 mt-2 w-full bg-[#111827] border border-blue-500/30 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200">
-                    <div className="max-h-60 overflow-y-auto custom-scrollbar flex flex-col">
-                      <button
-                        onClick={() => { setSelectedClubId('all'); setIsClubDropdownOpen(false); }}
-                        className={`text-left px-5 py-3 text-[10px] font-black uppercase tracking-widest transition-colors border-b border-white/5 last:border-0 ${selectedClubId === 'all' ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}
-                      >
-                        All Clubs
-                      </button>
-                      {clubs.map(c => (
-                        <button
-                          key={c.id}
-                          onClick={() => { setSelectedClubId(c.id); setIsClubDropdownOpen(false); }}
-                          className={`text-left px-5 py-3 text-[10px] font-black uppercase tracking-widest transition-colors border-b border-white/5 last:border-0 ${selectedClubId === c.id ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}
-                        >
-                          {c.name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                 <div className="space-y-4">
+                   {showOrgSelect && (
+                     <div>
+                       <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1 block text-left">Organization</span>
+                       <div className="relative">
+                          <select value={selectedOrgId} onChange={(e) => setSelectedOrgId(e.target.value)} className="w-full bg-slate-900 border border-white/10 rounded-xl pl-3 pr-8 py-2.5 text-xs font-bold text-slate-300 outline-none focus:border-blue-500 appearance-none cursor-pointer">
+                             <option value="all">All Organizations</option>
+                             {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                          </select>
+                          <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                       </div>
+                     </div>
+                   )}
+
+                   {showClubSelect && (
+                     <div>
+                       <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1 block text-left">Club / Faction</span>
+                       <div className="relative">
+                          <select value={selectedClubId} onChange={(e) => setSelectedClubId(e.target.value)} disabled={selectedOrgId === 'all' && userRole === 'super_admin'} className="w-full bg-slate-900 border border-white/10 rounded-xl pl-3 pr-8 py-2.5 text-xs font-bold text-slate-300 outline-none focus:border-blue-500 appearance-none cursor-pointer disabled:opacity-50">
+                             <option value="all">All Clubs</option>
+                             {clubs.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          </select>
+                          <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                       </div>
+                     </div>
+                   )}
+                 </div>
               </div>
             )}
           </div>
@@ -347,11 +308,15 @@ const ManageEvents = () => {
                     <div className="flex flex-wrap items-center gap-2 mb-2">
                       <span className="text-[9px] sm:text-[10px] font-black text-blue-500 uppercase tracking-widest bg-blue-500/10 px-2.5 py-1 rounded-md border border-blue-500/20">{event.school}</span>
                       
+                      {event.category === 'E-Sports' && (
+                         <span className="flex items-center gap-1 px-2.5 py-1 bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 rounded-md text-[8px] font-black uppercase tracking-widest"><Gamepad2 size={10}/> E-Sports</span>
+                      )}
+
                       {event.is_open_to_all !== undefined && (
                         event.is_open_to_all ? (
                           <span className="flex items-center gap-1 px-2.5 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-md text-[8px] font-black uppercase tracking-widest"><Globe size={10}/> Public</span>
                         ) : (
-                          <span className="flex items-center gap-1 px-2.5 py-1 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded-md text-[8px] font-black uppercase tracking-widest"><Lock size={10}/> Internal</span>
+                          <span className="flex items-center gap-1 px-2.5 py-1 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded-md text-[8px] font-black uppercase tracking-widest"><Lock size={10}/> College Only</span>
                         )
                       )}
                     </div>

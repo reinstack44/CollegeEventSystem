@@ -32,8 +32,14 @@ const Footer = () => {
             <Link to="/privacy" className="hover:text-blue-400 transition-colors">Privacy</Link>
             <Link to="/refunds" className="hover:text-blue-400 transition-colors">Refunds</Link>
             
-            {/* Idle Contact Element */}
-            <span className="opacity-50 cursor-not-allowed select-none" title="Coming Soon">Contact Us</span>
+            {/* Active Mailto Contact Element */}
+            <a 
+              href="mailto:support.nexuscircle@gmail.com?subject=Support Request To NexusCircle" 
+              className="hover:text-blue-400 transition-colors cursor-pointer"
+              title="Email Support"
+            >
+              Contact Us / Support
+            </a>
           </div>
 
         </div>

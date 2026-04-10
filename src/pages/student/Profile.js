@@ -1,16 +1,42 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '../../sbclient/supabaseClient';
-import { Mail, Hash, Phone, Building2, BadgeCheck } from 'lucide-react';
+import { Mail, Hash, Phone, Building2, BadgeCheck, Flag, ShieldAlert } from 'lucide-react';
 
 const Profile = () => {
   const [student, setStudent] = useState(null);
+  const [highestRole, setHighestRole] = useState('Loading...');
+  const [rawRole, setRawRole] = useState('student');
 
   useEffect(() => {
     const fetchProfile = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
+        // Fetch Student Details
         const { data, error } = await supabase.from('students').select('*').eq('email', user.email).single();
         if (!error) setStudent(data);
+
+        // Securely Fetch and Determine Role
+        const adminEmails = ['admin@nexuscircle.in', 'staff@adypu.edu.in', 'prathamesh@adypu.edu.in'];
+        if (adminEmails.includes(user.email)) {
+           setHighestRole('Super Admin');
+           setRawRole('super_admin');
+        } else {
+           const { data: roleData } = await supabase.from('user_roles').select('role').eq('email', user.email);
+           if (roleData && roleData.length > 0) {
+              if (roleData.some(r => r.role === 'org_head')) {
+                  setHighestRole('Organization Head');
+                  setRawRole('org_head');
+              }
+              else if (roleData.some(r => r.role === 'club_head')) {
+                  setHighestRole('Club Lead');
+                  setRawRole('club_head');
+              }
+           } else {
+              setHighestRole('Verified Student');
+              setRawRole('student');
+           }
+        }
       }
     };
     fetchProfile();
@@ -42,8 +68,35 @@ const Profile = () => {
           <ProfileCard icon={<Hash className="text-blue-500" />} label="URN Number" value={student.urn} />
           <ProfileCard icon={<Phone className="text-green-500" />} label="Contact" value={student.phone} />
           <ProfileCard icon={<Building2 className="text-orange-500" />} label="School" value={student.school} />
-          <ProfileCard icon={<BadgeCheck className="text-purple-500" />} label="Status" value="Verified Student" />
+          <ProfileCard icon={<BadgeCheck className="text-purple-500" />} label="Status" value={highestRole} />
         </div>
+
+        {/* DYNAMIC DASHBOARD SHORTCUTS FOR AUTHORIZED USERS */}
+        {rawRole !== 'student' && (
+          <div className="px-10 pb-10">
+             <div className="pt-8 border-t border-slate-100 dark:border-slate-800">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 text-left">Management Access</p>
+                
+                {rawRole === 'club_head' && (
+                  <Link to="/club/my-clubs" className="flex items-center justify-center gap-2 w-full py-4 bg-pink-600 hover:bg-pink-500 text-white rounded-2xl font-black uppercase tracking-widest text-[11px] transition-all shadow-[0_0_20px_rgba(236,72,153,0.2)] active:scale-95">
+                     <Flag size={16} /> Open Club Dashboard
+                  </Link>
+                )}
+                
+                {rawRole === 'org_head' && (
+                  <Link to="/org/dashboard" className="flex items-center justify-center gap-2 w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black uppercase tracking-widest text-[11px] transition-all shadow-[0_0_20px_rgba(99,102,241,0.2)] active:scale-95">
+                     <Building2 size={16} /> Open Org Dashboard
+                  </Link>
+                )}
+                
+                {rawRole === 'super_admin' && (
+                  <Link to="/admin" className="flex items-center justify-center gap-2 w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black uppercase tracking-widest text-[11px] transition-all shadow-[0_0_20px_rgba(59,130,246,0.2)] active:scale-95">
+                     <ShieldAlert size={16} /> Open Admin Panel
+                  </Link>
+                )}
+             </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -54,9 +107,9 @@ const ProfileCard = ({ icon, label, value }) => (
     <div className="p-3 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
       {icon}
     </div>
-    <div>
+    <div className="text-left">
       <p className="text-xs font-black text-slate-400 uppercase tracking-widest">{label}</p>
-      <p className="text-lg font-bold text-slate-800 dark:text-white mt-0.5">{value}</p>
+      <p className="text-lg font-bold text-slate-800 dark:text-white mt-0.5 truncate">{value}</p>
     </div>
   </div>
 );

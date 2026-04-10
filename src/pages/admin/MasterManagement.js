@@ -4,71 +4,102 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Search, Zap, Filter, ShieldAlert, Fingerprint, Download, 
   ArrowLeft, CheckCircle, XCircle, Trash2, UserX, ChevronDown, 
-  Eye, X, Phone, Mail, IndianRupee, Lock, Building2, Flag, Layers, 
+  Eye, X, Phone, Mail, IndianRupee, Lock, Layers, 
   AlertTriangle, Users, Gamepad2, BarChart3, Database, TrendingUp, ShieldCheck, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const ROWS_PER_PAGE = 20;
+const PLATFORM_FEE = 25;
+
+// ==========================================
+// HELPER FUNCTIONS
+// ==========================================
+const getTxnId = (item) => item.utr_number || item.transaction_id || item.payment_id || item.razorpay_payment_id;
+
+const getBaseAmount = (item) => {
+  if (item.events?.category === 'E-Sports' && item.selected_game && item.events?.games_list) {
+    const gameObj = item.events.games_list.find(g => g.gameName === item.selected_game);
+    if (gameObj && gameObj.ticket_price) return Number(gameObj.ticket_price);
+    return 0;
+  }
+  return item.events?.event_type === 'paid' ? Number(item.events?.price || 0) : 0;
+};
+
+const getFeeBreakdown = (item) => {
+  let base = getBaseAmount(item);
+  let platform = 0;
+  let total = 0;
+
+  if (base > 0) {
+     platform = PLATFORM_FEE;
+     total = base + platform;
+  } else if (getTxnId(item)) {
+     // Fallback for older transactions without exact base details
+     total = Number(item.amount) || Number(item.total_amount) || 0; 
+     if (total > 0) {
+         platform = total >= PLATFORM_FEE ? PLATFORM_FEE : 0;
+         base = total - platform;
+     }
+  }
+
+  return {
+    base: base.toFixed(2),
+    platform: platform.toFixed(2),
+    total: total.toFixed(2)
+  };
+};
+// ==========================================
 
 const MasterManagement = () => {
   const navigate = useNavigate(); 
   
-  // ROLE & CONTEXT STATE
   const [userRole, setUserRole] = useState(null);
   const [orgs, setOrgs] = useState([]);
   const [clubs, setClubs] = useState([]);
   const [userClubIds, setUserClubIds] = useState([]);
   
-  // SLICER STATE
   const [selectedOrgId, setSelectedOrgId] = useState('all');
   const [selectedClubId, setSelectedClubId] = useState('all');
   const [selectedEventId, setSelectedEventId] = useState('all'); 
   const [typeFilter, setTypeFilter] = useState('all');
   const [gameFilter, setGameFilter] = useState('all');
   
-  // VIEW MODE (Database vs Analytics)
   const [activeTab, setActiveTab] = useState('database');
 
-  // EVENT & ATTENDEE STATE
   const [allEvents, setAllEvents] = useState([]);
   const [attendees, setAttendees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedRows, setExpandedRows] = useState(new Set());
   
-  // PAGINATION STATE
   const [currentPage, setCurrentPage] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
 
-  // CUSTOM DROPDOWN STATES
-  const [isEventDropdownOpen, setIsEventDropdownOpen] = useState(false);
-  const [isOrgDropdownOpen, setIsOrgDropdownOpen] = useState(false);
-  const [isClubDropdownOpen, setIsClubDropdownOpen] = useState(false);
-  const [isTypeDropdownOpen, setIsTypeDropdownOpen] = useState(false);
-  const [isGameDropdownOpen, setIsGameDropdownOpen] = useState(false);
+  const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
+  const filterMenuRef = useRef(null);
   
-  const eventDropdownRef = useRef(null);
-  const orgDropdownRef = useRef(null);
-  const clubDropdownRef = useRef(null);
-  const typeDropdownRef = useRef(null);
-  const gameDropdownRef = useRef(null);
-  
-  // MODALS
   const [selectedAttendee, setSelectedAttendee] = useState(null);
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, bookingId: null, isReject: false });
 
-  // 1. INITIALIZATION
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (filterMenuRef.current && !filterMenuRef.current.contains(event.target)) setIsFilterMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   useEffect(() => {
     const initializeRegistry = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return navigate('/login');
 
+        const { data: profile } = await supabase.from('students').select('role').eq('email', user.email).single();
         const { data: roles } = await supabase.from('user_roles').select('*').eq('email', user.email);
         
-        const adminEmails = ['admin@nexuscircle.in', 'staff@adypu.edu.in', 'prathamesh@adypu.edu.in'];
-        const isSuperAdmin = adminEmails.includes(user.email);
+        const isSuperAdmin = profile?.role === 'super_admin' || roles?.some(r => r.role === 'super_admin');
         const isOrgHead = roles?.some(r => r.role === 'org_head');
         const isClubHead = roles?.some(r => r.role === 'club_head');
 
@@ -107,7 +138,6 @@ const MasterManagement = () => {
     initializeRegistry();
   }, [navigate]);
 
-  // 2. CASCADING SLICER: Org -> Clubs
   useEffect(() => {
     if (userRole === 'super_admin') {
       if (selectedOrgId !== 'all') {
@@ -122,7 +152,6 @@ const MasterManagement = () => {
     }
   }, [selectedOrgId, userRole]);
 
-  // 3. CASCADING SLICER: Clubs -> Events
   useEffect(() => {
     const fetchEvents = async () => {
       if (!userRole) return; 
@@ -153,26 +182,21 @@ const MasterManagement = () => {
         setAllEvents([]);
       }
       setSelectedEventId('all'); 
-      setCurrentPage(1); // Reset page on filter change
+      setCurrentPage(1);
     };
 
     if (userRole) fetchEvents();
   }, [selectedOrgId, selectedClubId, userRole, clubs]);
 
-  // Reset page when deep filters change
   useEffect(() => {
     setCurrentPage(1);
   }, [typeFilter, gameFilter, searchQuery]);
 
-  // 4. DATA FETCH: Dynamic Attendee Aggregation with Pagination
-  // 4. DATA FETCH: Dynamic Attendee Aggregation with Pagination
   const fetchAttendees = useCallback(async () => {
     if (!userRole) return;
 
     setLoading(true);
     try {
-      // --- 1. SETUP BASE QUERIES ---
-      // We need one for the COUNT and one for the DATA
       let countReq = supabase
         .from('bookings')
         .select('id, events!inner(org_id, club_id)', { count: 'exact', head: true });
@@ -185,22 +209,19 @@ const MasterManagement = () => {
         .select(`
           *,
           students ( name, surname, email, phone, urn ),
-          events!inner ( title, price, org_id, club_id, category )
+          events!inner ( title, price, org_id, club_id, category, event_type, games_list )
         `)
         .order('created_at', { ascending: false })
         .range(from, to);
 
-      // --- 2. APPLY SCOPE FILTERS (Event -> Club -> Org) ---
       if (selectedEventId !== 'all') {
         countReq = countReq.eq('event_id', selectedEventId);
         dataReq = dataReq.eq('event_id', selectedEventId);
       } else {
-        // If searching across all events, apply Org/Club filters
         if (selectedOrgId !== 'all') {
           countReq = countReq.eq('events.org_id', selectedOrgId);
           dataReq = dataReq.eq('events.org_id', selectedOrgId);
         } else if (userRole !== 'super_admin') {
-          // If not super admin and no org selected, we can't show anything
           setLoading(false);
           return;
         }
@@ -219,7 +240,6 @@ const MasterManagement = () => {
         }
       }
 
-      // --- 3. APPLY TYPE & GAME FILTERS ---
       if (typeFilter === 'Team') {
         countReq = countReq.not('team_name', 'is', null);
         dataReq = dataReq.not('team_name', 'is', null);
@@ -233,14 +253,12 @@ const MasterManagement = () => {
         dataReq = dataReq.eq('selected_game', gameFilter);
       }
 
-      // --- 4. APPLY SEARCH FILTER ---
       if (searchQuery.trim() !== '') {
         const searchStr = `or(student_email.ilike.%${searchQuery}%,team_name.ilike.%${searchQuery}%,transaction_id.ilike.%${searchQuery}%,razorpay_payment_id.ilike.%${searchQuery}%)`;
         countReq = countReq.or(searchStr);
         dataReq = dataReq.or(searchStr);
       }
 
-      // --- 5. EXECUTE QUERIES ---
       const [countRes, dataRes] = await Promise.all([countReq, dataReq]);
 
       if (countRes.error) throw countRes.error;
@@ -250,30 +268,63 @@ const MasterManagement = () => {
 
       let enrichedData = dataRes.data || [];
 
-      // --- 6. FETCH TEAM ROSTERS (If applicable) ---
+      // ==========================================
+      // BULLETPROOF ROSTER FETCH LOGIC
+      // ==========================================
       if (enrichedData.length > 0) {
         const bookingIds = enrichedData.map(b => b.id);
-        const { data: membersData } = await supabase
+        const { data: membersData, error: memErr } = await supabase
           .from('booking_members')
           .select('booking_id, student_email')
           .in('booking_id', bookingIds);
+          
+        if (memErr) console.error("Database blocked member read:", memErr);
         
+        let studentProfiles = [];
         if (membersData && membersData.length > 0) {
-           const uniqueEmails = [...new Set(membersData.map(m => m.student_email))];
-           const { data: studentProfiles } = await supabase
+           const uniqueEmails = [...new Set(membersData.map(m => m.student_email?.trim().toLowerCase()).filter(Boolean))];
+           const { data: profiles, error: profErr } = await supabase
             .from('students')
             .select('email, name, surname, urn, phone')
             .in('email', uniqueEmails);
-           
-           enrichedData = enrichedData.map(booking => {
-              const bMembers = membersData.filter(m => m.booking_id === booking.id);
-              const fullMembers = bMembers.map(bm => {
-                 const prof = studentProfiles?.find(p => p.email === bm.student_email);
-                 return { email: bm.student_email, ...prof };
-              });
-              return { ...booking, fullMembers };
-           });
+            
+           if (profErr) console.error("Database blocked profile read:", profErr);
+           studentProfiles = profiles || [];
         }
+        
+        // SAFELY MAP TEAM MEMBERS
+        enrichedData = enrichedData.map(booking => {
+           let bMembers = membersData ? membersData.filter(m => m.booking_id === booking.id) : [];
+           
+           let fullMembers = bMembers.map(bm => {
+              const cleanEmail = bm.student_email?.trim().toLowerCase();
+              const prof = studentProfiles.find(p => p.email?.toLowerCase() === cleanEmail) || {};
+              
+              // Fallback if database blocks the profile read
+              const finalName = prof.name || cleanEmail?.split('@')[0] || "Unknown";
+
+              return { 
+                  email: bm.student_email, 
+                  name: finalName,
+                  surname: prof.surname || '',
+                  urn: prof.urn,
+                  phone: prof.phone
+              };
+           });
+
+           // FAILSAFE: Ensure the Team Lead is ALWAYS in the roster
+           if (!fullMembers.some(m => m.email?.toLowerCase() === booking.student_email?.toLowerCase())) {
+               fullMembers.unshift({
+                   email: booking.student_email,
+                   name: booking.students?.name || booking.student_email?.split('@')[0] || "Unknown",
+                   surname: booking.students?.surname || '',
+                   phone: booking.students?.phone,
+                   urn: booking.students?.urn
+               });
+           }
+
+           return { ...booking, fullMembers };
+        });
       }
 
       setAttendees(enrichedData);
@@ -288,7 +339,6 @@ const MasterManagement = () => {
   useEffect(() => {
     fetchAttendees();
     
-    // We only want realtime updates to refresh the current page
     const config = { event: '*', schema: 'public', table: 'bookings' };
     if (selectedEventId !== 'all') config.filter = `event_id=eq.${selectedEventId}`;
     
@@ -299,19 +349,6 @@ const MasterManagement = () => {
     return () => supabase.removeChannel(channel);
   }, [selectedEventId, currentPage, fetchAttendees]);
 
-  // Dropdown dismiss logic
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (eventDropdownRef.current && !eventDropdownRef.current.contains(event.target)) setIsEventDropdownOpen(false);
-      if (orgDropdownRef.current && !orgDropdownRef.current.contains(event.target)) setIsOrgDropdownOpen(false);
-      if (clubDropdownRef.current && !clubDropdownRef.current.contains(event.target)) setIsClubDropdownOpen(false);
-      if (typeDropdownRef.current && !typeDropdownRef.current.contains(event.target)) setIsTypeDropdownOpen(false);
-      if (gameDropdownRef.current && !gameDropdownRef.current.contains(event.target)) setIsGameDropdownOpen(false);
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
   const toggleRow = (id) => {
     const newSet = new Set(expandedRows);
     if (newSet.has(id)) newSet.delete(id);
@@ -319,8 +356,7 @@ const MasterManagement = () => {
     setExpandedRows(newSet);
   };
 
-  // --- ACTIONS ---
-  const handleVerifyUTR = async (bookingId) => {
+  const handleVerifyPayment = async (bookingId) => {
     const toastId = toast.loading("Verifying Payment...");
     try {
       const { error } = await supabase.from('bookings').update({ status: 'verified' }).eq('id', bookingId);
@@ -333,11 +369,11 @@ const MasterManagement = () => {
     }
   };
 
-  const handleTerminateClick = (bookingId, isReject = false) => {
+  const handleRemoveClick = (bookingId, isReject = false) => {
     setConfirmModal({ isOpen: true, bookingId, isReject });
   };
 
-  const confirmTerminate = async () => {
+  const confirmRemove = async () => {
     const { bookingId, isReject } = confirmModal;
     const loadToast = toast.loading(isReject ? "Rejecting payment..." : "Canceling ticket...");
     try {
@@ -354,27 +390,15 @@ const MasterManagement = () => {
     }
   };
 
-  const getTxnId = (item) => item.utr_number || item.transaction_id || item.payment_id || item.razorpay_payment_id;
-
-  const getFeeBreakdown = (item) => {
-    const base = parseFloat(item.events?.price || item.amount_expected || 0);
-    if (base === 0) return { base: "0.00", platform: "0.00", transaction: "0.00", total: "0.00" };
-    const platform = parseFloat(item.platform_fee ?? 5.00); 
-    const transaction = parseFloat(item.transaction_fee ?? item.razorpay_fee ?? ((base + platform) * 0.025).toFixed(2));
-    const total = parseFloat(item.total_amount ?? item.amount ?? (base + platform + transaction).toFixed(2));
-    return { base: base.toFixed(2), platform: platform.toFixed(2), transaction: transaction.toFixed(2), total: total.toFixed(2) };
-  };
-
-  // 5. EXPORT LOGIC: Unpaginated Fetch for CSV
   const downloadCSV = async () => {
-    const toastId = toast.loading("Compiling Full Export Data...");
+    const toastId = toast.loading("Preparing Download...");
     try {
       let exportReq = supabase
         .from('bookings')
         .select(`
           *,
           students ( name, surname, email, phone, urn ),
-          events!inner ( title, price, org_id, club_id, category )
+          events!inner ( title, price, org_id, club_id, category, event_type, games_list )
         `)
         .order('created_at', { ascending: false });
 
@@ -397,26 +421,36 @@ const MasterManagement = () => {
         return;
       }
 
-      // Fetch all members for the export data
       const bookingIds = fullData.map(b => b.id);
       const { data: membersData } = await supabase.from('booking_members').select('booking_id, student_email').in('booking_id', bookingIds);
       let enrichedExportData = fullData;
 
       if (membersData && membersData.length > 0) {
-          const uniqueEmails = [...new Set(membersData.map(m => m.student_email))];
+          const uniqueEmails = [...new Set(membersData.map(m => m.student_email?.trim().toLowerCase()).filter(Boolean))];
           const { data: studentProfiles } = await supabase.from('students').select('email, name, surname, urn, phone').in('email', uniqueEmails);
           
           enrichedExportData = fullData.map(booking => {
             const bMembers = membersData.filter(m => m.booking_id === booking.id);
             const fullMembers = bMembers.map(bm => {
-                const prof = studentProfiles?.find(p => p.email === bm.student_email);
-                return { email: bm.student_email, ...prof };
+                const cleanEmail = bm.student_email?.trim().toLowerCase();
+                const prof = studentProfiles?.find(p => p.email?.toLowerCase() === cleanEmail) || {};
+                const finalName = prof.name || cleanEmail?.split('@')[0] || "Unknown";
+                return { email: bm.student_email, name: finalName, surname: prof.surname || '' };
             });
+
+            if (!fullMembers.some(m => m.email?.toLowerCase() === booking.student_email?.toLowerCase())) {
+                fullMembers.unshift({
+                    email: booking.student_email,
+                    name: booking.students?.name || booking.student_email?.split('@')[0] || "Unknown",
+                    surname: booking.students?.surname || ''
+                });
+            }
+
             return { ...booking, fullMembers };
           });
       }
 
-      let exportName = "Database";
+      let exportName = "Registrations";
       if (selectedEventId !== 'all') {
         exportName = allEvents.find(e => e.id === selectedEventId)?.title.replace(/\s+/g, '_') || "Event";
       } else if (selectedClubId !== 'all') {
@@ -425,7 +459,7 @@ const MasterManagement = () => {
         exportName = "University_Wide";
       }
 
-      const headers = "Event,Game,Entry Type,Team Name,Lead Name,Lead Surname,Email,Phone,URN,Team Members,Status,Transaction ID,Ticket Fee,Platform Fee,Transaction Fee,Total Paid\n";
+      const headers = "Event,Game,Entry Type,Team Name,Lead Name,Lead Surname,Email,Phone,URN,Team Members,Status,Transaction ID,Ticket Fee,Platform Fee,Total Paid\n";
       const rows = enrichedExportData.map(item => {
         const txn = getTxnId(item) || 'N/A';
         const fees = getFeeBreakdown(item);
@@ -433,27 +467,28 @@ const MasterManagement = () => {
         const gameName = item.selected_game || 'N/A';
         const entryType = item.team_name ? 'Team' : 'Individual';
         const teamName = item.team_name ? item.team_name.replace(/,/g, '') : 'N/A';
-        const membersStr = item.fullMembers ? `"${item.fullMembers.map(m => m.email).join(', ')}"` : 'N/A';
         
-        return `${eventName},${gameName},${entryType},${teamName},${item.students?.name || 'Unknown'},${item.students?.surname || ''},${item.student_email},${item.students?.phone || 'N/A'},${item.students?.urn || 'N/A'},${membersStr},${item.status},${txn},₹${fees.base},₹${fees.platform},₹${fees.transaction},₹${fees.total}`;
+        const membersStr = item.fullMembers && item.fullMembers.length > 0 
+          ? `"${item.fullMembers.map(m => `${m.name} ${m.surname || ''} (${m.email})`).join(', ')}"` 
+          : 'N/A';
+        
+        return `${eventName},${gameName},${entryType},${teamName},${item.students?.name || 'Unknown'},${item.students?.surname || ''},${item.student_email},${item.students?.phone || 'N/A'},${item.students?.urn || 'N/A'},${membersStr},${item.status},${txn},₹${fees.base},₹${fees.platform},₹${fees.total}`;
       }).join("\n");
 
-      const blob = new Blob([headers + rows], { type: 'text/csv' });
+      const blob = new Blob(['\uFEFF' + headers + rows], { type: 'text/csv;charset=utf-8;' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `${exportName}_Registry.csv`;
       a.click();
-      toast.success("Export Complete!", { id: toastId });
+      toast.success("Download Complete!", { id: toastId });
     } catch (err) {
-      toast.error("Export Failed.", { id: toastId });
+      toast.error("Download Failed.", { id: toastId });
     }
   };
 
-  // --- FILTERS & GROUPS ---
   const availableGames = [...new Set(attendees.map(a => a.selected_game).filter(Boolean))].sort();
 
-  // Local filtering for things not caught perfectly by the simple DB search
   const filteredList = attendees.filter(item => {
     const matchSearch = 
       searchQuery.trim() === '' ||
@@ -468,17 +503,15 @@ const MasterManagement = () => {
     return matchSearch;
   });
 
-  // --- ANALYTICS ENGINE (Uses Total DB values, not just current page) ---
   const [analyticsStats, setAnalyticsStats] = useState({
     totalRegistrations: 0, totalRevenue: 0, platformFees: 0, checkedInCount: 0, teamCount: 0, individualCount: 0, gameBreakdown: {}, checkInRate: 0
   });
 
   useEffect(() => {
-    // Only run expensive analytics query if they open the analytics tab
     if (activeTab !== 'analytics' || !userRole) return;
 
     const fetchAnalytics = async () => {
-      let q = supabase.from('bookings').select('status, team_name, selected_game, events!inner(price, event_type, org_id, club_id)');
+      let q = supabase.from('bookings').select('status, team_name, selected_game, events!inner(price, event_type, org_id, club_id, category, games_list), amount_expected');
       
       if (selectedEventId !== 'all') q = q.eq('event_id', selectedEventId);
       else {
@@ -496,7 +529,11 @@ const MasterManagement = () => {
         let revenue = 0, pFees = 0, checkedIn = 0, teams = 0, individuals = 0, games = {};
         data.forEach(b => {
           if (b.status === 'verified' || b.status === 'checked_in') {
-            if (b.events?.event_type === 'paid') { revenue += Number(b.events.price || 0); pFees += 5; }
+             const base = getBaseAmount(b);
+             if (base > 0) {
+               revenue += base;
+               pFees += PLATFORM_FEE;
+             }
           }
           if (b.status === 'checked_in') checkedIn++;
           if (b.team_name) teams++; else individuals++;
@@ -511,14 +548,12 @@ const MasterManagement = () => {
       }
     };
     fetchAnalytics();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, selectedEventId, selectedOrgId, selectedClubId, userRole, userClubIds, typeFilter, gameFilter]);
-
-  const today = new Date().toISOString().split('T')[0];
-  const liveEvents = allEvents.filter(e => e.date >= today);
-  const pastEvents = allEvents.filter(e => e.date < today);
 
   const showOrgSelect = userRole === 'super_admin';
   const showClubSelect = userRole === 'super_admin' || userRole === 'org_head' || (userRole === 'club_head' && clubs.length > 1);
+  const isFilterActive = selectedOrgId !== 'all' || selectedClubId !== 'all' || selectedEventId !== 'all' || typeFilter !== 'all' || gameFilter !== 'all';
 
   const totalPages = Math.ceil(totalRecords / ROWS_PER_PAGE);
 
@@ -548,7 +583,7 @@ const MasterManagement = () => {
                 <button onClick={() => setConfirmModal({ isOpen: false, bookingId: null, isReject: false })} className="flex-1 px-4 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-black uppercase tracking-widest text-[10px] transition-all active:scale-95">
                   Cancel
                 </button>
-                <button onClick={confirmTerminate} className="flex-1 px-4 py-3 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white border border-red-500/20 rounded-xl font-black uppercase tracking-widest text-[10px] transition-all active:scale-95 shadow-lg">
+                <button onClick={confirmRemove} className="flex-1 px-4 py-3 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white border border-red-500/20 rounded-xl font-black uppercase tracking-widest text-[10px] transition-all active:scale-95 shadow-lg">
                   Confirm
                 </button>
               </div>
@@ -567,226 +602,119 @@ const MasterManagement = () => {
           <div className="space-y-2 text-left">
             <div className="flex items-center gap-3 text-blue-500 mb-4">
               <ShieldAlert size={28} />
-              <p className="font-black uppercase tracking-[0.4em] text-[10px]">Administration</p>
+              <p className="font-black uppercase tracking-[0.4em] text-[10px]">Admin Panel</p>
             </div>
-            <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black uppercase italic tracking-tighter leading-none">Event Database</h2>
+            <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black uppercase italic tracking-tighter leading-none">Registrations</h2>
             <p className="text-[10px] sm:text-xs text-slate-400 mt-2 tracking-wide uppercase font-bold flex items-center gap-2">
-              <Lock size={14} className="text-blue-500"/> Access Role: {userRole?.replace('_', ' ').toUpperCase() || 'Verifying...'}
+              <Lock size={14} className="text-blue-500"/> Your Role: {userRole?.replace('_', ' ').toUpperCase() || 'Verifying...'}
             </p>
           </div>
 
           <button onClick={downloadCSV} className="w-full lg:w-auto flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 sm:py-3 rounded-xl sm:rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shrink-0">
-            <Download size={16} /> Export Data (CSV)
+            <Download size={16} /> Download Data (CSV)
           </button>
         </header>
 
-        {/* --- CASCADING SLICER FILTERS --- */}
+        {/* --- CONDENSED FILTER BAR --- */}
         <div className="flex flex-col md:flex-row flex-wrap items-center gap-4 bg-[#111827] p-4 rounded-3xl border border-white/5 shadow-xl relative z-40">
-          
-          {showOrgSelect && (
-            <div className="relative w-full md:w-auto min-w-48 grow md:grow-0 z-50" ref={orgDropdownRef}>
-              <button 
-                onClick={() => setIsOrgDropdownOpen(!isOrgDropdownOpen)}
-                className="flex items-center justify-between w-full px-5 py-3.5 bg-[#0a0f1d] border border-white/5 hover:border-blue-500/50 rounded-2xl outline-none text-[10px] font-black tracking-widest uppercase transition-all text-white shadow-sm"
-              >
-                <div className="flex items-center gap-3 truncate">
-                  <Building2 size={16} className="text-slate-500 shrink-0"/>
-                  <span className="truncate">
-                    {selectedOrgId === 'all' ? 'All Organizations' : orgs.find(o => o.id === selectedOrgId)?.name}
-                  </span>
-                </div>
-                <ChevronDown size={14} className={`text-slate-500 transition-transform duration-200 shrink-0 ${isOrgDropdownOpen ? 'rotate-180 text-blue-500' : ''}`} />
-              </button>
-
-              {isOrgDropdownOpen && (
-                <div className="absolute top-full left-0 mt-2 w-full min-w-56 bg-[#111827] border border-blue-500/30 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200">
-                  <div className="max-h-60 overflow-y-auto custom-scrollbar flex flex-col">
-                    <button
-                      onClick={() => { setSelectedOrgId('all'); setIsOrgDropdownOpen(false); }}
-                      className={`text-left px-5 py-3 text-[10px] font-black uppercase tracking-widest transition-colors border-b border-white/5 last:border-0 ${selectedOrgId === 'all' ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}
-                    >
-                      All Organizations
-                    </button>
-                    {orgs.map(o => (
-                      <button
-                        key={o.id}
-                        onClick={() => { setSelectedOrgId(o.id); setIsOrgDropdownOpen(false); }}
-                        className={`text-left px-5 py-3 text-[10px] font-black uppercase tracking-widest transition-colors border-b border-white/5 last:border-0 ${selectedOrgId === o.id ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}
-                      >
-                        {o.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+          <div className="flex items-center gap-3 relative w-full z-40" ref={filterMenuRef}>
+            
+            <div className="relative flex-1">
+              <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+              <input 
+                type="text" placeholder="Search by Name, Email, Event, Team..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-12 pr-4 py-3.5 bg-[#0a0f1d] border border-white/5 hover:border-blue-500/50 rounded-2xl outline-none text-xs font-bold tracking-wider text-white transition-colors shadow-inner focus:border-blue-500"
+              />
             </div>
-          )}
 
-          {showClubSelect && (
-            <div className="relative w-full md:w-auto min-w-48 grow md:grow-0 z-40" ref={clubDropdownRef}>
-              <button 
-                onClick={() => setIsClubDropdownOpen(!isClubDropdownOpen)}
-                disabled={selectedOrgId === 'all' && userRole === 'super_admin'}
-                className="flex items-center justify-between w-full px-5 py-3.5 bg-[#0a0f1d] border border-white/5 hover:border-blue-500/50 rounded-2xl outline-none text-[10px] font-black tracking-widest uppercase transition-all text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <div className="flex items-center gap-3 truncate">
-                  <Flag size={16} className="text-slate-500 shrink-0"/>
-                  <span className="truncate">
-                    {selectedClubId === 'all' ? 'All Clubs' : clubs.find(c => c.id === selectedClubId)?.name}
-                  </span>
-                </div>
-                <ChevronDown size={14} className={`text-slate-500 transition-transform duration-200 shrink-0 ${isClubDropdownOpen ? 'rotate-180 text-blue-500' : ''}`} />
-              </button>
-
-              {isClubDropdownOpen && (
-                <div className="absolute top-full left-0 mt-2 w-full min-w-56 bg-[#111827] border border-blue-500/30 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200">
-                  <div className="max-h-60 overflow-y-auto custom-scrollbar flex flex-col">
-                    <button
-                      onClick={() => { setSelectedClubId('all'); setIsClubDropdownOpen(false); }}
-                      className={`text-left px-5 py-3 text-[10px] font-black uppercase tracking-widest transition-colors border-b border-white/5 last:border-0 ${selectedClubId === 'all' ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}
-                    >
-                      All Clubs
-                    </button>
-                    {clubs.map(c => (
-                      <button
-                        key={c.id}
-                        onClick={() => { setSelectedClubId(c.id); setIsClubDropdownOpen(false); }}
-                        className={`text-left px-5 py-3 text-[10px] font-black uppercase tracking-widest transition-colors border-b border-white/5 last:border-0 ${selectedClubId === c.id ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}
-                      >
-                        {c.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="relative w-full md:w-auto min-w-64 grow md:grow-0 z-30" ref={eventDropdownRef}>
             <button 
-              onClick={() => setIsEventDropdownOpen(!isEventDropdownOpen)}
-              className="flex items-center justify-between w-full bg-blue-600/10 px-5 py-3.5 rounded-2xl border border-blue-500/30 shadow-lg transition-all hover:bg-blue-600/20 active:scale-95"
+               onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
+               className={`flex items-center gap-2 px-5 py-3.5 rounded-2xl font-bold text-sm transition-all border shrink-0 ${isFilterActive || isFilterMenuOpen ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-500/20' : 'bg-white/5 text-white border-white/10 hover:bg-white/10'}`}
             >
-              <div className="flex items-center gap-3 truncate">
-                <Filter size={16} className="text-blue-400 shrink-0" />
-                <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-widest text-blue-400 truncate">
-                  {selectedEventId === 'all' ? "Select Event" : allEvents.find(e => e.id === selectedEventId)?.title}
-                </span>
-              </div>
-              <ChevronDown size={16} className={`text-blue-400 transition-transform duration-300 shrink-0 ${isEventDropdownOpen ? 'rotate-180' : ''}`} />
+               <Filter size={18} />
+               <span className="hidden sm:inline">Filter</span>
+               {isFilterActive && (
+                 <span className="w-2 h-2 rounded-full bg-white ml-1 animate-pulse"></span>
+               )}
             </button>
 
-            {isEventDropdownOpen && (
-              <div className="absolute top-full left-0 right-0 mt-2 bg-[#111827] border border-white/10 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.8)] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-                <div className="max-h-64 overflow-y-auto custom-scrollbar">
-                  
-                  <button
-                    onClick={() => { setSelectedEventId('all'); setIsEventDropdownOpen(false); }}
-                    className={`w-full flex items-center gap-4 px-5 py-4 text-left transition-colors border-b border-white/5 bg-slate-900 sticky top-0 z-20 ${
-                      selectedEventId === 'all' ? 'text-blue-400 font-black' : 'text-slate-300 hover:bg-slate-800'
-                    }`}
-                  >
-                    <Layers size={14} className={selectedEventId === 'all' ? 'text-blue-500' : 'text-slate-500'}/>
-                    <span className="text-[11px] font-black uppercase tracking-widest truncate">View All Events</span>
-                  </button>
-
-                  {liveEvents.length > 0 && (
-                    <div className="px-4 py-2 bg-emerald-500/10 border-y border-emerald-500/20 text-emerald-400 text-[8px] font-black uppercase tracking-widest flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></div> Upcoming Events
-                    </div>
-                  )}
-                  {liveEvents.map(ev => (
-                    <button
-                      key={ev.id}
-                      onClick={() => { setSelectedEventId(ev.id); setIsEventDropdownOpen(false); }}
-                      className={`w-full flex items-center gap-4 px-5 py-3.5 text-left transition-colors border-b border-white/5 last:border-0 ${
-                        selectedEventId === ev.id ? 'bg-blue-500/10 text-blue-400' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                      }`}
+            {isFilterMenuOpen && (
+              <div className="absolute top-full right-0 mt-3 w-full sm:w-85 bg-[#111827] border border-white/10 rounded-3xl shadow-2xl p-6 z-50 animate-in fade-in zoom-in-95">
+                 <div className="flex items-center justify-between mb-5 border-b border-white/5 pb-4">
+                    <h3 className="text-white font-black uppercase tracking-widest text-xs flex items-center gap-2">
+                       <Filter size={14} className="text-blue-500"/> Search Filters
+                    </h3>
+                    <button 
+                       onClick={() => { setSelectedOrgId('all'); setSelectedClubId('all'); setSelectedEventId('all'); setTypeFilter('all'); setGameFilter('all'); }} 
+                       className="text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-red-400 transition-colors"
                     >
-                      <div className={`w-2 h-2 rounded-full shrink-0 ${selectedEventId === ev.id ? 'bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.8)]' : 'bg-transparent'}`} />
-                      <span className="text-[10px] font-black uppercase tracking-widest truncate">{ev.title}</span>
+                       Reset All
                     </button>
-                  ))}
+                 </div>
 
-                  {pastEvents.length > 0 && (
-                    <div className="px-4 py-2 bg-slate-800 border-y border-white/5 text-slate-400 text-[8px] font-black uppercase tracking-widest flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 bg-slate-500 rounded-full"></div> Past Events
-                    </div>
-                  )}
-                  {pastEvents.map(ev => (
-                    <button
-                      key={ev.id}
-                      onClick={() => { setSelectedEventId(ev.id); setIsEventDropdownOpen(false); }}
-                      className={`w-full flex items-center gap-4 px-5 py-3.5 text-left transition-colors border-b border-white/5 last:border-0 ${
-                        selectedEventId === ev.id ? 'bg-blue-500/10 text-blue-400' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-                      }`}
-                    >
-                      <div className={`w-2 h-2 rounded-full shrink-0 ${selectedEventId === ev.id ? 'bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.8)]' : 'bg-transparent'}`} />
-                      <span className="text-[10px] font-black uppercase tracking-widest truncate">{ev.title}</span>
-                    </button>
-                  ))}
+                 <div className="space-y-4">
+                   {showOrgSelect && (
+                     <div>
+                       <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1 block text-left">Organization</span>
+                       <div className="relative">
+                          <select value={selectedOrgId} onChange={(e) => setSelectedOrgId(e.target.value)} className="w-full bg-slate-900 border border-white/10 rounded-xl pl-3 pr-8 py-2.5 text-xs font-bold text-slate-300 outline-none focus:border-blue-500 appearance-none cursor-pointer">
+                             <option value="all">All Organizations</option>
+                             {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                          </select>
+                          <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                       </div>
+                     </div>
+                   )}
 
-                  {allEvents.length === 0 && (
-                    <div className="p-6 text-center text-slate-500 text-[10px] font-black uppercase tracking-widest">
-                      No events found
-                    </div>
-                  )}
-                </div>
+                   {showClubSelect && (
+                     <div>
+                       <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1 block text-left">Club</span>
+                       <div className="relative">
+                          <select value={selectedClubId} onChange={(e) => setSelectedClubId(e.target.value)} disabled={selectedOrgId === 'all' && userRole === 'super_admin'} className="w-full bg-slate-900 border border-white/10 rounded-xl pl-3 pr-8 py-2.5 text-xs font-bold text-slate-300 outline-none focus:border-blue-500 appearance-none cursor-pointer disabled:opacity-50">
+                             <option value="all">All Clubs</option>
+                             {clubs.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          </select>
+                          <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                       </div>
+                     </div>
+                   )}
+
+                   <div>
+                     <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1 block text-left">Event</span>
+                     <div className="relative">
+                        <select value={selectedEventId} onChange={(e) => setSelectedEventId(e.target.value)} className="w-full bg-slate-900 border border-white/10 rounded-xl pl-3 pr-8 py-2.5 text-xs font-bold text-slate-300 outline-none focus:border-blue-500 appearance-none cursor-pointer">
+                           <option value="all">All Events</option>
+                           {allEvents.map(ev => <option key={ev.id} value={ev.id}>{ev.title}</option>)}
+                        </select>
+                        <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                     </div>
+                   </div>
+
+                   <div>
+                     <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1 block text-left">Entry Types</span>
+                     <div className="flex flex-wrap gap-2">
+                       {['all', 'Individual', 'Team'].map(t => (
+                         <button key={t} onClick={() => setTypeFilter(t)} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all border ${typeFilter === t ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-slate-800/50 text-slate-400 border-white/5 hover:bg-slate-800'}`}>{t === 'all' ? 'All Types' : t}</button>
+                       ))}
+                     </div>
+                   </div>
+
+                   {availableGames.length > 0 && (
+                     <div>
+                       <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1 block text-left">Game</span>
+                       <div className="relative">
+                          <select value={gameFilter} onChange={(e) => setGameFilter(e.target.value)} className="w-full bg-slate-900 border border-white/10 rounded-xl pl-3 pr-8 py-2.5 text-xs font-bold text-slate-300 outline-none focus:border-cyan-500 appearance-none cursor-pointer">
+                             <option value="all">All Games</option>
+                             {availableGames.map(g => <option key={g} value={g}>{g}</option>)}
+                          </select>
+                          <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                       </div>
+                     </div>
+                   )}
+                 </div>
               </div>
             )}
           </div>
-          
-          {/* ENTRY TYPE FILTER */}
-          <div className="relative w-full md:w-auto min-w-40 z-20" ref={typeDropdownRef}>
-            <button 
-              onClick={() => setIsTypeDropdownOpen(!isTypeDropdownOpen)}
-              className="flex items-center justify-between w-full px-5 py-3.5 bg-[#0a0f1d] border border-white/5 hover:border-indigo-500/50 rounded-2xl outline-none text-[10px] font-black tracking-widest uppercase transition-all text-white shadow-sm"
-            >
-              <div className="flex items-center gap-3 truncate">
-                <Users size={16} className="text-indigo-400 shrink-0"/>
-                <span className="truncate">{typeFilter === 'all' ? 'All Types' : typeFilter}</span>
-              </div>
-              <ChevronDown size={14} className={`text-slate-500 transition-transform duration-200 shrink-0 ${isTypeDropdownOpen ? 'rotate-180 text-indigo-400' : ''}`} />
-            </button>
-            {isTypeDropdownOpen && (
-              <div className="absolute top-full left-0 mt-2 w-full bg-[#111827] border border-indigo-500/30 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in">
-                <div className="flex flex-col">
-                  {['all', 'Individual', 'Team'].map(t => (
-                    <button key={t} onClick={() => { setTypeFilter(t); setIsTypeDropdownOpen(false); }} className={`text-left px-5 py-3 text-[10px] font-black uppercase tracking-widest transition-colors border-b border-white/5 last:border-0 ${typeFilter === t ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}>
-                      {t === 'all' ? 'All Types' : t}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* GAME FILTER */}
-          {availableGames.length > 0 && (
-            <div className="relative w-full md:w-auto min-w-48 z-10" ref={gameDropdownRef}>
-              <button 
-                onClick={() => setIsGameDropdownOpen(!isGameDropdownOpen)}
-                className="flex items-center justify-between w-full px-5 py-3.5 bg-[#0a0f1d] border border-white/5 hover:border-cyan-500/50 rounded-2xl outline-none text-[10px] font-black tracking-widest uppercase transition-all text-white shadow-sm"
-              >
-                <div className="flex items-center gap-3 truncate">
-                  <Gamepad2 size={16} className="text-cyan-400 shrink-0"/>
-                  <span className="truncate">{gameFilter === 'all' ? 'All Games' : gameFilter}</span>
-                </div>
-                <ChevronDown size={14} className={`text-slate-500 transition-transform duration-200 shrink-0 ${isGameDropdownOpen ? 'rotate-180 text-cyan-400' : ''}`} />
-              </button>
-              {isGameDropdownOpen && (
-                <div className="absolute top-full left-0 mt-2 w-full min-w-56 bg-[#111827] border border-cyan-500/30 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in">
-                  <div className="max-h-60 overflow-y-auto custom-scrollbar flex flex-col">
-                    <button onClick={() => { setGameFilter('all'); setIsGameDropdownOpen(false); }} className={`text-left px-5 py-3 text-[10px] font-black uppercase tracking-widest transition-colors border-b border-white/5 last:border-0 ${gameFilter === 'all' ? 'bg-cyan-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}>All Games</button>
-                    {availableGames.map(g => (
-                      <button key={g} onClick={() => { setGameFilter(g); setIsGameDropdownOpen(false); }} className={`text-left px-5 py-3 text-[10px] font-black uppercase tracking-widest transition-colors border-b border-white/5 last:border-0 ${gameFilter === g ? 'bg-cyan-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}>{g}</button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
         </div>
 
         {/* --- VIEW TOGGLE TABS --- */}
@@ -833,7 +761,7 @@ const MasterManagement = () => {
               <div className="bg-[#111827] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl">
                 <div className="flex justify-between items-start mb-6">
                   <div>
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Check-in Efficiency</p>
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Attendance Rate</p>
                     <h3 className="text-4xl font-black text-white italic tracking-tighter">{analyticsStats.checkInRate}%</h3>
                   </div>
                   <div className="p-3 bg-emerald-500/10 rounded-2xl border border-emerald-500/20 text-emerald-400">
@@ -846,18 +774,21 @@ const MasterManagement = () => {
                 <p className="mt-4 text-[9px] font-black text-slate-500 uppercase tracking-widest">{analyticsStats.checkedInCount} / {analyticsStats.totalRegistrations} Passes Scanned</p>
               </div>
 
-              <div className="bg-[#111827] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl">
-                <div className="flex justify-between items-start mb-6">
-                  <div>
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Platform Revenue</p>
-                    <h3 className="text-4xl font-black text-white italic tracking-tighter">₹{analyticsStats.platformFees}</h3>
+              {/* ONLY SHOW PLATFORM REVENUE TO SUPER ADMIN */}
+              {userRole === 'super_admin' && (
+                <div className="bg-[#111827] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl">
+                  <div className="flex justify-between items-start mb-6">
+                    <div>
+                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Platform Revenue</p>
+                      <h3 className="text-4xl font-black text-white italic tracking-tighter">₹{analyticsStats.platformFees}</h3>
+                    </div>
+                    <div className="p-3 bg-blue-600/10 rounded-2xl border border-blue-500/20 text-blue-400">
+                      <Zap size={20} />
+                    </div>
                   </div>
-                  <div className="p-3 bg-blue-600/10 rounded-2xl border border-blue-500/20 text-blue-400">
-                    <Zap size={20} />
-                  </div>
+                  <p className="text-slate-400 text-xs font-medium leading-relaxed">Generated from the fixed ₹25 platform allocation fee per paid registration.</p>
                 </div>
-                <p className="text-slate-400 text-xs font-medium leading-relaxed">Generated from the fixed ₹5 platform allocation fee per paid registration.</p>
-              </div>
+              )}
             </div>
 
             {/* SIDEBAR: TOURNAMENT & CATEGORY DATA */}
@@ -894,7 +825,7 @@ const MasterManagement = () => {
               <div className="bg-[#111827] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl">
                 <div className="flex items-center gap-3 mb-6">
                   <Users className="text-indigo-400" size={20} />
-                  <h4 className="text-xs font-black uppercase tracking-widest">Participation Mix</h4>
+                  <h4 className="text-xs font-black uppercase tracking-widest">Entry Types</h4>
                 </div>
                 <div className="flex items-center gap-4">
                   <div className="flex-1 space-y-1">
@@ -930,14 +861,6 @@ const MasterManagement = () => {
           /* DATABASE VIEW             */
           /* ================================== */
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {/* SEARCH BAR */}
-            <div className="relative w-full z-10">
-              <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
-              <input 
-                type="text" placeholder="Search by Name, Email, Event, Team Name, Game, or Transaction ID..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-16 pr-6 py-5 bg-[#111827] border border-white/5 rounded-4xl outline-none text-xs sm:text-sm font-bold focus:border-blue-500/50 transition-colors shadow-inner"
-              />
-            </div>
 
             {/* MAIN DATA TABLE */}
             <div className="bg-[#111827] rounded-3xl sm:rounded-[3rem] border border-white/5 overflow-hidden shadow-2xl relative z-10 flex flex-col">
@@ -957,7 +880,7 @@ const MasterManagement = () => {
                           <th className="px-8 py-6 text-[10px] font-black text-slate-500 uppercase tracking-widest">Attendee / Team</th>
                           <th className="px-8 py-6 text-[10px] font-black text-slate-500 uppercase tracking-widest">Event / Game</th>
                           <th className="px-8 py-6 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">Status</th>
-                          <th className="px-8 py-6 text-[10px] font-black text-slate-500 uppercase tracking-widest">Payment Info</th>
+                          <th className="px-8 py-6 text-[10px] font-black text-slate-500 uppercase tracking-widest">Payment Details</th>
                           <th className="px-8 py-6 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right">Actions</th>
                         </tr>
                       </thead>
@@ -980,8 +903,8 @@ const MasterManagement = () => {
                                         <p className="font-black text-sm text-white uppercase italic tracking-tighter group-hover:text-indigo-400 transition-colors">{item.team_name}</p>
                                         <span className="bg-indigo-500/20 text-indigo-400 px-1.5 py-0.5 rounded text-[8px] font-black tracking-widest uppercase">Team</span>
                                       </div>
-                                      <button onClick={() => toggleRow(item.id)} className="text-[9px] font-bold text-blue-400 hover:text-blue-300 uppercase tracking-widest mt-1 text-left">
-                                        {expandedRows.has(item.id) ? 'Hide Roster ▲' : 'View Roster ▼'}
+                                      <button onClick={() => toggleRow(item.id)} className="text-[9px] font-bold text-blue-400 hover:text-blue-300 uppercase tracking-widest mt-1 text-left w-fit">
+                                        {expandedRows.has(item.id) ? `Hide Team ▲` : `View Team (${item.fullMembers?.length || 0}) ▼`}
                                       </button>
                                     </div>
                                   </div>
@@ -1026,13 +949,13 @@ const MasterManagement = () => {
                               </td>
 
                               <td className="px-8 py-5">
-                                {txn ? (
+                                {parseFloat(fees.total) > 0 ? (
                                   <div className="flex flex-col">
-                                    <p className="font-mono text-xs font-bold text-yellow-500 tracking-[0.2em]">{txn}</p>
+                                    {txn && <p className="font-mono text-xs font-bold text-yellow-500 tracking-[0.2em]">{txn}</p>}
                                     <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mt-1">₹{fees.total} Total Paid</p>
                                   </div>
                                 ) : (
-                                  <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest italic">Free Ticket</span>
+                                  <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest italic">Free Entry</span>
                                 )}
                               </td>
                               
@@ -1041,12 +964,12 @@ const MasterManagement = () => {
                                   <button onClick={() => setSelectedAttendee(item)} className="flex items-center gap-2 px-4 py-2 bg-blue-500/10 text-blue-400 hover:bg-blue-500 hover:text-white rounded-xl border border-blue-500/20 transition-all font-black text-[9px] uppercase tracking-widest">
                                     <Eye size={14} /> View Details
                                   </button>
-                                  {item.status === 'pending' && txn && (
-                                    <button onClick={() => handleVerifyUTR(item.id)} className="flex items-center gap-2 px-4 py-2 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white rounded-xl border border-emerald-500/20 transition-all font-black text-[9px] uppercase tracking-widest">
+                                  {item.status === 'pending' && txn && parseFloat(fees.total) > 0 && (
+                                    <button onClick={() => handleVerifyPayment(item.id)} className="flex items-center gap-2 px-4 py-2 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white rounded-xl border border-emerald-500/20 transition-all font-black text-[9px] uppercase tracking-widest">
                                       <CheckCircle size={14} /> Verify
                                     </button>
                                   )}
-                                  <button onClick={() => handleTerminateClick(item.id, item.status === 'pending')} className="flex items-center gap-2 px-4 py-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl border border-red-500/20 transition-all font-black text-[9px] uppercase tracking-widest">
+                                  <button onClick={() => handleRemoveClick(item.id, item.status === 'pending')} className="flex items-center gap-2 px-4 py-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl border border-red-500/20 transition-all font-black text-[9px] uppercase tracking-widest">
                                     {item.status === 'pending' ? <XCircle size={14} /> : <Trash2 size={14} />} 
                                     {item.status === 'pending' ? 'Reject' : 'Remove'}
                                   </button>
@@ -1059,7 +982,7 @@ const MasterManagement = () => {
                               <tr className="bg-black/40 border-b border-white/5 shadow-inner">
                                 <td colSpan="5" className="p-0">
                                   <div className="px-8 py-5 bg-indigo-900/5">
-                                      <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-3 flex items-center gap-2"><Users size={14}/> Official Roster ({item.fullMembers?.length || 0})</p>
+                                      <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-3 flex items-center gap-2"><Users size={14}/> Team Members ({item.fullMembers?.length || 0})</p>
                                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                                         {item.fullMembers?.map((m, i) => (
                                             <div key={i} className="flex items-center gap-3 bg-[#111827] p-3 rounded-xl border border-white/5 shadow-md">
@@ -1067,7 +990,7 @@ const MasterManagement = () => {
                                                 <div className="flex flex-col overflow-hidden">
                                                     <p className="text-xs font-bold text-white flex items-center gap-2 truncate">
                                                         {m.name} {m.surname} 
-                                                        {m.email === item.student_email && <span className="bg-yellow-500/20 text-yellow-500 px-1.5 py-0.5 rounded text-[8px] uppercase tracking-widest shrink-0">Lead</span>}
+                                                        {m.email === item.student_email && <span className="bg-yellow-500/20 text-yellow-500 px-1.5 py-0.5 rounded text-[8px] uppercase tracking-widest shrink-0">Leader</span>}
                                                     </p>
                                                     <p className="text-[9px] text-slate-500 truncate">{m.email} {m.urn ? `• ${m.urn}` : ''}</p>
                                                 </div>
@@ -1100,6 +1023,9 @@ const MasterManagement = () => {
                                   <span className="bg-indigo-500/20 text-indigo-400 px-1.5 py-0.5 rounded text-[8px] font-black tracking-widest uppercase">Team</span>
                                 </div>
                                 <p className="font-black text-base text-white uppercase italic tracking-tighter">{item.team_name}</p>
+                                <p className="text-xs font-bold text-slate-400 uppercase mt-0.5 truncate">
+                                  Lead: {item.students?.name} {item.students?.surname || ''}
+                                </p>
                               </>
                             ) : (
                               <>
@@ -1134,11 +1060,15 @@ const MasterManagement = () => {
                           )}
                         </div>
 
-                        {txn && (
+                        {parseFloat(fees.total) > 0 && (
                           <div className="bg-black/30 p-3 rounded-xl border border-white/5 flex justify-between items-center">
                             <div className="flex flex-col">
                               <span className="text-[8px] text-slate-500 uppercase font-black tracking-widest">Transaction ID</span>
-                              <span className="font-mono text-yellow-500 text-xs font-bold tracking-widest truncate max-w-35">{txn}</span>
+                              {txn ? (
+                                 <span className="font-mono text-yellow-500 text-xs font-bold tracking-widest truncate max-w-35">{txn}</span>
+                              ) : (
+                                 <span className="font-mono text-slate-500 text-xs italic tracking-widest">Pending</span>
+                              )}
                             </div>
                             <div className="flex flex-col text-right">
                               <span className="text-[8px] text-slate-500 uppercase font-black tracking-widest">Total Paid</span>
@@ -1151,7 +1081,7 @@ const MasterManagement = () => {
                           <button onClick={() => setSelectedAttendee(item)} className="flex-1 flex justify-center items-center gap-2 py-3 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white rounded-xl border border-white/5 transition-all font-black text-[10px] uppercase tracking-widest active:scale-95 shadow-md">
                             <Eye size={16} /> Details
                           </button>
-                          <button onClick={() => handleTerminateClick(item.id, item.status === 'pending')} className="flex-1 flex justify-center items-center gap-2 py-3 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl border border-red-500/20 transition-all font-black text-[10px] uppercase tracking-widest active:scale-95 shadow-md">
+                          <button onClick={() => handleRemoveClick(item.id, item.status === 'pending')} className="flex-1 flex justify-center items-center gap-2 py-3 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl border border-red-500/20 transition-all font-black text-[10px] uppercase tracking-widest active:scale-95 shadow-md">
                             {item.status === 'pending' ? <XCircle size={16} /> : <Trash2 size={16} />} 
                             {item.status === 'pending' ? 'Reject' : 'Remove'}
                           </button>
@@ -1264,7 +1194,7 @@ const MasterManagement = () => {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="flex flex-col">
-                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1">Gate Status</span>
+                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1">Entry Status</span>
                     <span className="text-xs font-bold text-slate-300 bg-slate-800 py-1.5 px-3 rounded-lg border border-white/5 w-fit">
                       {selectedAttendee.status === 'checked_in' ? '🟢 Scanned Entry' : '🔴 Not Scanned'}
                     </span>
@@ -1280,20 +1210,20 @@ const MasterManagement = () => {
                 </div>
               </div>
 
-              {selectedAttendee.team_name && selectedAttendee.fullMembers && (
+              {selectedAttendee.team_name && selectedAttendee.fullMembers && selectedAttendee.fullMembers.length > 0 && (
                 <div className="bg-indigo-900/10 rounded-3xl p-4 border border-indigo-500/20 shadow-[0_0_20px_rgba(99,102,241,0.05)]">
-                  <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-3 flex items-center gap-2"><Users size={14}/> Verified Roster ({selectedAttendee.fullMembers.length})</p>
+                  <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-3 flex items-center gap-2"><Users size={14}/> Team Members ({selectedAttendee.fullMembers.length})</p>
                   <div className="space-y-2">
                     {selectedAttendee.fullMembers.map((m, i) => (
                       <div key={i} className="flex items-center justify-between bg-[#111827] p-3 rounded-xl border border-white/5">
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 font-black text-xs uppercase">{m.name?.charAt(0) || 'U'}</div>
-                          <div className="flex flex-col">
-                            <p className="text-sm text-white font-bold flex items-center gap-2">
-                              {m.name} {m.surname}
-                              {m.email === selectedAttendee.student_email && <span className="bg-yellow-500/20 text-yellow-500 px-1.5 py-0.5 rounded text-[8px] uppercase tracking-widest">Lead</span>}
+                          <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 font-black text-xs uppercase shrink-0">{m.name?.charAt(0) || 'U'}</div>
+                          <div className="flex flex-col overflow-hidden">
+                            <p className="text-xs font-bold text-white flex items-center gap-2 truncate">
+                              {m.name} {m.surname} 
+                              {m.email === selectedAttendee.student_email && <span className="bg-yellow-500/20 text-yellow-500 px-1.5 py-0.5 rounded text-[8px] uppercase tracking-widest shrink-0">Leader</span>}
                             </p>
-                            <p className="text-[9px] text-slate-500">{m.email} {m.urn ? `• ${m.urn}` : ''}</p>
+                            <p className="text-[9px] text-slate-500 truncate">{m.email} {m.urn ? `• ${m.urn}` : ''}</p>
                           </div>
                         </div>
                       </div>
@@ -1313,7 +1243,7 @@ const MasterManagement = () => {
                   </span>
                 </div>
 
-                {parseFloat(getFeeBreakdown(selectedAttendee).base) > 0 ? (
+                {parseFloat(getFeeBreakdown(selectedAttendee).total) > 0 ? (
                   <div className="space-y-2">
                     <div className="flex justify-between items-center text-sm">
                       <span className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">Base Ticket Fee</span>
@@ -1322,10 +1252,6 @@ const MasterManagement = () => {
                     <div className="flex justify-between items-center text-sm">
                       <span className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">Platform Fee</span>
                       <span className="text-white font-mono font-bold">₹{getFeeBreakdown(selectedAttendee).platform}</span>
-                    </div>
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">Gateway Fee</span>
-                      <span className="text-white font-mono font-bold">₹{getFeeBreakdown(selectedAttendee).transaction}</span>
                     </div>
                     <div className="border-t border-dashed border-white/20 my-3"></div>
                     <div className="flex justify-between items-center">
@@ -1343,12 +1269,12 @@ const MasterManagement = () => {
             </div>
 
             <div className="p-6 bg-[#111827] border-t border-white/5 flex gap-3 shrink-0">
-              {selectedAttendee.status === 'pending' && getTxnId(selectedAttendee) && (
-                <button onClick={() => handleVerifyUTR(selectedAttendee.id)} className="flex-1 flex justify-center items-center gap-2 py-4 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white rounded-2xl border border-emerald-500/20 transition-all font-black text-[10px] uppercase tracking-widest shadow-lg">
-                  <CheckCircle size={16} /> Verify Ticket
+              {selectedAttendee.status === 'pending' && getTxnId(selectedAttendee) && parseFloat(getFeeBreakdown(selectedAttendee).total) > 0 && (
+                <button onClick={() => handleVerifyPayment(selectedAttendee.id)} className="flex-1 flex justify-center items-center gap-2 py-4 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white rounded-2xl border border-emerald-500/20 transition-all font-black text-[10px] uppercase tracking-widest shadow-lg">
+                  <CheckCircle size={16} /> Verify Payment
                 </button>
               )}
-              <button onClick={() => handleTerminateClick(selectedAttendee.id, selectedAttendee.status === 'pending')} className="flex-1 flex justify-center items-center gap-2 py-4 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-2xl border border-red-500/20 transition-all font-black text-[10px] uppercase tracking-widest shadow-lg">
+              <button onClick={() => handleRemoveClick(selectedAttendee.id, selectedAttendee.status === 'pending')} className="flex-1 flex justify-center items-center gap-2 py-4 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-2xl border border-red-500/20 transition-all font-black text-[10px] uppercase tracking-widest shadow-lg">
                 {selectedAttendee.status === 'pending' ? <XCircle size={16} /> : <Trash2 size={16} />} 
                 {selectedAttendee.status === 'pending' ? 'Reject Payment' : 'Cancel Ticket'}
               </button>
