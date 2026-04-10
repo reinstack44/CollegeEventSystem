@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../sbclient/supabaseClient';
 import { QRCodeCanvas } from 'qrcode.react'; 
 import { 
   Ticket, Calendar, MapPin, Zap, Clock, 
-  X, ShieldCheck, Info, CheckCircle2, Trash2, Download, Loader2, History, AlertTriangle, CreditCard, Users, Gamepad2
+  X, ShieldCheck, Info, CheckCircle2, Trash2, Download, Loader2, History, AlertTriangle, CreditCard, Users, Gamepad2, ArrowLeft
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import html2canvas from 'html2canvas';
@@ -29,7 +30,8 @@ const formatEventTime = (timeStr) => {
   let h = parseInt(hours, 10);
   const ampm = h >= 12 ? 'PM' : 'AM';
   h = h % 12 || 12;
-  return `${h}:${minutes} ${ampm}`;
+  const formattedH = h < 10 ? `0${h}` : h;
+  return `${formattedH}:${minutes} ${ampm}`;
 };
 
 const formatTimeRange = (start, end) => {
@@ -39,6 +41,7 @@ const formatTimeRange = (start, end) => {
 };
 
 const MyTickets = () => {
+  const navigate = useNavigate();
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [studentName, setStudentName] = useState("");
@@ -61,28 +64,51 @@ const MyTickets = () => {
       const { data: profile } = await supabase.from('students').select('name, surname').eq('email', user.email).single();
       setStudentName(`${profile?.name || 'Student'} ${profile?.surname || ''}`);
 
+      // 1. Fetch booking IDs where user is a team member
       const { data: memberships } = await supabase.from('booking_members').select('booking_id').eq('student_email', user.email);
-      const bookingIds = memberships ? memberships.map(m => m.booking_id) : [];
+      const memberBookingIds = memberships ? memberships.map(m => m.booking_id) : [];
 
-      if (bookingIds.length === 0) {
+      // 2. Fetch direct bookings (where the user booked it themselves)
+      const { data: directBookings, error: directErr } = await supabase
+        .from('bookings')
+        .select(`
+          id, status, amount_expected, team_name, selected_game, student_email, created_at,
+          events ( id, title, date, venue, school, start_time, end_time, registration_deadline, event_type, price, org_id, club_id, category, games_list )
+        `)
+        .eq('student_email', user.email)
+        .order('created_at', { ascending: false });
+
+      if (directErr) throw directErr;
+
+      // 3. Fetch member bookings (where user is part of a team but NOT the lead to avoid duplicates)
+      let memberBookings = [];
+      if (memberBookingIds.length > 0) {
+        const { data: mBookings, error: mErr } = await supabase
+          .from('bookings')
+          .select(`
+            id, status, amount_expected, team_name, selected_game, student_email, created_at,
+            events ( id, title, date, venue, school, start_time, end_time, registration_deadline, event_type, price, org_id, club_id, category, games_list )
+          `)
+          .in('id', memberBookingIds)
+          .neq('student_email', user.email)
+          .order('created_at', { ascending: false });
+          
+        if (mErr) throw mErr;
+        if (mBookings) memberBookings = mBookings;
+      }
+
+      // Combine and sort by date descending
+      const allData = [...(directBookings || []), ...memberBookings].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+      if (allData.length === 0) {
         setTickets([]);
         setLoading(false);
         return;
       }
 
-      const { data, error } = await supabase
-        .from('bookings')
-        .select(`
-          id, status, amount_expected, team_name, selected_game, student_email,
-          events ( id, title, date, venue, school, start_time, end_time, registration_deadline, event_type, price, org_id, club_id, category, games_list )
-        `)
-        .in('id', bookingIds)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      const orgIds = [...new Set((data || []).map(b => b.events?.org_id).filter(Boolean))];
-      const clubIds = [...new Set((data || []).map(b => b.events?.club_id).filter(Boolean))];
+      // Retrieve org and club names for the fetched events
+      const orgIds = [...new Set(allData.map(b => b.events?.org_id).filter(Boolean))];
+      const clubIds = [...new Set(allData.map(b => b.events?.club_id).filter(Boolean))];
       
       let orgMap = {};
       let clubMap = {};
@@ -97,7 +123,7 @@ const MyTickets = () => {
         if (clubData) clubData.forEach(c => { clubMap[c.id] = c.name; });
       }
 
-      const validTickets = (data || []).filter(ticket => ticket.events !== null).map(t => ({
+      const validTickets = allData.filter(ticket => ticket.events !== null).map(t => ({
         ...t,
         orgName: orgMap[t.events.org_id] || 'Organization',
         clubName: clubMap[t.events.club_id] || null,
@@ -106,6 +132,7 @@ const MyTickets = () => {
 
       setTickets(validTickets);
     } catch (error) {
+      console.error("Discovery Error:", error);
       toast.error("Failed to load tickets.");
     } finally {
       setLoading(false);
@@ -285,6 +312,15 @@ const MyTickets = () => {
   return (
     <div className="min-h-screen bg-[#0a0f1d] text-white p-6 pb-24 selection:bg-blue-500/30 overflow-hidden">
       <div className="max-w-6xl mx-auto">
+
+        {/* --- BACK BUTTON --- */}
+        <button 
+          onClick={() => navigate(-1)} 
+          className="flex items-center gap-2 text-slate-500 hover:text-blue-500 transition-colors font-black text-[10px] uppercase tracking-widest mb-8 w-fit"
+        >
+          <ArrowLeft size={14} /> Back
+        </button>
+
         <header className="mb-16">
            <div className="flex items-center gap-3 mb-2 text-left">
              <div className="p-2 bg-blue-600/20 rounded-lg"><Ticket className="text-blue-500" size={24} /></div>

@@ -1033,7 +1033,7 @@ const EventCard = ({ event, onBook, onViewTicket, availableClubs, onExpand }) =>
   
   let btnText = "Get Ticket";
   if (event.isFullyBooked) btnText = "View Pass";
-  else if (event.hasAnyBooking && event.category === 'E-Sports') btnText = "Manage Passes";
+  else if (event.hasAnyBooking && event.category === 'E-Sports') btnText = "Book Your Passes";
   else if (!event.isOpen) btnText = "Closed";
 
   return (
