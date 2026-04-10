@@ -890,7 +890,7 @@ const EventList = () => {
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center gap-3 relative w-full z-40" ref={filterMenuRef}>
             <div className="relative flex-1">
-              <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+              <Search className="absolute left-5 top-8 -translate-y-1/2 text-slate-400" size={18} />
               <input 
                 type="text" 
                 placeholder="Search events..." 

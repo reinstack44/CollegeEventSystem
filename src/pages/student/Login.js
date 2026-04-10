@@ -42,11 +42,13 @@ const Login = () => {
         {/* LEFT PANEL: Visual Branding (Hidden on Mobile) */}
         <div className="hidden md:flex md:w-5/12 lg:w-1/2 relative p-12 flex-col justify-between overflow-hidden border-r border-white/5">
           {/* High-Tech Background Image overlay */}
-          <div className="absolute inset-0 bg-linear-to-br from-blue-900/40 via-[#0a0f1d]/90 to-[#0a0f1d] z-10" />
+          <div className="absolute inset-0 bg-linear-to-br from-blue-900/60 via-[#0a0f1d]/90 to-[#0a0f1d] z-10" />
+          
+          {/* NEW IMAGE: University Event/Crowd specific */}
           <img 
-            src="https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&q=80&w=2070" 
-            alt="Nexus Tech" 
-            className="absolute inset-0 w-full h-full object-cover mix-blend-overlay opacity-30"
+            src="https://images.unsplash.com/photo-1492684223066-81342ee5ff30?q=80&w=2070" 
+            alt="ADYPU University Event" 
+            className="absolute inset-0 w-full h-full object-cover mix-blend-overlay opacity-40"
           />
           
           <div className="relative z-20">
