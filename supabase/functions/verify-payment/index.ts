@@ -17,7 +17,7 @@ Deno.serve(async (req) => {
     const secret = Deno.env.get('RAZORPAY_KEY_SECRET');
     if (!secret) throw new Error("Server is missing RAZORPAY_KEY_SECRET.");
 
-    // 1. Bulletproof Node Crypto Signature Verification
+    // Verify Payment Signature
     const text = `${razorpay_order_id}|${razorpay_payment_id}`;
     const expectedSignature = crypto.createHmac('sha256', secret).update(text).digest('hex');
 
@@ -25,7 +25,6 @@ Deno.serve(async (req) => {
       throw new Error("Signature mismatch! Payment was altered.");
     }
 
-    // 2. Initialize Database
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -33,26 +32,23 @@ Deno.serve(async (req) => {
 
     const membersArray = Array.isArray(members) ? members : [student_email];
 
-    // 3. Book Ticket & Pass the 'verified' status directly
+    // SINGLE ATOMIC INSERT - If this fails, no ghost tickets are created!
     const { data: bookingId, error: rpcError } = await supabaseAdmin.rpc('book_ticket_atomically', {
       p_event_id: event_id,
       p_student_email: student_email,
       p_team_name: team_name || null,
       p_selected_game: selected_game || null,
       p_members: membersArray,
-      p_status: 'verified' 
+      p_status: 'verified',
+      p_transaction_id: razorpay_payment_id
     });
 
     if (rpcError) throw new Error(`Database Error: ${rpcError.message}`);
-
-    // 4. Save the Transaction ID
-    await supabaseAdmin.from('bookings').update({ transaction_id: razorpay_payment_id }).eq('id', bookingId);
 
     return new Response(JSON.stringify({ success: true, booking: { id: bookingId } }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {
     console.error("Verification Error:", error);
-    // Crucial: Send the EXACT error text back to the frontend
     return new Response(JSON.stringify({ success: false, error: error.message }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });

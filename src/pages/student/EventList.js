@@ -28,7 +28,6 @@ const CATEGORIES = [
 
 const PLATFORM_FEE = 20;
 
-// FIXED: Made ticket_type and category checks fully case-insensitive
 const getBaseAmount = (eventObj, selectedGameObj) => {
   if (String(eventObj?.category).toLowerCase() === 'e-sports' && selectedGameObj) {
      return String(selectedGameObj.ticket_type).toLowerCase() === 'paid' ? Number(selectedGameObj.ticket_price || 0) : 0;
@@ -41,12 +40,12 @@ const getDisplayAmount = (eventObj, selectedGameObj) => {
   return base > 0 ? base + PLATFORM_FEE : 0;
 };
 
-// FIXED: Made ticket_type and category checks fully case-insensitive
+// EXTREME SAFETY: Strips spaces and forces lowercase before matching strings
 const getTicketViewerPrice = (ticket) => {
   if (!ticket) return 0;
   if (String(ticket.category).toLowerCase() === 'e-sports' && ticket.selectedGame) {
-     const gameObj = ticket.games_list?.find(g => String(g.gameName).trim() === String(ticket.selectedGame).trim());
-     if (gameObj && String(gameObj.ticket_type).toLowerCase() === 'paid') return Number(gameObj.ticket_price || 0) + PLATFORM_FEE;
+     const gameObj = ticket.games_list?.find(g => String(g.gameName).trim().toLowerCase() === String(ticket.selectedGame).trim().toLowerCase());
+     if (gameObj && String(gameObj.ticket_type).trim().toLowerCase() === 'paid') return Number(gameObj.ticket_price || 0) + PLATFORM_FEE;
      return 0;
   }
   if (Number(ticket.price) > 0) return Number(ticket.price) + PLATFORM_FEE;
@@ -93,7 +92,6 @@ const EventList = () => {
 
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
 
-  // MODAL FLIP STATE
   const [expandedEvent, setExpandedEvent] = useState(null);
   const [isCardFlipped, setIsCardFlipped] = useState(false);
   const [zoomedClub, setZoomedClub] = useState(null);
@@ -306,7 +304,6 @@ const EventList = () => {
     setWizard(p => ({ ...p, members: p.members.filter(m => m.email !== email || m.isLead) }));
   };
 
-  // --- SMART BACK BUTTON LOGIC ---
   const handleWizardBack = () => {
     if (wizard.step === 4) {
       if (wizard.entryMode === 'Team') setWizard(p => ({...p, step: 3}));
@@ -330,15 +327,11 @@ const EventList = () => {
     
     return false;
   };
-  // -------------------------------
 
   const processFinalCheckout = async () => {
     setWizard(p => ({ ...p, processing: true }));
     const { event, selectedGame, entryMode, teamName, members } = wizard;
 
-    // =========================================================================
-    // BULLETPROOF PRE-CHECK: Strictly block any multiple entries for the same game
-    // =========================================================================
     try {
       const { data: existingBookings } = await supabase
         .from('bookings')
@@ -377,14 +370,12 @@ const EventList = () => {
        setWizard(p => ({ ...p, processing: false }));
        return; 
     }
-    // =========================================================================
     
     const baseAmount = getBaseAmount(event, selectedGame);
     const isPaidEvent = baseAmount > 0;
     
     try {
       if (!isPaidEvent) {
-        // SECURE FREE TICKET USING RPC TO PREVENT CONFLICTS
         const { data: bookingId, error } = await supabase.rpc('book_ticket_atomically', {
           p_event_id: event.id,
           p_student_email: currentUserEmail,
@@ -481,11 +472,10 @@ const EventList = () => {
                setWizard(p => ({ ...p, processing: false })); 
             }
           },
-          // SAFELY HANDLE CANCEL BUTTON TO STOP GHOST TICKETS
           modal: {
             ondismiss: function () {
               setWizard(p => ({ ...p, processing: false }));
-              toast.error("Payment cancelled by user.");
+              toast.error("Payment cancelled.");
             }
           },
           prefill: { email: currentUserEmail }, theme: { color: "#2563eb" } 

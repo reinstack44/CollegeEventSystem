@@ -358,20 +358,20 @@ const MasterManagement = () => {
     setExpandedRows(newSet);
   };
 
-  const handleVerifyPayment = async (bookingId) => {
-    const toastId = toast.loading("Verifying Payment...");
+  // EXPLICIT APPROVAL LOGIC (Replaced specific Verify conditions)
+  const handleApproveTicket = async (bookingId) => {
+    const toastId = toast.loading("Approving Ticket...");
     try {
       const { error } = await supabase.from('bookings').update({ status: 'verified' }).eq('id', bookingId);
       if (error) throw error;
-      toast.success("Payment Verified!", { id: toastId });
+      toast.success("Ticket Approved!", { id: toastId });
       setAttendees(prev => prev.map(a => a.id === bookingId ? { ...a, status: 'verified' } : a));
       if (selectedAttendee?.id === bookingId) setSelectedAttendee(prev => ({...prev, status: 'verified'}));
     } catch (error) {
-      toast.error("Verification failed.", { id: toastId });
+      toast.error("Approval failed.", { id: toastId });
     }
   };
 
-  // SECURITY UPDATE: Pass isPaid flag to Modal
   const handleRemoveClick = (bookingId, isReject = false, isPaid = false) => {
     setConfirmModal({ isOpen: true, bookingId, isReject, isPaid });
   };
@@ -978,9 +978,9 @@ const MasterManagement = () => {
                                   <button onClick={() => setSelectedAttendee(item)} className="flex items-center gap-2 px-4 py-2 bg-blue-500/10 text-blue-400 hover:bg-blue-500 hover:text-white rounded-xl border border-blue-500/20 transition-all font-black text-[9px] uppercase tracking-widest">
                                     <Eye size={14} /> View Details
                                   </button>
-                                  {item.status === 'pending' && txn && parseFloat(fees.total) > 0 && (
-                                    <button onClick={() => handleVerifyPayment(item.id)} className="flex items-center gap-2 px-4 py-2 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white rounded-xl border border-emerald-500/20 transition-all font-black text-[9px] uppercase tracking-widest">
-                                      <CheckCircle size={14} /> Verify
+                                  {item.status === 'pending' && (
+                                    <button onClick={() => handleApproveTicket(item.id)} className="flex items-center gap-2 px-4 py-2 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white rounded-xl border border-emerald-500/20 transition-all font-black text-[9px] uppercase tracking-widest">
+                                      <CheckCircle size={14} /> Approve
                                     </button>
                                   )}
                                   <button onClick={() => handleRemoveClick(item.id, item.status === 'pending', parseFloat(fees.total) > 0)} className="flex items-center gap-2 px-4 py-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl border border-red-500/20 transition-all font-black text-[9px] uppercase tracking-widest">
@@ -1092,6 +1092,11 @@ const MasterManagement = () => {
                         )}
 
                         <div className="flex items-center gap-2 pt-2">
+                          {item.status === 'pending' && (
+                            <button onClick={() => handleApproveTicket(item.id)} className="flex-1 flex justify-center items-center gap-2 py-3 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white rounded-xl border border-emerald-500/20 transition-all font-black text-[10px] uppercase tracking-widest active:scale-95 shadow-md">
+                              <CheckCircle size={16} /> Approve
+                            </button>
+                          )}
                           <button onClick={() => setSelectedAttendee(item)} className="flex-1 flex justify-center items-center gap-2 py-3 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white rounded-xl border border-white/5 transition-all font-black text-[10px] uppercase tracking-widest active:scale-95 shadow-md">
                             <Eye size={16} /> Details
                           </button>
@@ -1283,9 +1288,9 @@ const MasterManagement = () => {
             </div>
 
             <div className="p-6 bg-[#111827] border-t border-white/5 flex gap-3 shrink-0">
-              {selectedAttendee.status === 'pending' && getTxnId(selectedAttendee) && parseFloat(getFeeBreakdown(selectedAttendee).total) > 0 && (
-                <button onClick={() => handleVerifyPayment(selectedAttendee.id)} className="flex-1 flex justify-center items-center gap-2 py-4 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white rounded-2xl border border-emerald-500/20 transition-all font-black text-[10px] uppercase tracking-widest shadow-lg">
-                  <CheckCircle size={16} /> Verify Payment
+              {selectedAttendee.status === 'pending' && (
+                <button onClick={() => handleApproveTicket(selectedAttendee.id)} className="flex-1 flex justify-center items-center gap-2 py-4 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white rounded-2xl border border-emerald-500/20 transition-all font-black text-[10px] uppercase tracking-widest shadow-lg">
+                  <CheckCircle size={16} /> Approve Ticket
                 </button>
               )}
               <button onClick={() => handleRemoveClick(selectedAttendee.id, selectedAttendee.status === 'pending', parseFloat(getFeeBreakdown(selectedAttendee).total) > 0)} className="flex-1 flex justify-center items-center gap-2 py-4 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-2xl border border-red-500/20 transition-all font-black text-[10px] uppercase tracking-widest shadow-lg">
