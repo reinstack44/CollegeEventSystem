@@ -28,11 +28,12 @@ const CATEGORIES = [
 
 const PLATFORM_FEE = 20;
 
+// FIXED: Made ticket_type and category checks fully case-insensitive
 const getBaseAmount = (eventObj, selectedGameObj) => {
-  if (eventObj?.category === 'E-Sports' && selectedGameObj) {
-     return selectedGameObj.ticket_type === 'paid' ? Number(selectedGameObj.ticket_price || 0) : 0;
+  if (String(eventObj?.category).toLowerCase() === 'e-sports' && selectedGameObj) {
+     return String(selectedGameObj.ticket_type).toLowerCase() === 'paid' ? Number(selectedGameObj.ticket_price || 0) : 0;
   }
-  return eventObj?.event_type === 'paid' ? Number(eventObj.price || 0) : 0;
+  return String(eventObj?.event_type).toLowerCase() === 'paid' ? Number(eventObj.price || 0) : 0;
 };
 
 const getDisplayAmount = (eventObj, selectedGameObj) => {
@@ -40,11 +41,12 @@ const getDisplayAmount = (eventObj, selectedGameObj) => {
   return base > 0 ? base + PLATFORM_FEE : 0;
 };
 
+// FIXED: Made ticket_type and category checks fully case-insensitive
 const getTicketViewerPrice = (ticket) => {
   if (!ticket) return 0;
-  if (ticket.category === 'E-Sports' && ticket.selectedGame) {
-     const gameObj = ticket.games_list?.find(g => g.gameName === ticket.selectedGame);
-     if (gameObj && gameObj.ticket_type === 'paid') return Number(gameObj.ticket_price || 0) + PLATFORM_FEE;
+  if (String(ticket.category).toLowerCase() === 'e-sports' && ticket.selectedGame) {
+     const gameObj = ticket.games_list?.find(g => String(g.gameName).trim() === String(ticket.selectedGame).trim());
+     if (gameObj && String(gameObj.ticket_type).toLowerCase() === 'paid') return Number(gameObj.ticket_price || 0) + PLATFORM_FEE;
      return 0;
   }
   if (Number(ticket.price) > 0) return Number(ticket.price) + PLATFORM_FEE;
@@ -336,7 +338,6 @@ const EventList = () => {
 
     // =========================================================================
     // BULLETPROOF PRE-CHECK: Strictly block any multiple entries for the same game
-    // Allows booking different games in the same event
     // =========================================================================
     try {
       const { data: existingBookings } = await supabase
@@ -348,7 +349,6 @@ const EventList = () => {
       if (existingBookings && existingBookings.length > 0) {
         const bIds = existingBookings.map(b => b.id);
         
-        // 1. Check if Current Logged-In User is already in ANY booking for this game
         const { data: memCheck } = await supabase
           .from('booking_members')
           .select('id')
@@ -359,7 +359,6 @@ const EventList = () => {
           throw new Error(`You are already registered for ${selectedGame?.gameName || 'this event'}. Multiple entries are not allowed.`);
         }
         
-        // 2. Check if ANY of the added team members are already in this game
         if (members.length > 1) {
             const memberEmails = members.filter(m => m.email !== currentUserEmail).map(m => m.email);
             const { data: crossMemCheck } = await supabase
@@ -376,7 +375,7 @@ const EventList = () => {
     } catch (err) {
        toast.error(err.message);
        setWizard(p => ({ ...p, processing: false }));
-       return; // Stop the checkout instantly before touching the database or Razorpay
+       return; 
     }
     // =========================================================================
     
@@ -385,30 +384,30 @@ const EventList = () => {
     
     try {
       if (!isPaidEvent) {
-        const { data: booking, error } = await supabase.from('bookings').insert({
-          event_id: event.id, student_email: currentUserEmail, status: 'confirmed',
-          team_name: entryMode === 'Team' ? teamName.trim() : null,
-          selected_game: selectedGame?.gameName || null
-        }).select().single();
-        if (error) throw error;
+        // SECURE FREE TICKET USING RPC TO PREVENT CONFLICTS
+        const { data: bookingId, error } = await supabase.rpc('book_ticket_atomically', {
+          p_event_id: event.id,
+          p_student_email: currentUserEmail,
+          p_team_name: entryMode === 'Team' ? teamName.trim() : null,
+          p_selected_game: selectedGame?.gameName || null,
+          p_members: members.map(m => m.email),
+          p_status: 'confirmed'
+        });
 
-        const memPayload = members.map(m => ({ booking_id: booking.id, event_id: event.id, student_email: m.email }));
-        const { error: memErr } = await supabase.from('booking_members').insert(memPayload);
-        if (memErr) throw memErr;
+        if (error) throw new Error(error.message || "Failed to secure ticket. Event may be sold out.");
 
         setPaymentSuccess(true); 
         fetchEvents();
         setTimeout(() => {
           setPaymentSuccess(false); 
-          setWizard(p => ({ ...p, open: false }));
-          handleViewTicket(event, { ...booking, status: 'confirmed', team_name: entryMode === 'Team' ? teamName : null, selected_game: selectedGame?.gameName, student_email: currentUserEmail }, members);
+          setWizard(p => ({ ...p, open: false, processing: false })); 
+          handleViewTicket(event, { id: bookingId, status: 'confirmed', team_name: entryMode === 'Team' ? teamName : null, selected_game: selectedGame?.gameName, student_email: currentUserEmail }, members);
         }, 3500);
 
       } else {
         const res = await loadRazorpayScript();
         if (!res) throw new Error("Razorpay SDK failed to load.");
 
-        // Request order from backend with full webhook payload
         const { data: orderData, error: orderError } = await supabase.functions.invoke('create-razorpay-order', { 
            body: { 
              event_id: event.id, 
@@ -416,31 +415,21 @@ const EventList = () => {
              student_email: currentUserEmail,
              team_name: entryMode === 'Team' ? teamName.trim() : null,
              selected_game: selectedGame?.gameName || null,
-             // Razorpay limits notes to 255 chars. Safely stringify and trim it.
              members: members.map(m => m.email).join(',').substring(0, 250) 
            } 
         });
 
-        // BULLETPROOF ERROR CATCHER
         if (orderError) {
            console.error("Full Server Error:", orderError);
            let errorText = "Payment server is offline. Check Edge Function logs.";
-           
            try {
-             // Try to extract the exact error message your Edge Function sent back
              const serverMsg = await orderError.context?.json();
-             if (serverMsg && serverMsg.error) {
-                errorText = typeof serverMsg.error === 'string' ? serverMsg.error : JSON.stringify(serverMsg.error);
-             }
-           } catch(e) {
-             errorText = orderError.message || errorText;
-           }
-           
+             if (serverMsg && serverMsg.error) errorText = typeof serverMsg.error === 'string' ? serverMsg.error : JSON.stringify(serverMsg.error);
+           } catch(e) { errorText = orderError.message || errorText; }
            throw new Error(errorText);
         }
         
         if (!orderData || !orderData.amount) {
-           console.error("Invalid Order Data:", orderData);
            throw new Error("Payment server returned invalid data. Check your Edge Function logs.");
         }
         
@@ -465,21 +454,38 @@ const EventList = () => {
 
                const { data: verifyData, error: verifyError } = await supabase.functions.invoke('verify-payment', { body: verificationPayload });
                
-               if (verifyError || !verifyData?.success) {
-                  throw new Error("Payment verification failed at server level.");
+               if (verifyError) {
+                  let serverErrText = "Payment verification failed at server level.";
+                  try {
+                    const json = await verifyError.context?.json();
+                    if (json && json.error) serverErrText = json.error;
+                  } catch(e) { serverErrText = verifyError.message || serverErrText; }
+                  throw new Error(serverErrText);
+               }
+               
+               if (verifyData && !verifyData.success) {
+                  throw new Error(verifyData.error || "Verification rejected by server.");
                }
 
                setPaymentSuccess(true); 
                fetchEvents();
                setTimeout(() => {
                   setPaymentSuccess(false); 
-                  setWizard(p => ({ ...p, open: false }));
-                  handleViewTicket(event, { ...verifyData.booking, student_email: currentUserEmail }, members);
+                  setWizard(p => ({ ...p, open: false, processing: false })); 
+                  handleViewTicket(event, { id: verifyData.booking?.id || verifyData.bookingId, status: 'verified', team_name: entryMode === 'Team' ? teamName.trim() : null, selected_game: selectedGame?.gameName, student_email: currentUserEmail }, members);
                }, 3500);
 
             } catch (err) {
                console.error(err);
-               toast.error("Payment received, but verification failed. Please contact support.");
+               toast.error(err.message || "Payment received, but verification failed.");
+               setWizard(p => ({ ...p, processing: false })); 
+            }
+          },
+          // SAFELY HANDLE CANCEL BUTTON TO STOP GHOST TICKETS
+          modal: {
+            ondismiss: function () {
+              setWizard(p => ({ ...p, processing: false }));
+              toast.error("Payment cancelled by user.");
             }
           },
           prefill: { email: currentUserEmail }, theme: { color: "#2563eb" } 
@@ -488,7 +494,6 @@ const EventList = () => {
       }
     } catch (error) {
       toast.error(error.message || "Booking failed.");
-    } finally { 
       setWizard(p => ({ ...p, processing: false })); 
     }
   };
@@ -760,7 +765,7 @@ const EventList = () => {
           <button onClick={() => setSelectedTicket(null)} className="absolute top-6 right-6 p-2.5 bg-white/10 hover:bg-white/20 rounded-full text-white z-610 border border-white/10 transition-all"><X size={24} /></button>
           <div className="w-full max-w-[90vw] md:max-w-md max-h-[90vh] overflow-y-auto custom-scrollbar relative animate-in zoom-in-95 duration-300">
              
-             <div className="bg-[#0f172a] rounded-[2.5rem] border border-slate-800 p-6 md:p-8 flex flex-col w-full text-left relative overflow-hidden shadow-2xl">
+             <div className="bg-[#0f172a] rounded-[40px] border border-slate-800 p-6 md:p-8 flex flex-col w-full text-left relative overflow-hidden shadow-2xl">
                 <div className="flex justify-between items-start border-b border-slate-800 pb-4 mb-6">
                    <p className="text-[9px] font-black text-blue-500 uppercase tracking-[0.2em] leading-relaxed max-w-[60%]">
                       {selectedTicket.orgName} {selectedTicket.clubName ? `• ${selectedTicket.clubName}` : ''} <br/> EVENT PASS
@@ -925,7 +930,7 @@ const EventList = () => {
             <div className={`relative w-full h-full transition-transform duration-700 transform-style-3d ${isCardFlipped ? 'rotate-y-180' : ''}`}>
               
               {/* FRONT OF MODAL CARD */}
-              <div className="absolute inset-0 backface-hidden bg-[#111827] rounded-[2.5rem] border border-white/10 shadow-2xl flex flex-col overflow-hidden">
+              <div className="absolute inset-0 backface-hidden bg-[#111827] rounded-[40px] border border-white/10 shadow-2xl flex flex-col overflow-hidden">
                 <div className="relative h-56 shrink-0 bg-slate-900 border-b border-white/5">
                   <img src={Array.isArray(expandedEvent.images) && expandedEvent.images.length > 0 ? expandedEvent.images[0] : "https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&q=80&w=800"} alt="Cover" className="w-full h-full object-cover" />
                   <div className="absolute inset-0 bg-linear-to-t from-[#111827] via-transparent opacity-90"></div>
@@ -963,7 +968,7 @@ const EventList = () => {
               </div>
 
               {/* BACK OF MODAL CARD */}
-              <div className="absolute inset-0 backface-hidden rotate-y-180 bg-[#111827] rounded-[2.5rem] border border-white/10 shadow-2xl flex flex-col overflow-hidden" onClick={(e) => { e.stopPropagation(); setIsCardFlipped(false); }}>
+              <div className="absolute inset-0 backface-hidden rotate-y-180 bg-[#111827] rounded-[40px] border border-white/10 shadow-2xl flex flex-col overflow-hidden" onClick={(e) => { e.stopPropagation(); setIsCardFlipped(false); }}>
                 <div className="p-6 md:p-8 flex flex-col h-full text-left">
                   <div className="flex items-center gap-2 border-b border-white/10 pb-4 mb-4 shrink-0 text-blue-400 font-black uppercase tracking-widest text-sm">
                     <FileText size={18}/> Event Description
@@ -1017,7 +1022,7 @@ const EventList = () => {
             </button>
 
             {isFilterMenuOpen && (
-              <div className="absolute top-full right-0 mt-3 w-full sm:w-85 bg-[#111827] border border-white/10 rounded-3xl shadow-2xl p-6 z-50 animate-in fade-in zoom-in-95">
+              <div className="absolute top-full right-0 mt-3 w-full sm:w-85 bg-[#111827] border border-white/10 rounded-[40px] shadow-2xl p-6 z-50 animate-in fade-in zoom-in-95">
                  <div className="flex items-center justify-between mb-5 border-b border-white/5 pb-4">
                     <h3 className="text-white font-black uppercase tracking-widest text-xs flex items-center gap-2">
                        <Filter size={14} className="text-blue-500"/> Search Filters
@@ -1082,7 +1087,7 @@ const EventList = () => {
             <span className="text-xs font-bold text-slate-500 uppercase tracking-widest bg-slate-800 px-3 py-1 rounded-full border border-white/5">{filteredEvents.length} EVENTS</span>
           </div>
           {filteredEvents.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-24 bg-[#111827]/50 rounded-[2.5rem] border border-white/5 border-dashed"><p className="text-slate-400 font-bold text-sm text-center px-4">No events found.</p></div>
+            <div className="flex flex-col items-center justify-center py-24 bg-[#111827]/50 rounded-[40px] border border-white/5 border-dashed"><p className="text-slate-400 font-bold text-sm text-center px-4">No events found.</p></div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8 animate-in fade-in duration-500 items-stretch">
               {filteredEvents.map(event => (
@@ -1142,7 +1147,7 @@ const EventCard = ({ event, onBook, onViewTicket, availableClubs, onExpand }) =>
   else if (!event.isOpen) btnText = "Closed";
 
   return (
-    <div onClick={() => onExpand(event)} className={`group flex flex-col h-full bg-[#111827]/90 backdrop-blur-md rounded-[2.5rem] overflow-hidden border ${glowClass} hover:-translate-y-1 transition-all cursor-pointer shadow-xl relative`}>
+    <div onClick={() => onExpand(event)} className={`group flex flex-col h-full bg-[#111827]/90 backdrop-blur-md rounded-[40px] overflow-hidden border ${glowClass} hover:-translate-y-1 transition-all cursor-pointer shadow-xl relative`}>
       <div className="relative h-48 shrink-0 bg-slate-900 border-b border-white/5">
         <img src={Array.isArray(event.images) && event.images.length > 0 ? event.images[0] : "https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&q=80&w=800"} alt="Cover" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"/>
         <div className="absolute inset-0 bg-linear-to-t from-[#111827] via-transparent opacity-90"></div>
