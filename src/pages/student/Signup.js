@@ -1,61 +1,35 @@
 import React, { useState } from 'react';
 import { supabase } from '../../sbclient/supabaseClient';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Mail, ArrowRight, Zap, ScanFace } from 'lucide-react';
+import { ScanFace, Chrome } from 'lucide-react';
 
 const Signup = () => {
-  const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
 
-  const handleVerify = async (e) => {
-    e.preventDefault();
-    
-    if (!email.toLowerCase().endsWith('@adypu.edu.in')) {
-      toast.error("Access Denied: Only @adypu.edu.in emails allowed.");
-      return;
-    }
-
+  const handleGoogleLogin = async () => {
     setLoading(true);
-    const loadToast = toast.loading('Verifying identity credentials...');
+    const loadToast = toast.loading('Connecting to University Portal...');
 
     try {
-      // 1. SECURE EXISTENCE CHECK: Ask the database if this email already has a profile
-      const { data: userExists, error: checkError } = await supabase.rpc('check_user_exists', { 
-        lookup_email: email.trim() 
-      });
-
-      if (checkError) throw checkError;
-
-      if (userExists) {
-        toast.error("You are already registered on this portal. Please login.", { id: loadToast });
-        setLoading(false);
-        return; // Stops the execution here so they don't get the signup email
-      }
-
-      // 2. PROCEED WITH SIGNUP: If they don't exist, send the magic link
-      toast.loading('Sending verification link...', { id: loadToast });
-      const { error } = await supabase.auth.signInWithOtp({
-        email: email.trim(),
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
         options: {
-          emailRedirectTo: window.location.origin + '/complete-registration',
-        },
+          // THIS IS THE MAGIC LINE: It strictly locks the Google login window to this domain!
+          queryParams: {
+            hd: 'adypu.edu.in', 
+            prompt: 'select_account' // Forces them to pick the right account if they have multiple
+          },
+          redirectTo: window.location.origin + '/complete-registration'
+        }
       });
 
       if (error) throw error;
-
-      toast.success("Verification link sent! Check your university mail inbox.", { id: loadToast });
-      
-      setTimeout(() => {
-        navigate('/login');
-      }, 2500);
+      // Note: We don't need toast.success here because the browser will instantly redirect to Google
 
     } catch (error) {
-      // SECURITY: Mask raw backend errors from the user in production
-      console.error("Signup System Error:", error);
-      toast.error("Something went wrong on our end. Please try again or contact support.", { id: loadToast });
-    } finally {
+      console.error("Auth Error:", error);
+      toast.error("Failed to connect to Google. Please try again.", { id: loadToast });
       setLoading(false);
     }
   };
@@ -72,7 +46,6 @@ const Signup = () => {
         
         {/* LEFT PANEL: Visual Branding (Hidden on Mobile) */}
         <div className="hidden md:flex md:w-5/12 lg:w-1/2 relative p-12 flex-col justify-between overflow-hidden border-r border-white/5">
-          {/* High-Tech Background Image overlay */}
           <div className="absolute inset-0 bg-linear-to-tr from-blue-900/40 via-[#0a0f1d]/90 to-[#0a0f1d] z-10" />
           <img 
             src="https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&q=80&w=2070" 
@@ -90,7 +63,7 @@ const Signup = () => {
               <span className="text-blue-500">Identity</span>
             </h1>
             <p className="mt-4 text-xs font-bold text-slate-400 uppercase tracking-widest leading-relaxed max-w-xs">
-              Secure your account using your official university email to unlock full access.
+              Secure your account using your official university Google account.
             </p>
           </div>
 
@@ -105,10 +78,8 @@ const Signup = () => {
         {/* RIGHT PANEL: Form Area */}
         <div className="w-full md:w-7/12 lg:w-1/2 p-8 sm:p-10 lg:p-14 flex flex-col justify-center relative bg-linear-to-b from-transparent to-[#0a0f1d]/50">
           
-          {/* Decorative Top Accent for Mobile */}
           <div className="md:hidden absolute top-0 left-0 w-full h-1 bg-linear-to-r from-transparent via-blue-500 to-transparent opacity-50" />
 
-          {/* Mobile Header (Hidden on Desktop) */}
           <div className="md:hidden mb-10 text-center">
             <div className="w-14 h-14 bg-blue-600/10 border border-blue-500/20 text-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-500/10">
               <ScanFace size={24} />
@@ -117,7 +88,6 @@ const Signup = () => {
             <p className="text-slate-500 font-bold text-[9px] uppercase tracking-[0.3em]">Verify Credentials</p>
           </div>
 
-          {/* Custom Tab Switcher */}
           <div className="flex bg-[#0f172a] p-1.5 rounded-2xl border border-white/5 w-full mb-10 shadow-inner">
              <Link to="/login" className="flex-1 py-3 text-center rounded-xl font-black text-[10px] uppercase tracking-widest transition-all text-slate-500 hover:text-white cursor-pointer">
                Student Login
@@ -127,39 +97,28 @@ const Signup = () => {
              </div>
           </div>
 
-          <form onSubmit={handleVerify} className="space-y-6">
-            <div className="space-y-2.5">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">University Email</label>
-              <div className="relative flex items-center group">
-                <Mail className="absolute left-4 text-slate-500 group-focus-within:text-blue-500 transition-colors duration-300" size={18} />
-                <input 
-                  type="email" 
-                  placeholder="name@adypu.edu.in" 
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-12 pr-4 py-4 bg-[#0f172a] border border-white/5 focus:border-blue-500 focus:bg-[#111827] rounded-2xl text-white text-sm font-bold tracking-wide outline-none transition-all duration-300 shadow-inner" 
-                  required 
-                />
-              </div>
-            </div>
+          <div className="space-y-6">
+            <div className="bg-[#0f172a] border border-white/5 rounded-2xl p-6 text-center shadow-inner">
+              <p className="text-xs font-bold text-slate-400 leading-relaxed mb-6">
+                To maintain event security, access is strictly restricted to active students. You must authenticate using your official <span className="text-white">@adypu.edu.in</span> workspace account.
+              </p>
 
-            <div className="pt-4">
               <button 
-                type="submit" 
+                onClick={handleGoogleLogin}
                 disabled={loading}
-                className="w-full bg-linear-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest flex items-center justify-center gap-3 shadow-[0_10px_30px_-10px_rgba(59,130,246,0.6)] active:scale-95 transition-all duration-300 disabled:opacity-70 disabled:cursor-not-allowed"
+                className="w-full bg-white hover:bg-slate-100 text-slate-900 py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest flex items-center justify-center gap-3 shadow-[0_10px_30px_-10px_rgba(255,255,255,0.3)] active:scale-95 transition-all duration-300 disabled:opacity-70 disabled:cursor-not-allowed"
               >
-                {loading ? <Zap className="animate-pulse" size={18} /> : "Verify Email"} 
-                {!loading && <ArrowRight size={18} />}
+                {loading ? <div className="w-5 h-5 border-2 border-slate-900 border-t-transparent rounded-full animate-spin" /> : <Chrome size={18} className="text-blue-600" />} 
+                {loading ? "Authenticating..." : "Sign in with University Google"}
               </button>
             </div>
             
             <div className="text-center pt-4">
               <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-relaxed">
-                By verifying your email, you accept the university <br className="hidden sm:block"/> portal access terms & conditions.
+                By authenticating, you accept the university <br className="hidden sm:block"/> portal access terms & conditions.
               </p>
             </div>
-          </form>
+          </div>
         </div>
       </div>
     </div>
