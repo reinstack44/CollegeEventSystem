@@ -18,11 +18,26 @@ const Signup = () => {
     }
 
     setLoading(true);
-    const loadToast = toast.loading('Sending verification link...');
+    const loadToast = toast.loading('Verifying identity credentials...');
 
     try {
+      // 1. SECURE EXISTENCE CHECK: Ask the database if this email already has a profile
+      const { data: userExists, error: checkError } = await supabase.rpc('check_user_exists', { 
+        lookup_email: email.trim() 
+      });
+
+      if (checkError) throw checkError;
+
+      if (userExists) {
+        toast.error("You are already registered on this portal. Please login.", { id: loadToast });
+        setLoading(false);
+        return; // Stops the execution here so they don't get the signup email
+      }
+
+      // 2. PROCEED WITH SIGNUP: If they don't exist, send the magic link
+      toast.loading('Sending verification link...', { id: loadToast });
       const { error } = await supabase.auth.signInWithOtp({
-        email: email,
+        email: email.trim(),
         options: {
           emailRedirectTo: window.location.origin + '/complete-registration',
         },
@@ -34,10 +49,12 @@ const Signup = () => {
       
       setTimeout(() => {
         navigate('/login');
-      }, 2000);
+      }, 2500);
 
     } catch (error) {
-      toast.error(error.message || "Something went wrong", { id: loadToast });
+      // SECURITY: Mask raw backend errors from the user in production
+      console.error("Signup System Error:", error);
+      toast.error("Something went wrong on our end. Please try again or contact support.", { id: loadToast });
     } finally {
       setLoading(false);
     }
