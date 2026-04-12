@@ -24,7 +24,8 @@ const CATEGORIES = [
 
 const POPULAR_GAMES = ["BGMI", "Valorant", "Fall Guys", "FIFA", "CS:GO 2", "Free Fire", "Call of Duty"];
 
-const PLATFORM_FEE = 25;
+// UPDATED: Centralized Platform Fee set strictly to 20 Rs
+const PLATFORM_FEE = 20;
 
 const CreateEvent = () => {
   const navigate = useNavigate();
@@ -333,7 +334,7 @@ const CreateEvent = () => {
 
   const previewImages = selectedImages.length > 0 ? selectedImages.map(img => img.url) : DEFAULT_PREVIEW_IMAGES;
 
-  // Calculate Display Price for UI Preview (+25 Platform Fee)
+  // Calculate Display Price for UI Preview (+20 Platform Fee)
   const getPreviewPrice = () => {
       if(formData.category === 'E-Sports') return "Varies per Game";
       if(formData.event_type === 'free') return "FREE";
@@ -689,18 +690,23 @@ const CreateEvent = () => {
                                  ))}
                                </div>
                                {gameObj.ticket_type === 'paid' && (
-                                 <div className="flex items-center justify-between bg-[#1f2937] p-2 rounded-lg border border-slate-700 mt-2">
-                                   <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-widest pl-2">Entry Fee:</span>
-                                   <div className="flex items-center gap-1">
-                                      <span className="text-slate-400 text-xs font-bold">₹</span>
-                                      <input 
-                                        type="number" min="1"
-                                        value={gameObj.ticket_price} 
-                                        onChange={e => updateGameConfig(gameObj.gameName, 'ticket_price', e.target.value)} 
-                                        placeholder="Base" 
-                                        className="w-20 p-1.5 bg-[#111827] border border-slate-700 rounded-md outline-none focus:border-emerald-500 text-white text-xs font-bold text-center" 
-                                      />
-                                   </div>
+                                 <div className="flex flex-col">
+                                    <div className="flex items-center justify-between bg-[#1f2937] p-2 rounded-lg border border-slate-700 mt-2">
+                                      <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-widest pl-2">Entry Fee:</span>
+                                      <div className="flex items-center gap-1">
+                                         <span className="text-slate-400 text-xs font-bold">₹</span>
+                                         <input 
+                                           type="number" min="1"
+                                           value={gameObj.ticket_price} 
+                                           onChange={e => updateGameConfig(gameObj.gameName, 'ticket_price', e.target.value)} 
+                                           placeholder="Base" 
+                                           className="w-20 p-1.5 bg-[#111827] border border-slate-700 rounded-md outline-none focus:border-emerald-500 text-white text-xs font-bold text-center" 
+                                         />
+                                      </div>
+                                    </div>
+                                    <span className="text-[8px] text-emerald-400/80 font-bold px-1 pt-1.5 text-right block">
+                                      * Users pay ₹{(Number(gameObj.ticket_price) || 0) + PLATFORM_FEE} (Base + ₹{PLATFORM_FEE} Fee)
+                                    </span>
                                  </div>
                                )}
                             </div>
@@ -821,6 +827,9 @@ const CreateEvent = () => {
                           placeholder="e.g. 199" 
                           className="w-full p-4 bg-[#111827] border border-slate-700 rounded-2xl outline-none focus:border-emerald-500 text-white text-sm" 
                         />
+                        <p className="text-[9px] text-emerald-400/80 font-bold ml-2 pt-1 leading-snug">
+                          * A hidden ₹{PLATFORM_FEE} platform fee is added at checkout. Users will pay a total of ₹{(Number(formData.price) || 0) + PLATFORM_FEE}.
+                        </p>
                       </div>
                       <div className="space-y-2">
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Your UPI ID to receive payments</p>

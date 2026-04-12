@@ -17,26 +17,30 @@ const Profile = () => {
         const { data, error } = await supabase.from('students').select('*').eq('email', user.email).single();
         if (!error) setStudent(data);
 
-        // Securely Fetch and Determine Role
-        const adminEmails = ['admin@nexuscircle.in', 'staff@adypu.edu.in', 'prathamesh@adypu.edu.in'];
-        if (adminEmails.includes(user.email)) {
-           setHighestRole('Super Admin');
-           setRawRole('super_admin');
-        } else {
-           const { data: roleData } = await supabase.from('user_roles').select('role').eq('email', user.email);
-           if (roleData && roleData.length > 0) {
-              if (roleData.some(r => r.role === 'org_head')) {
-                  setHighestRole('Organization Head');
-                  setRawRole('org_head');
-              }
-              else if (roleData.some(r => r.role === 'club_head')) {
-                  setHighestRole('Club Lead');
-                  setRawRole('club_head');
-              }
+        // Securely Fetch and Determine Role from Database ONLY
+        const { data: roleData, error: roleError } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('email', user.email);
+
+        if (!roleError && roleData && roleData.length > 0) {
+           if (roleData.some(r => r.role === 'super_admin')) {
+               setHighestRole('Super Admin');
+               setRawRole('super_admin');
+           } else if (roleData.some(r => r.role === 'org_head')) {
+               setHighestRole('Organization Head');
+               setRawRole('org_head');
+           } else if (roleData.some(r => r.role === 'club_head')) {
+               setHighestRole('Club Lead');
+               setRawRole('club_head');
            } else {
-              setHighestRole('Verified Student');
-              setRawRole('student');
+               setHighestRole('Verified Student');
+               setRawRole('student');
            }
+        } else {
+           // Fallback if no roles exist in the database for this user
+           setHighestRole('Verified Student');
+           setRawRole('student');
         }
       }
     };

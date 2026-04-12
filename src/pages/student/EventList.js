@@ -5,7 +5,7 @@ import {
   Calendar, Search, Zap, Clock, RefreshCw,
   CheckCircle, MapPin, X, Loader2, ShieldCheck,
   Download, ChevronDown, Layers, Share2, 
-  Users, Gamepad2, ArrowRight, UserPlus, UserMinus, Filter, FileText
+  Users, Gamepad2, ArrowRight, UserPlus, UserMinus, Filter, FileText, ArrowLeft
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import html2canvas from 'html2canvas';
@@ -26,7 +26,7 @@ const CATEGORIES = [
   "Social & Welfare", "Entrepreneurship", "Literature", "Arts & Media", "Other"
 ];
 
-const PLATFORM_FEE = 25;
+const PLATFORM_FEE = 20;
 
 const getBaseAmount = (eventObj, selectedGameObj) => {
   if (eventObj?.category === 'E-Sports' && selectedGameObj) {
@@ -304,9 +304,81 @@ const EventList = () => {
     setWizard(p => ({ ...p, members: p.members.filter(m => m.email !== email || m.isLead) }));
   };
 
+  // --- SMART BACK BUTTON LOGIC ---
+  const handleWizardBack = () => {
+    if (wizard.step === 4) {
+      if (wizard.entryMode === 'Team') setWizard(p => ({...p, step: 3}));
+      else if (wizard.selectedGame?.participation_type === 'Both') setWizard(p => ({...p, step: 2}));
+      else if (wizard.event?.category === 'E-Sports') setWizard(p => ({...p, step: 1}));
+    } else if (wizard.step === 3) {
+      if (wizard.selectedGame?.participation_type === 'Both') setWizard(p => ({...p, step: 2}));
+      else if (wizard.event?.category === 'E-Sports') setWizard(p => ({...p, step: 1}));
+    } else if (wizard.step === 2) {
+      if (wizard.event?.category === 'E-Sports') setWizard(p => ({...p, step: 1}));
+    }
+  };
+
+  const canGoBack = () => {
+    if (!wizard.event || wizard.step === 1) return false;
+    if (wizard.event.category === 'E-Sports') return true;
+    
+    if (wizard.step === 4 && wizard.entryMode === 'Team') return true; 
+    if (wizard.step === 4 && wizard.selectedGame?.participation_type === 'Both' && wizard.entryMode === 'Individual') return true;
+    if (wizard.step === 3 && wizard.selectedGame?.participation_type === 'Both') return true;
+    
+    return false;
+  };
+  // -------------------------------
+
   const processFinalCheckout = async () => {
     setWizard(p => ({ ...p, processing: true }));
     const { event, selectedGame, entryMode, teamName, members } = wizard;
+
+    // =========================================================================
+    // BULLETPROOF PRE-CHECK: Strictly block any multiple entries for the same game
+    // Allows booking different games in the same event
+    // =========================================================================
+    try {
+      const { data: existingBookings } = await supabase
+        .from('bookings')
+        .select('id')
+        .eq('event_id', event.id)
+        .eq('selected_game', selectedGame?.gameName || null);
+
+      if (existingBookings && existingBookings.length > 0) {
+        const bIds = existingBookings.map(b => b.id);
+        
+        // 1. Check if Current Logged-In User is already in ANY booking for this game
+        const { data: memCheck } = await supabase
+          .from('booking_members')
+          .select('id')
+          .eq('student_email', currentUserEmail)
+          .in('booking_id', bIds);
+
+        if (memCheck && memCheck.length > 0) {
+          throw new Error(`You are already registered for ${selectedGame?.gameName || 'this event'}. Multiple entries are not allowed.`);
+        }
+        
+        // 2. Check if ANY of the added team members are already in this game
+        if (members.length > 1) {
+            const memberEmails = members.filter(m => m.email !== currentUserEmail).map(m => m.email);
+            const { data: crossMemCheck } = await supabase
+              .from('booking_members')
+              .select('student_email')
+              .in('student_email', memberEmails)
+              .in('booking_id', bIds);
+              
+            if (crossMemCheck && crossMemCheck.length > 0) {
+                throw new Error(`A team member (${crossMemCheck[0].student_email}) is already registered for this game.`);
+            }
+        }
+      }
+    } catch (err) {
+       toast.error(err.message);
+       setWizard(p => ({ ...p, processing: false }));
+       return; // Stop the checkout instantly before touching the database or Razorpay
+    }
+    // =========================================================================
     
     const baseAmount = getBaseAmount(event, selectedGame);
     const isPaidEvent = baseAmount > 0;
@@ -336,14 +408,35 @@ const EventList = () => {
         const res = await loadRazorpayScript();
         if (!res) throw new Error("Razorpay SDK failed to load.");
 
+        // Request order from backend with full webhook payload
         const { data: orderData, error: orderError } = await supabase.functions.invoke('create-razorpay-order', { 
-           body: { event_id: event.id, amount: Number(baseAmount) } 
+           body: { 
+             event_id: event.id, 
+             amount: Number(baseAmount),
+             student_email: currentUserEmail,
+             team_name: entryMode === 'Team' ? teamName.trim() : null,
+             selected_game: selectedGame?.gameName || null,
+             // Razorpay limits notes to 255 chars. Safely stringify and trim it.
+             members: members.map(m => m.email).join(',').substring(0, 250) 
+           } 
         });
 
+        // BULLETPROOF ERROR CATCHER
         if (orderError) {
            console.error("Full Server Error:", orderError);
-           const serverMsg = await orderError.context?.json();
-           throw new Error(serverMsg?.error || "Payment server is offline.");
+           let errorText = "Payment server is offline. Check Edge Function logs.";
+           
+           try {
+             // Try to extract the exact error message your Edge Function sent back
+             const serverMsg = await orderError.context?.json();
+             if (serverMsg && serverMsg.error) {
+                errorText = typeof serverMsg.error === 'string' ? serverMsg.error : JSON.stringify(serverMsg.error);
+             }
+           } catch(e) {
+             errorText = orderError.message || errorText;
+           }
+           
+           throw new Error(errorText);
         }
         
         if (!orderData || !orderData.amount) {
@@ -502,10 +595,22 @@ const EventList = () => {
       {wizard.open && wizard.event && (
         <div className="fixed inset-0 z-500 flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-sm">
           <div className="bg-[#111827] border border-slate-700 rounded-4xl flex flex-col w-full max-w-2xl max-h-[95vh] overflow-hidden shadow-2xl relative animate-in fade-in zoom-in-95 duration-300">
+            
+            {/* WIZARD HEADER WITH BACK BUTTON */}
             <div className="flex items-center justify-between p-6 border-b border-slate-800 shrink-0">
-               <div>
-                  <h3 className="text-blue-500 font-black uppercase tracking-widest text-[10px] mb-1">Registration</h3>
-                  <h2 className="text-white font-bold text-xl line-clamp-1 italic">{wizard.event.title}</h2>
+               <div className="flex items-center gap-4">
+                  {canGoBack() && (
+                    <button 
+                      onClick={handleWizardBack} 
+                      className="w-8 h-8 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-full text-slate-400 hover:text-white transition-colors"
+                    >
+                      <ArrowLeft size={16} />
+                    </button>
+                  )}
+                  <div>
+                     <h3 className="text-blue-500 font-black uppercase tracking-widest text-[10px] mb-1">Registration</h3>
+                     <h2 className="text-white font-bold text-xl line-clamp-1 italic">{wizard.event.title}</h2>
+                  </div>
                </div>
                <button onClick={() => setWizard(p => ({...p, open: false}))} className="p-2 bg-white/5 hover:bg-white/10 rounded-full text-slate-400 transition-colors"><X size={20}/></button>
             </div>
@@ -719,7 +824,7 @@ const EventList = () => {
                    <div className="absolute top-0 left-0 w-4 h-4 bg-[#0a0f1d] rounded-full -translate-x-1/2 -translate-y-1/2"></div>
                    <div className="absolute top-0 right-0 w-4 h-4 bg-[#0a0f1d] rounded-full translate-x-1/2 -translate-y-1/2"></div>
 
-                   <p className="text-[12px] font-black text-slate-900 uppercase tracking-[0.4em] mb-4">S C A N &nbsp; Q R</p>
+                   <p className="text-[12px] font-black text-slate-900 uppercase tracking-[0.4em] mb-4">A D M I T &nbsp; O N E</p>
                    <QRCodeCanvas value={selectedTicket.bookingId || "error"} size={140} level="H" className="mb-4" />
                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Ticket ID</p>
                    <p className="text-[9px] font-mono font-bold text-slate-900">{selectedTicket.bookingId}</p>
@@ -799,7 +904,7 @@ const EventList = () => {
 
                 <div style={{ backgroundColor: '#ffffff', padding: '32px', display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
                    <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '0', borderTop: '2px dashed #94a3b8' }}></div>
-                   <p style={{ fontSize: '14px', fontWeight: '900', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '6px', marginBottom: '16px' }}>S C A N &nbsp; Q R</p>
+                   <p style={{ fontSize: '14px', fontWeight: '900', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '6px', marginBottom: '16px' }}>A D M I T &nbsp; O N E</p>
                    <QRCodeCanvas value={selectedTicket.bookingId || "error"} size={140} level="H" style={{ marginBottom: '16px' }} />
                    <p style={{ fontSize: '9px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Ticket ID</p>
                    <p style={{ fontSize: '10px', fontFamily: 'monospace', fontWeight: 'bold', color: '#0f172a' }}>{selectedTicket.bookingId}</p>
@@ -816,12 +921,12 @@ const EventList = () => {
             <X size={24} />
           </button>
           
-          <div className="w-full max-w-95 h-[80vh] min-h-125 perspective-2000 cursor-pointer" onClick={(e) => { e.stopPropagation(); setIsCardFlipped(!isCardFlipped); }}>
+          <div className="w-full max-w-96 h-[80vh] min-h-125 perspective-2000 cursor-pointer" onClick={(e) => { e.stopPropagation(); setIsCardFlipped(!isCardFlipped); }}>
             <div className={`relative w-full h-full transition-transform duration-700 transform-style-3d ${isCardFlipped ? 'rotate-y-180' : ''}`}>
               
               {/* FRONT OF MODAL CARD */}
               <div className="absolute inset-0 backface-hidden bg-[#111827] rounded-[2.5rem] border border-white/10 shadow-2xl flex flex-col overflow-hidden">
-                <div className="relative h-56 shrink-0 bg-slate-900">
+                <div className="relative h-56 shrink-0 bg-slate-900 border-b border-white/5">
                   <img src={Array.isArray(expandedEvent.images) && expandedEvent.images.length > 0 ? expandedEvent.images[0] : "https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&q=80&w=800"} alt="Cover" className="w-full h-full object-cover" />
                   <div className="absolute inset-0 bg-linear-to-t from-[#111827] via-transparent opacity-90"></div>
                   <div className="absolute top-4 left-4"><span className="backdrop-blur-md bg-black/60 text-white px-3 py-1.5 rounded-full text-[10px] font-bold border border-white/10">{expandedEvent.orgName}</span></div>
@@ -852,7 +957,7 @@ const EventList = () => {
                   </div>
                   
                   <div className="mt-auto pt-6 border-t border-white/5 text-center shrink-0">
-                    <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest flex items-center justify-center gap-2 animate-pulse"><RefreshCw size={14}/> Tap anywhere to read description</p>
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center justify-center gap-2 animate-pulse"><RefreshCw size={14}/> Tap anywhere to read description</p>
                   </div>
                 </div>
               </div>

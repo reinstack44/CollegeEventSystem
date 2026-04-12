@@ -23,10 +23,20 @@ const AdminLogin = () => {
 
       if (error) throw error;
 
-      const authorizedAdmins = ['admin@nexuscircle.in'];
+      // SECURE BACKEND ROLE VERIFICATION
+      // Fetch the role for this specific user from the database
+      const { data: roleData, error: roleError } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('email', data.user.email);
 
-      if (!authorizedAdmins.includes(data.user.email)) {
-        await supabase.auth.signOut();
+      if (roleError) throw new Error("Failed to verify access clearance.");
+
+      // Check if they possess the required super_admin clearance
+      const isAuthorized = roleData && roleData.some(r => r.role === 'super_admin');
+
+      if (!isAuthorized) {
+        await supabase.auth.signOut(); // Immediately revoke the session
         throw new Error("UNAUTHORIZED: Access restricted to primary administrator.");
       }
 

@@ -10,7 +10,7 @@ import {
 import toast from 'react-hot-toast';
 
 const ROWS_PER_PAGE = 20;
-const PLATFORM_FEE = 25;
+const PLATFORM_FEE = 20; // UPDATED to 20 Rs
 
 // ==========================================
 // HELPER FUNCTIONS
@@ -80,7 +80,9 @@ const MasterManagement = () => {
   const filterMenuRef = useRef(null);
   
   const [selectedAttendee, setSelectedAttendee] = useState(null);
-  const [confirmModal, setConfirmModal] = useState({ isOpen: false, bookingId: null, isReject: false });
+  
+  // SECURITY UPDATE: Added isPaid flag to the confirmation modal state
+  const [confirmModal, setConfirmModal] = useState({ isOpen: false, bookingId: null, isReject: false, isPaid: false });
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -369,8 +371,9 @@ const MasterManagement = () => {
     }
   };
 
-  const handleRemoveClick = (bookingId, isReject = false) => {
-    setConfirmModal({ isOpen: true, bookingId, isReject });
+  // SECURITY UPDATE: Pass isPaid flag to Modal
+  const handleRemoveClick = (bookingId, isReject = false, isPaid = false) => {
+    setConfirmModal({ isOpen: true, bookingId, isReject, isPaid });
   };
 
   const confirmRemove = async () => {
@@ -386,7 +389,7 @@ const MasterManagement = () => {
     } catch (error) {
       toast.error("Action failed.", { id: loadToast });
     } finally {
-      setConfirmModal({ isOpen: false, bookingId: null, isReject: false });
+      setConfirmModal({ isOpen: false, bookingId: null, isReject: false, isPaid: false });
     }
   };
 
@@ -568,7 +571,7 @@ const MasterManagement = () => {
               <h3 className="text-white font-black uppercase tracking-widest text-base flex items-center gap-2">
                 <AlertTriangle className="text-red-500" size={18} /> {confirmModal.isReject ? 'Reject Payment' : 'Cancel Ticket'}
               </h3>
-              <button onClick={() => setConfirmModal({ isOpen: false, bookingId: null, isReject: false })} className="text-slate-500 hover:text-white bg-white/5 p-2 rounded-full transition-colors">
+              <button onClick={() => setConfirmModal({ isOpen: false, bookingId: null, isReject: false, isPaid: false })} className="text-slate-500 hover:text-white bg-white/5 p-2 rounded-full transition-colors">
                 <X size={18} />
               </button>
             </div>
@@ -579,8 +582,19 @@ const MasterManagement = () => {
               <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
                 This action cannot be undone and will permanently remove the record.
               </p>
+              
+              {/* SECURITY UPDATE: Razorpay Warning for Paid Tickets */}
+              {confirmModal.isPaid && (
+                <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-xl text-left">
+                  <p className="text-[10px] font-black text-yellow-500 uppercase tracking-widest leading-relaxed flex items-start gap-2">
+                    <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                    <span><strong>Warning:</strong> This is a paid ticket. Refunds are not automatic. You must process any required refund manually via your Razorpay Dashboard.</span>
+                  </p>
+                </div>
+              )}
+
               <div className="flex gap-3 mt-6 pt-2 border-t border-slate-800">
-                <button onClick={() => setConfirmModal({ isOpen: false, bookingId: null, isReject: false })} className="flex-1 px-4 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-black uppercase tracking-widest text-[10px] transition-all active:scale-95">
+                <button onClick={() => setConfirmModal({ isOpen: false, bookingId: null, isReject: false, isPaid: false })} className="flex-1 px-4 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-black uppercase tracking-widest text-[10px] transition-all active:scale-95">
                   Cancel
                 </button>
                 <button onClick={confirmRemove} className="flex-1 px-4 py-3 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white border border-red-500/20 rounded-xl font-black uppercase tracking-widest text-[10px] transition-all active:scale-95 shadow-lg">
@@ -737,7 +751,7 @@ const MasterManagement = () => {
         {activeTab === 'analytics' ? (
           
           /* ================================== */
-          /* ANALYTICS VIEW             */
+          /* ANALYTICS VIEW              */
           /* ================================== */
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             {/* KPI CARDS */}
@@ -786,7 +800,7 @@ const MasterManagement = () => {
                       <Zap size={20} />
                     </div>
                   </div>
-                  <p className="text-slate-400 text-xs font-medium leading-relaxed">Generated from the fixed ₹25 platform allocation fee per paid registration.</p>
+                  <p className="text-slate-400 text-xs font-medium leading-relaxed">Generated from the fixed ₹20 platform allocation fee per paid registration.</p>
                 </div>
               )}
             </div>
@@ -858,7 +872,7 @@ const MasterManagement = () => {
         ) : (
 
           /* ================================== */
-          /* DATABASE VIEW             */
+          /* DATABASE VIEW              */
           /* ================================== */
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
 
@@ -969,7 +983,7 @@ const MasterManagement = () => {
                                       <CheckCircle size={14} /> Verify
                                     </button>
                                   )}
-                                  <button onClick={() => handleRemoveClick(item.id, item.status === 'pending')} className="flex items-center gap-2 px-4 py-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl border border-red-500/20 transition-all font-black text-[9px] uppercase tracking-widest">
+                                  <button onClick={() => handleRemoveClick(item.id, item.status === 'pending', parseFloat(fees.total) > 0)} className="flex items-center gap-2 px-4 py-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl border border-red-500/20 transition-all font-black text-[9px] uppercase tracking-widest">
                                     {item.status === 'pending' ? <XCircle size={14} /> : <Trash2 size={14} />} 
                                     {item.status === 'pending' ? 'Reject' : 'Remove'}
                                   </button>
@@ -1065,7 +1079,7 @@ const MasterManagement = () => {
                             <div className="flex flex-col">
                               <span className="text-[8px] text-slate-500 uppercase font-black tracking-widest">Transaction ID</span>
                               {txn ? (
-                                 <span className="font-mono text-yellow-500 text-xs font-bold tracking-widest truncate max-w-35">{txn}</span>
+                                 <span className="font-mono text-yellow-500 text-xs font-bold tracking-widest truncate max-w-32">{txn}</span>
                               ) : (
                                  <span className="font-mono text-slate-500 text-xs italic tracking-widest">Pending</span>
                               )}
@@ -1081,7 +1095,7 @@ const MasterManagement = () => {
                           <button onClick={() => setSelectedAttendee(item)} className="flex-1 flex justify-center items-center gap-2 py-3 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white rounded-xl border border-white/5 transition-all font-black text-[10px] uppercase tracking-widest active:scale-95 shadow-md">
                             <Eye size={16} /> Details
                           </button>
-                          <button onClick={() => handleRemoveClick(item.id, item.status === 'pending')} className="flex-1 flex justify-center items-center gap-2 py-3 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl border border-red-500/20 transition-all font-black text-[10px] uppercase tracking-widest active:scale-95 shadow-md">
+                          <button onClick={() => handleRemoveClick(item.id, item.status === 'pending', parseFloat(fees.total) > 0)} className="flex-1 flex justify-center items-center gap-2 py-3 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl border border-red-500/20 transition-all font-black text-[10px] uppercase tracking-widest active:scale-95 shadow-md">
                             {item.status === 'pending' ? <XCircle size={16} /> : <Trash2 size={16} />} 
                             {item.status === 'pending' ? 'Reject' : 'Remove'}
                           </button>
@@ -1238,7 +1252,7 @@ const MasterManagement = () => {
                     <IndianRupee size={16} className="text-blue-500" />
                     <span className="text-xs font-black uppercase tracking-widest text-blue-400">Payment Details</span>
                   </div>
-                  <span className="font-mono text-[9px] font-bold text-yellow-500 tracking-widest bg-yellow-500/10 px-2 py-1 rounded-md border border-yellow-500/20 truncate max-w-35">
+                  <span className="font-mono text-[9px] font-bold text-yellow-500 tracking-widest bg-yellow-500/10 px-2 py-1 rounded-md border border-yellow-500/20 truncate max-w-32">
                     {getTxnId(selectedAttendee) || 'FREE ENTRY'}
                   </span>
                 </div>
@@ -1274,7 +1288,7 @@ const MasterManagement = () => {
                   <CheckCircle size={16} /> Verify Payment
                 </button>
               )}
-              <button onClick={() => handleRemoveClick(selectedAttendee.id, selectedAttendee.status === 'pending')} className="flex-1 flex justify-center items-center gap-2 py-4 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-2xl border border-red-500/20 transition-all font-black text-[10px] uppercase tracking-widest shadow-lg">
+              <button onClick={() => handleRemoveClick(selectedAttendee.id, selectedAttendee.status === 'pending', parseFloat(getFeeBreakdown(selectedAttendee).total) > 0)} className="flex-1 flex justify-center items-center gap-2 py-4 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-2xl border border-red-500/20 transition-all font-black text-[10px] uppercase tracking-widest shadow-lg">
                 {selectedAttendee.status === 'pending' ? <XCircle size={16} /> : <Trash2 size={16} />} 
                 {selectedAttendee.status === 'pending' ? 'Reject Payment' : 'Cancel Ticket'}
               </button>

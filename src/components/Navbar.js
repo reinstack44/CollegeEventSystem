@@ -20,19 +20,12 @@ const Navbar = ({ session }) => {
   const navigate = useNavigate();
 
   const user = session?.user ?? null;
-  const adminEmails = ['admin@nexuscircle.in', 'staff@adypu.edu.in', 'prathamesh@adypu.edu.in'];
-  const isAdmin = user?.email && adminEmails.includes(user.email);
 
-  // Fetch highest user role safely (Supports multi-role users)
+  // Fetch highest user role safely (Supports multi-role users via Database)
   useEffect(() => {
     let isMounted = true;
     const fetchRole = async () => {
       if (user?.email) {
-        if (isAdmin) {
-           if (isMounted) setUserRole('super_admin');
-           return;
-        }
-
         const { data, error } = await supabase
           .from('user_roles')
           .select('role')
@@ -40,18 +33,22 @@ const Navbar = ({ session }) => {
 
         if (!error && data && data.length > 0 && isMounted) {
           // Check for highest authority role if they hold multiple
+          const isSuperAdmin = data.some(r => r.role === 'super_admin');
           const hasOrgHead = data.some(r => r.role === 'org_head');
           const hasClubHead = data.some(r => r.role === 'club_head');
           
-          if (hasOrgHead) setUserRole('org_head');
+          if (isSuperAdmin) setUserRole('super_admin');
+          else if (hasOrgHead) setUserRole('org_head');
           else if (hasClubHead) setUserRole('club_head');
           else setUserRole('student');
+        } else if (isMounted) {
+           setUserRole('student'); // Default fallback if no roles found
         }
       }
     };
     fetchRole();
     return () => { isMounted = false; };
-  }, [user, isAdmin]);
+  }, [user]);
 
   useEffect(() => {
     const handleInstallPrompt = (e) => {
@@ -160,7 +157,7 @@ const Navbar = ({ session }) => {
               <button 
                 onClick={() => setIsOpen(!isOpen)} 
                 className={`flex items-center justify-center w-10 h-10 sm:w-auto sm:h-auto sm:px-6 sm:py-3 rounded-xl sm:rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all active:scale-95 shadow-xl ${
-                  isOpen ? 'bg-slate-800 text-white border border-white/10' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-600/20'
+                  isOpen ? 'bg-slate-800 text-white border border-white/10' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-[0_5px_15px_rgba(37,99,235,0.4)]'
                 }`}
               >
                 {isOpen ? <X size={18} /> : <Menu size={18} />}
@@ -196,7 +193,7 @@ const Navbar = ({ session }) => {
                       )}
                       
                       <div className="px-6 py-3 mt-2 border-t border-white/5 flex flex-col gap-2">
-                        <button onClick={handleLogout} className="w-full flex items-center gap-4 px-4 py-4 text-red-400 hover:bg-red-500/10 rounded-2xl font-black text-[10px] transition-all uppercase tracking-[0.2em]">
+                        <button onClick={handleLogout} className="w-full flex items-center gap-4 px-4 py-4 text-red-400 hover:bg-red-500/10 rounded-2xl font-black text-[10px] transition-all uppercase tracking-[0.2em] active:scale-95">
                           <LogOut size={18} /> Logout
                         </button>
                         
@@ -205,7 +202,7 @@ const Navbar = ({ session }) => {
                           <button 
                             type="button"
                             onClick={handleOrgComingSoon} 
-                            className="w-full text-left flex items-center gap-4 px-4 py-4 text-emerald-400/80 hover:bg-emerald-500/10 rounded-2xl font-black text-[10px] transition-all uppercase tracking-[0.2em]"
+                            className="w-full text-left flex items-center gap-4 px-4 py-4 text-emerald-400/80 hover:bg-emerald-500/10 rounded-2xl font-black text-[10px] transition-all uppercase tracking-[0.2em] active:scale-95"
                           >
                             <Building size={18} /> Register Your Org
                           </button>
@@ -220,7 +217,7 @@ const Navbar = ({ session }) => {
                       <button 
                         type="button"
                         onClick={handleOrgComingSoon} 
-                        className="w-full text-left flex items-center justify-start gap-4 px-8 py-4 text-emerald-400/80 hover:bg-emerald-500/10 rounded-2xl font-black text-[10px] transition-all uppercase tracking-[0.2em]"
+                        className="w-full text-left flex items-center justify-start gap-4 px-8 py-4 text-emerald-400/80 hover:bg-emerald-500/10 rounded-2xl font-black text-[10px] transition-all uppercase tracking-[0.2em] active:scale-95"
                       >
                         <Building size={18} /> Register Your Org
                       </button>
@@ -248,7 +245,7 @@ const Navbar = ({ session }) => {
               <h3 className="text-xl font-black text-white uppercase tracking-tight mb-2">Install NexusCircle</h3>
               <p className="text-slate-400 text-sm mb-8">Install this app on your iPhone for quick access and a better experience.</p>
               
-              <div className="w-full space-y-4 text-left bg-slate-900/50 p-5 rounded-2xl border border-white/5">
+              <div className="w-full space-y-4 text-left bg-[#0f172a] p-5 rounded-2xl border border-white/5 shadow-inner">
                 <div className="flex items-center gap-4">
                   <div className="bg-white text-black p-2 rounded-lg shrink-0"><Share size={20} /></div>
                   <p className="text-sm font-medium text-slate-300">1. Tap the <span className="text-white font-bold">Share</span> button in your Safari menu bar.</p>
@@ -259,7 +256,7 @@ const Navbar = ({ session }) => {
                 </div>
               </div>
               
-              <button onClick={() => setShowIOSModal(false)} className="mt-8 w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black uppercase text-[10px] tracking-widest transition-all shadow-lg active:scale-95">
+              <button onClick={() => setShowIOSModal(false)} className="mt-8 w-full py-3.5 bg-linear-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white rounded-xl font-black uppercase text-[10px] tracking-widest transition-all shadow-[0_10px_20px_-10px_rgba(59,130,246,0.5)] active:scale-95">
                 Got it
               </button>
             </div>
@@ -271,7 +268,7 @@ const Navbar = ({ session }) => {
 };
 
 const MenuLink = ({ to, icon, label, onClick, primary }) => (
-  <Link to={to} onClick={onClick} className={`flex items-center gap-4 px-8 py-4 font-black text-[10px] uppercase tracking-[0.2em] transition-all group ${primary ? 'bg-blue-600 text-white rounded-2xl mx-4 mb-2 hover:bg-blue-700 shadow-lg shadow-blue-600/20' : 'text-slate-300 hover:text-white hover:bg-white/5'}`}>
+  <Link to={to} onClick={onClick} className={`flex items-center gap-4 px-8 py-4 font-black text-[10px] uppercase tracking-[0.2em] transition-all group ${primary ? 'bg-linear-to-r from-blue-600 to-blue-500 text-white rounded-2xl mx-4 mb-2 hover:from-blue-500 hover:to-blue-400 shadow-[0_10px_20px_-10px_rgba(59,130,246,0.5)] active:scale-95' : 'text-slate-300 hover:text-white hover:bg-white/5 active:scale-95'}`}>
     <span className="group-hover:scale-110 transition-transform">{icon}</span> {label}
   </Link>
 );

@@ -4,13 +4,13 @@ import { supabase } from '../../sbclient/supabaseClient';
 import { QRCodeCanvas } from 'qrcode.react'; 
 import { 
   Ticket, Calendar, MapPin, Zap, Clock, 
-  X, ShieldCheck, Info, CheckCircle2, Trash2, Download, Loader2, History, AlertTriangle, CreditCard, Users, Gamepad2, ArrowLeft
+  X, ShieldCheck, Info, CheckCircle2, Trash2, Download, Loader2, History, AlertTriangle, CreditCard, Users, Gamepad2, ArrowLeft, Mail
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 
-const PLATFORM_FEE = 25;
+const PLATFORM_FEE = 20; // UPDATED to 20 Rs
 
 const getTicketPrice = (ticket) => {
   if (!ticket || !ticket.events) return 0;
@@ -289,7 +289,9 @@ const MyTickets = () => {
              {isPending ? <Clock size={12} /> : <Info size={12} />} 
              {isExpired ? 'View Details' : isPending ? 'Pending Approval' : 'Tap to View Ticket'}
           </div>
-          {!isCheckedIn && !isExpired && ticket.isLead && (
+          
+          {/* ONLY ALLOW CANCELLATION FOR FREE TICKETS */}
+          {!isCheckedIn && !isExpired && ticket.isLead && price === 0 && (
             <button 
               onClick={(e) => { e.stopPropagation(); triggerCancelConfirmation(ticket.id, ticket.events?.title); }}
               className="flex items-center gap-2 px-3 py-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl border border-red-500/20 transition-all active:scale-95 group/cancel"
@@ -467,7 +469,7 @@ const MyTickets = () => {
                    <div className="absolute top-0 left-0 w-4 h-4 bg-[#0a0f1d] rounded-full -translate-x-1/2 -translate-y-1/2"></div>
                    <div className="absolute top-0 right-0 w-4 h-4 bg-[#0a0f1d] rounded-full translate-x-1/2 -translate-y-1/2"></div>
 
-                   <p className="text-[12px] font-black text-slate-900 uppercase tracking-[0.4em] mb-4">S C A N &nbsp; Q R</p>
+                   <p className="text-[12px] font-black text-slate-900 uppercase tracking-[0.4em] mb-4">A D M I T &nbsp; O N E</p>
                    <QRCodeCanvas value={selectedTicket.id || "error"} size={140} level="H" className="mb-4" />
                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Ticket ID</p>
                    <p className="text-[9px] font-mono font-bold text-slate-900">{selectedTicket.id}</p>
@@ -476,6 +478,15 @@ const MyTickets = () => {
                      {isDownloading ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
                      {isDownloading ? "Generating..." : "Download PDF"}
                    </button>
+                   
+                   {/* SUPPORT CONTACT LINK FOR DISPUTES */}
+                   <a 
+                     href={`mailto:support.nexuscircle@gmail.com?subject=Ticket Issue - ${selectedTicket.events?.title} (${selectedTicket.id})`}
+                     onClick={(e) => e.stopPropagation()}
+                     className="mt-5 text-[9px] font-bold text-slate-400 hover:text-blue-500 uppercase tracking-widest transition-colors flex items-center justify-center gap-1.5"
+                   >
+                     <Mail size={12} /> Need help? Contact Support
+                   </a>
                 </div>
              </div>
           </div>
@@ -547,7 +558,7 @@ const MyTickets = () => {
 
                 <div style={{ backgroundColor: '#ffffff', padding: '32px', display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
                    <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '0', borderTop: '2px dashed #94a3b8' }}></div>
-                   <p style={{ fontSize: '14px', fontWeight: '900', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '6px', marginBottom: '16px' }}>S C A N &nbsp; Q R</p>
+                   <p style={{ fontSize: '14px', fontWeight: '900', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '6px', marginBottom: '16px' }}>A D M I T &nbsp; O N E</p>
                    <QRCodeCanvas value={selectedTicket.id || "error"} size={140} level="H" style={{ marginBottom: '16px' }} />
                    <p style={{ fontSize: '9px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Ticket ID</p>
                    <p style={{ fontSize: '10px', fontFamily: 'monospace', fontWeight: 'bold', color: '#0f172a' }}>{selectedTicket.id}</p>

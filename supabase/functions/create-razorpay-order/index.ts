@@ -1,36 +1,32 @@
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+};
 
-// Hidden Platform Fee applied securely on the server
-const PLATFORM_FEE = 25; 
+const PLATFORM_FEE = 20;
 
 Deno.serve(async (req) => {
-  // Handle CORS
+  // 1. Instantly respond to the Browser's CORS preflight check
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', { headers: corsHeaders });
   }
 
   try {
-    const { amount } = await req.json()
+    const payload = await req.json();
+    const { amount, event_id, student_email, team_name, selected_game, members } = payload;
     
-    const keyId = Deno.env.get('RAZORPAY_KEY_ID')
-    const keySecret = Deno.env.get('RAZORPAY_KEY_SECRET')
+    const keyId = Deno.env.get('RAZORPAY_KEY_ID');
+    const keySecret = Deno.env.get('RAZORPAY_KEY_SECRET');
 
     if (!keyId || !keySecret) {
-      return new Response(
-        JSON.stringify({ error: "Server keys are missing. Run 'supabase secrets set'." }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      throw new Error("Razorpay keys are missing in Supabase Vault.");
     }
 
-    const auth = btoa(`${keyId}:${keySecret}`)
-    
-    // Securely calculate the final total amount (Base Price + Platform Fee)
+    const auth = btoa(`${keyId}:${keySecret}`);
     const baseAmount = Number(amount) || 0;
     const finalTotalAmount = baseAmount + PLATFORM_FEE;
     
+    // 2. Call Razorpay
     const response = await fetch('https://api.razorpay.com/v1/orders', {
       method: 'POST',
       headers: {
@@ -38,23 +34,38 @@ Deno.serve(async (req) => {
         'Authorization': `Basic ${auth}`
       },
       body: JSON.stringify({
-        amount: Math.round(finalTotalAmount * 100), // Razorpay expects amount in Paise (multiply by 100)
+        amount: Math.round(finalTotalAmount * 100), 
         currency: 'INR',
-        receipt: `rcpt_${Date.now()}`
+        receipt: `rcpt_${Date.now()}`,
+        // 3. Strict 255 character limit for notes to prevent Razorpay crashes
+        notes: {
+          event_id: String(event_id || "").substring(0, 250),
+          student_email: String(student_email || "").substring(0, 250),
+          team_name: String(team_name || "").substring(0, 250),
+          selected_game: String(selected_game || "").substring(0, 250),
+          members: String(members || "").substring(0, 250)
+        }
       })
-    })
+    });
 
-    const data = await response.json()
+    const data = await response.json();
 
+    if (!response.ok) {
+       throw new Error(data.error?.description || "Razorpay API rejected the request");
+    }
+
+    // 4. Send success back to React
     return new Response(JSON.stringify(data), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: response.ok ? 200 : 400
-    })
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
 
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 400
-    })
+    console.error("Crash:", error);
+    // 5. Send clean error back to React so we can read it on screen
+    return new Response(JSON.stringify({ error: error.message || String(error) }), {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
   }
-})
+});
