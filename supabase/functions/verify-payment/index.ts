@@ -15,14 +15,14 @@ Deno.serve(async (req) => {
     const { razorpay_payment_id, razorpay_order_id, razorpay_signature, event_id, student_email, team_name, selected_game, members } = body;
 
     const secret = Deno.env.get('RAZORPAY_KEY_SECRET');
-    if (!secret) throw new Error("Server is missing RAZORPAY_KEY_SECRET.");
+    if (!secret) throw new Error("Payment verification service unavailable.");
 
     // Verify Payment Signature
     const text = `${razorpay_order_id}|${razorpay_payment_id}`;
     const expectedSignature = crypto.createHmac('sha256', secret).update(text).digest('hex');
 
     if (expectedSignature !== razorpay_signature) {
-      throw new Error("Signature mismatch! Payment was altered.");
+      throw new Error("Payment verification failed. Please contact support if you were charged.");
     }
 
     const supabaseAdmin = createClient(
@@ -43,12 +43,12 @@ Deno.serve(async (req) => {
       p_transaction_id: razorpay_payment_id
     });
 
-    if (rpcError) throw new Error(`Database Error: ${rpcError.message}`);
+    if (rpcError) throw new Error("Unable to secure ticket after payment. Please contact support with your payment details.");
 
     return new Response(JSON.stringify({ success: true, booking: { id: bookingId } }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {
     console.error("Verification Error:", error);
-    return new Response(JSON.stringify({ success: false, error: error.message }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({ success: false, error: error.message || "An unexpected error occurred during verification." }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });

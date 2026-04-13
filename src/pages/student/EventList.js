@@ -26,8 +26,9 @@ const CATEGORIES = [
   "Social & Welfare", "Entrepreneurship", "Literature", "Arts & Media", "Other"
 ];
 
-const PLATFORM_FEE = 20;
-
+// ==========================================
+// DYNAMIC 5% FEE CALCULATORS
+// ==========================================
 const getBaseAmount = (eventObj, selectedGameObj) => {
   if (String(eventObj?.category).toLowerCase() === 'e-sports' && selectedGameObj) {
      return String(selectedGameObj.ticket_type).toLowerCase() === 'paid' ? Number(selectedGameObj.ticket_price || 0) : 0;
@@ -37,20 +38,26 @@ const getBaseAmount = (eventObj, selectedGameObj) => {
 
 const getDisplayAmount = (eventObj, selectedGameObj) => {
   const base = getBaseAmount(eventObj, selectedGameObj);
-  return base > 0 ? base + PLATFORM_FEE : 0;
+  return base > 0 ? Number((base * 1.05).toFixed(2)) : 0;
 };
 
-// EXTREME SAFETY: Strips spaces and forces lowercase before matching strings
 const getTicketViewerPrice = (ticket) => {
   if (!ticket) return 0;
   if (String(ticket.category).toLowerCase() === 'e-sports' && ticket.selectedGame) {
      const gameObj = ticket.games_list?.find(g => String(g.gameName).trim().toLowerCase() === String(ticket.selectedGame).trim().toLowerCase());
-     if (gameObj && String(gameObj.ticket_type).trim().toLowerCase() === 'paid') return Number(gameObj.ticket_price || 0) + PLATFORM_FEE;
+     if (gameObj && String(gameObj.ticket_type).trim().toLowerCase() === 'paid') {
+         const base = Number(gameObj.ticket_price || 0);
+         return Number((base * 1.05).toFixed(2));
+     }
      return 0;
   }
-  if (Number(ticket.price) > 0) return Number(ticket.price) + PLATFORM_FEE;
+  if (Number(ticket.price) > 0) {
+      const base = Number(ticket.price);
+      return Number((base * 1.05).toFixed(2));
+  }
   return 0;
 };
+// ==========================================
 
 const formatEventTime = (timeStr) => {
   if (!timeStr) return '';
@@ -296,7 +303,7 @@ const EventList = () => {
         toast.success("Friend added to team!", { id: loadToast });
       }
     } catch (err) {
-      toast.error("Check failed.", { id: loadToast });
+      toast.error("Unable to add team member at this time.", { id: loadToast });
     }
   };
 
@@ -385,7 +392,7 @@ const EventList = () => {
           p_status: 'confirmed'
         });
 
-        if (error) throw new Error(error.message || "Failed to secure ticket. Event may be sold out.");
+        if (error) throw new Error("Unable to secure ticket. The event might be sold out or unavailable.");
 
         setPaymentSuccess(true); 
         fetchEvents();
@@ -397,12 +404,13 @@ const EventList = () => {
 
       } else {
         const res = await loadRazorpayScript();
-        if (!res) throw new Error("Razorpay SDK failed to load.");
+        if (!res) throw new Error("Payment gateway failed to load. Please check your internet connection.");
 
+        // NOTE: Passes the baseAmount to Edge Function. Ensure the Edge Function adds the 5% correctly.
         const { data: orderData, error: orderError } = await supabase.functions.invoke('create-razorpay-order', { 
            body: { 
              event_id: event.id, 
-             amount: Number(baseAmount),
+             amount: Number(baseAmount), 
              student_email: currentUserEmail,
              team_name: entryMode === 'Team' ? teamName.trim() : null,
              selected_game: selectedGame?.gameName || null,
@@ -410,18 +418,9 @@ const EventList = () => {
            } 
         });
 
-        if (orderError) {
-           console.error("Full Server Error:", orderError);
-           let errorText = "Payment server is offline. Check Edge Function logs.";
-           try {
-             const serverMsg = await orderError.context?.json();
-             if (serverMsg && serverMsg.error) errorText = typeof serverMsg.error === 'string' ? serverMsg.error : JSON.stringify(serverMsg.error);
-           } catch(e) { errorText = orderError.message || errorText; }
-           throw new Error(errorText);
-        }
-        
-        if (!orderData || !orderData.amount) {
-           throw new Error("Payment server returned invalid data. Check your Edge Function logs.");
+        if (orderError || !orderData || !orderData.amount) {
+           console.error("Order Creation Error:", orderError);
+           throw new Error("Unable to initialize payment. Please try again later.");
         }
         
         const options = {
@@ -445,17 +444,9 @@ const EventList = () => {
 
                const { data: verifyData, error: verifyError } = await supabase.functions.invoke('verify-payment', { body: verificationPayload });
                
-               if (verifyError) {
-                  let serverErrText = "Payment verification failed at server level.";
-                  try {
-                    const json = await verifyError.context?.json();
-                    if (json && json.error) serverErrText = json.error;
-                  } catch(e) { serverErrText = verifyError.message || serverErrText; }
-                  throw new Error(serverErrText);
-               }
-               
-               if (verifyData && !verifyData.success) {
-                  throw new Error(verifyData.error || "Verification rejected by server.");
+               if (verifyError || (verifyData && !verifyData.success)) {
+                  console.error("Verification Error:", verifyError || verifyData);
+                  throw new Error("Payment is processing, but verification is delayed. Please check your tickets shortly.");
                }
 
                setPaymentSuccess(true); 
@@ -467,8 +458,8 @@ const EventList = () => {
                }, 3500);
 
             } catch (err) {
-               console.error(err);
-               toast.error(err.message || "Payment received, but verification failed.");
+               console.error("Payment Handler Error:", err);
+               toast.error(err.message || "Payment is being processed. It may take a moment to verify.");
                setWizard(p => ({ ...p, processing: false })); 
             }
           },
@@ -483,7 +474,8 @@ const EventList = () => {
         new window.Razorpay(options).open();
       }
     } catch (error) {
-      toast.error(error.message || "Booking failed.");
+      console.error("Checkout Error:", error);
+      toast.error(error.message || "Unable to complete booking. Please try again.");
       setWizard(p => ({ ...p, processing: false })); 
     }
   };
@@ -566,7 +558,8 @@ const EventList = () => {
      if (!expandedEvent) return null;
      if (expandedEvent.category === 'E-Sports') return null; 
      if (expandedEvent.event_type === 'free') return "FREE ENTRY";
-     return `₹${Number(expandedEvent.price || 0) + PLATFORM_FEE}`;
+     const base = Number(expandedEvent.price || 0);
+     return `₹${Number((base * 1.05).toFixed(2))}`;
   }, [expandedEvent]);
 
   if (loading) return <div className="h-screen bg-[#0a0f1d] flex items-center justify-center"><Zap className="animate-pulse text-blue-500" size={48}/></div>;
@@ -899,7 +892,7 @@ const EventList = () => {
 
                 <div style={{ backgroundColor: '#ffffff', padding: '32px', display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
                    <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '0', borderTop: '2px dashed #94a3b8' }}></div>
-                   <p style={{ fontSize: '14px', fontWeight: '900', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '6px', marginBottom: '16px' }}>A D M I T &nbsp; O N E</p>
+                   <p style={{ fontSize: '14px', fontWeight: '900', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '6px', marginBottom: '16px' }}>A D M I T   O N E</p>
                    <QRCodeCanvas value={selectedTicket.bookingId || "error"} size={140} level="H" style={{ marginBottom: '16px' }} />
                    <p style={{ fontSize: '9px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Ticket ID</p>
                    <p style={{ fontSize: '10px', fontFamily: 'monospace', fontWeight: 'bold', color: '#0f172a' }}>{selectedTicket.bookingId}</p>
@@ -1125,7 +1118,8 @@ const EventCard = ({ event, onBook, onViewTicket, availableClubs, onExpand }) =>
   const displayPrice = React.useMemo(() => {
      if (event.category === 'E-Sports') return null; // NO PRICE FOR E-SPORTS
      if (event.event_type === 'free') return "FREE ENTRY";
-     return `₹${Number(event.price || 0) + PLATFORM_FEE}`;
+     const base = Number(event.price || 0);
+     return `₹${Number((base * 1.05).toFixed(2))}`;
   }, [event]);
 
   const clubName = event.club_id && availableClubs ? availableClubs.find(c => c.id === event.club_id)?.name : null;

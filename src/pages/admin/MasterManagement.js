@@ -9,21 +9,33 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+// IMPORT SMART BACK HOOK FOR NATIVE iOS ROUTING
+import { useSmartBack } from '../../App';
+
 const ROWS_PER_PAGE = 20;
-const PLATFORM_FEE = 20; // UPDATED to 20 Rs
 
 // ==========================================
-// HELPER FUNCTIONS
+// BULLETPROOF MATH & TXN HELPERS
 // ==========================================
 const getTxnId = (item) => item.utr_number || item.transaction_id || item.payment_id || item.razorpay_payment_id;
 
 const getBaseAmount = (item) => {
-  if (item.events?.category === 'E-Sports' && item.selected_game && item.events?.games_list) {
-    const gameObj = item.events.games_list.find(g => g.gameName === item.selected_game);
-    if (gameObj && gameObj.ticket_price) return Number(gameObj.ticket_price);
+  if (!item.events) return 0;
+  
+  if (String(item.events.category).toLowerCase() === 'e-sports' && item.selected_game) {
+    const gameObj = item.events.games_list?.find(g => String(g.gameName).trim().toLowerCase() === String(item.selected_game).trim().toLowerCase());
+    // Use loose string matching to prevent case-sensitive failures
+    if (gameObj && String(gameObj.ticket_type).toLowerCase() === 'paid') {
+        return Number(gameObj.ticket_price || 0);
+    }
     return 0;
   }
-  return item.events?.event_type === 'paid' ? Number(item.events?.price || 0) : 0;
+  
+  if (String(item.events.event_type).toLowerCase() === 'paid') {
+    return Number(item.events.price || 0);
+  }
+  
+  return 0;
 };
 
 const getFeeBreakdown = (item) => {
@@ -32,14 +44,14 @@ const getFeeBreakdown = (item) => {
   let total = 0;
 
   if (base > 0) {
-     platform = PLATFORM_FEE;
+     platform = base * 0.05; // 5% Platform Fee
      total = base + platform;
-  } else if (getTxnId(item)) {
-     // Fallback for older transactions without exact base details
-     total = Number(item.amount) || Number(item.total_amount) || 0; 
+  } else {
+     // Hard Fallback: If schema matching failed, check if the database stored an amount
+     total = Number(item.amount_expected) || Number(item.amount) || Number(item.total_amount) || 0; 
      if (total > 0) {
-         platform = total >= PLATFORM_FEE ? PLATFORM_FEE : 0;
-         base = total - platform;
+         base = total / 1.05; 
+         platform = total - base;
      }
   }
 
@@ -53,6 +65,7 @@ const getFeeBreakdown = (item) => {
 
 const MasterManagement = () => {
   const navigate = useNavigate(); 
+  const smartBack = useSmartBack(); // Initialize the smart back hook
   
   const [userRole, setUserRole] = useState(null);
   const [orgs, setOrgs] = useState([]);
@@ -81,7 +94,6 @@ const MasterManagement = () => {
   
   const [selectedAttendee, setSelectedAttendee] = useState(null);
   
-  // SECURITY UPDATE: Added isPaid flag to the confirmation modal state
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, bookingId: null, isReject: false, isPaid: false });
 
   useEffect(() => {
@@ -210,6 +222,9 @@ const MasterManagement = () => {
         .from('bookings')
         .select(`
           *,
+          transaction_id,
+          razorpay_payment_id,
+          amount_expected,
           students ( name, surname, email, phone, urn ),
           events!inner ( title, price, org_id, club_id, category, event_type, games_list )
         `)
@@ -270,9 +285,6 @@ const MasterManagement = () => {
 
       let enrichedData = dataRes.data || [];
 
-      // ==========================================
-      // BULLETPROOF ROSTER FETCH LOGIC
-      // ==========================================
       if (enrichedData.length > 0) {
         const bookingIds = enrichedData.map(b => b.id);
         const { data: membersData, error: memErr } = await supabase
@@ -294,15 +306,12 @@ const MasterManagement = () => {
            studentProfiles = profiles || [];
         }
         
-        // SAFELY MAP TEAM MEMBERS
         enrichedData = enrichedData.map(booking => {
            let bMembers = membersData ? membersData.filter(m => m.booking_id === booking.id) : [];
            
            let fullMembers = bMembers.map(bm => {
               const cleanEmail = bm.student_email?.trim().toLowerCase();
               const prof = studentProfiles.find(p => p.email?.toLowerCase() === cleanEmail) || {};
-              
-              // Fallback if database blocks the profile read
               const finalName = prof.name || cleanEmail?.split('@')[0] || "Unknown";
 
               return { 
@@ -314,7 +323,6 @@ const MasterManagement = () => {
               };
            });
 
-           // FAILSAFE: Ensure the Team Lead is ALWAYS in the roster
            if (!fullMembers.some(m => m.email?.toLowerCase() === booking.student_email?.toLowerCase())) {
                fullMembers.unshift({
                    email: booking.student_email,
@@ -332,7 +340,7 @@ const MasterManagement = () => {
       setAttendees(enrichedData);
     } catch (error) {
       console.error("Fetch Error:", error);
-      toast.error("Failed to retrieve database records.");
+      toast.error("Unable to load records. Please refresh the page.");
     } finally {
       setLoading(false);
     }
@@ -358,7 +366,6 @@ const MasterManagement = () => {
     setExpandedRows(newSet);
   };
 
-  // EXPLICIT APPROVAL LOGIC (Replaced specific Verify conditions)
   const handleApproveTicket = async (bookingId) => {
     const toastId = toast.loading("Approving Ticket...");
     try {
@@ -368,7 +375,7 @@ const MasterManagement = () => {
       setAttendees(prev => prev.map(a => a.id === bookingId ? { ...a, status: 'verified' } : a));
       if (selectedAttendee?.id === bookingId) setSelectedAttendee(prev => ({...prev, status: 'verified'}));
     } catch (error) {
-      toast.error("Approval failed.", { id: toastId });
+      toast.error("Unable to approve ticket. Please try again.", { id: toastId });
     }
   };
 
@@ -387,7 +394,7 @@ const MasterManagement = () => {
       setTotalRecords(prev => prev - 1);
       if (selectedAttendee?.id === bookingId) setSelectedAttendee(null); 
     } catch (error) {
-      toast.error("Action failed.", { id: loadToast });
+      toast.error("Unable to process the request right now.", { id: loadToast });
     } finally {
       setConfirmModal({ isOpen: false, bookingId: null, isReject: false, isPaid: false });
     }
@@ -400,6 +407,9 @@ const MasterManagement = () => {
         .from('bookings')
         .select(`
           *,
+          transaction_id,
+          razorpay_payment_id,
+          amount_expected,
           students ( name, surname, email, phone, urn ),
           events!inner ( title, price, org_id, club_id, category, event_type, games_list )
         `)
@@ -486,7 +496,7 @@ const MasterManagement = () => {
       a.click();
       toast.success("Download Complete!", { id: toastId });
     } catch (err) {
-      toast.error("Download Failed.", { id: toastId });
+      toast.error("Unable to download data. Please try again.", { id: toastId });
     }
   };
 
@@ -532,10 +542,18 @@ const MasterManagement = () => {
         let revenue = 0, pFees = 0, checkedIn = 0, teams = 0, individuals = 0, games = {};
         data.forEach(b => {
           if (b.status === 'verified' || b.status === 'checked_in') {
-             const base = getBaseAmount(b);
+             let base = getBaseAmount(b);
              if (base > 0) {
                revenue += base;
-               pFees += PLATFORM_FEE;
+               pFees += (base * 0.05); 
+             } else if (getTxnId(b)) {
+               // Fallback if base wasn't found but transaction exists
+               let total = Number(b.amount) || Number(b.amount_expected) || Number(b.total_amount) || 0;
+               if (total > 0) {
+                 let calculatedBase = total / 1.05;
+                 revenue += calculatedBase;
+                 pFees += (total - calculatedBase);
+               }
              }
           }
           if (b.status === 'checked_in') checkedIn++;
@@ -583,7 +601,6 @@ const MasterManagement = () => {
                 This action cannot be undone and will permanently remove the record.
               </p>
               
-              {/* SECURITY UPDATE: Razorpay Warning for Paid Tickets */}
               {confirmModal.isPaid && (
                 <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-xl text-left">
                   <p className="text-[10px] font-black text-yellow-500 uppercase tracking-widest leading-relaxed flex items-start gap-2">
@@ -608,7 +625,8 @@ const MasterManagement = () => {
 
       <div className="max-w-7xl mx-auto space-y-8 sm:space-y-10">
         
-        <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-slate-500 hover:text-blue-500 transition-all font-black text-[10px] uppercase tracking-widest">
+        {/* USE SMART BACK HOOK HERE */}
+        <button onClick={() => smartBack('/admin')} className="flex items-center gap-2 text-slate-500 hover:text-blue-500 transition-all font-black text-[10px] uppercase tracking-widest">
           <ArrowLeft size={14} /> Back to Dashboard
         </button>
 
@@ -629,7 +647,6 @@ const MasterManagement = () => {
           </button>
         </header>
 
-        {/* --- CONDENSED FILTER BAR --- */}
         <div className="flex flex-col md:flex-row flex-wrap items-center gap-4 bg-[#111827] p-4 rounded-3xl border border-white/5 shadow-xl relative z-40">
           <div className="flex items-center gap-3 relative w-full z-40" ref={filterMenuRef}>
             
@@ -731,7 +748,6 @@ const MasterManagement = () => {
           </div>
         </div>
 
-        {/* --- VIEW TOGGLE TABS --- */}
         <div className="flex bg-[#111827] p-1 rounded-2xl border border-white/5 w-fit shadow-lg relative z-10">
           <button 
             onClick={() => setActiveTab('database')} 
@@ -747,19 +763,14 @@ const MasterManagement = () => {
           </button>
         </div>
 
-        {/* --- DYNAMIC RENDER BASED ON TAB --- */}
         {activeTab === 'analytics' ? (
           
-          /* ================================== */
-          /* ANALYTICS VIEW              */
-          /* ================================== */
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {/* KPI CARDS */}
             <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div className="bg-[#111827] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-hidden group">
                 <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:scale-110 transition-transform"><IndianRupee size={80} /></div>
                 <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Ticket Revenue</p>
-                <h3 className="text-5xl font-black text-white italic tracking-tighter">₹{analyticsStats.totalRevenue.toLocaleString()}</h3>
+                <h3 className="text-5xl font-black text-white italic tracking-tighter">₹{analyticsStats.totalRevenue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</h3>
                 <div className="mt-4 flex items-center gap-2 text-emerald-400 font-bold text-[10px] uppercase">
                   <TrendingUp size={14}/> Verified Settlements
                 </div>
@@ -788,26 +799,23 @@ const MasterManagement = () => {
                 <p className="mt-4 text-[9px] font-black text-slate-500 uppercase tracking-widest">{analyticsStats.checkedInCount} / {analyticsStats.totalRegistrations} Passes Scanned</p>
               </div>
 
-              {/* ONLY SHOW PLATFORM REVENUE TO SUPER ADMIN */}
               {userRole === 'super_admin' && (
                 <div className="bg-[#111827] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl">
                   <div className="flex justify-between items-start mb-6">
                     <div>
                       <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Platform Revenue</p>
-                      <h3 className="text-4xl font-black text-white italic tracking-tighter">₹{analyticsStats.platformFees}</h3>
+                      <h3 className="text-4xl font-black text-white italic tracking-tighter">₹{analyticsStats.platformFees.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</h3>
                     </div>
                     <div className="p-3 bg-blue-600/10 rounded-2xl border border-blue-500/20 text-blue-400">
                       <Zap size={20} />
                     </div>
                   </div>
-                  <p className="text-slate-400 text-xs font-medium leading-relaxed">Generated from the fixed ₹20 platform allocation fee per paid registration.</p>
+                  <p className="text-slate-400 text-xs font-medium leading-relaxed">Generated from the 5% platform allocation fee per paid registration.</p>
                 </div>
               )}
             </div>
 
-            {/* SIDEBAR: TOURNAMENT & CATEGORY DATA */}
             <div className="space-y-8">
-              {/* GAME POPULARITY */}
               <div className="bg-[#111827] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl">
                 <div className="flex items-center gap-3 mb-6">
                   <Gamepad2 className="text-cyan-400" size={20} />
@@ -835,7 +843,6 @@ const MasterManagement = () => {
                 </div>
               </div>
 
-              {/* PARTICIPATION MIX */}
               <div className="bg-[#111827] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl">
                 <div className="flex items-center gap-3 mb-6">
                   <Users className="text-indigo-400" size={20} />
@@ -867,16 +874,11 @@ const MasterManagement = () => {
               </div>
             </div>
           </div>
-          /* ================================== */
           
         ) : (
 
-          /* ================================== */
-          /* DATABASE VIEW              */
-          /* ================================== */
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
 
-            {/* MAIN DATA TABLE */}
             <div className="bg-[#111827] rounded-3xl sm:rounded-[3rem] border border-white/5 overflow-hidden shadow-2xl relative z-10 flex flex-col">
               {loading ? (
                 <div className="py-32 flex justify-center"><Zap className="animate-pulse text-blue-500" size={48} /></div>
@@ -963,9 +965,13 @@ const MasterManagement = () => {
                               </td>
 
                               <td className="px-8 py-5">
-                                {parseFloat(fees.total) > 0 ? (
+                                {parseFloat(fees.total) > 0 || txn ? (
                                   <div className="flex flex-col">
-                                    {txn && <p className="font-mono text-xs font-bold text-yellow-500 tracking-[0.2em]">{txn}</p>}
+                                    {txn ? (
+                                      <p className="font-mono text-xs font-bold text-yellow-500 tracking-[0.2em]">{txn}</p>
+                                    ) : (
+                                      <p className="font-mono text-xs font-bold text-slate-500 italic tracking-[0.2em]">PENDING TXN</p>
+                                    )}
                                     <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mt-1">₹{fees.total} Total Paid</p>
                                   </div>
                                 ) : (
@@ -991,7 +997,6 @@ const MasterManagement = () => {
                               </td>
                             </tr>
 
-                            {/* --- EXPANDABLE ROSTER ROW --- */}
                             {item.team_name && expandedRows.has(item.id) && (
                               <tr className="bg-black/40 border-b border-white/5 shadow-inner">
                                 <td colSpan="5" className="p-0">
@@ -1021,7 +1026,6 @@ const MasterManagement = () => {
                     </table>
                   </div>
 
-                  {/* --- MOBILE VIEW LIST --- */}
                   <div className="flex flex-col lg:hidden divide-y divide-white/5 grow">
                     {filteredList.map((item) => {
                       const txn = getTxnId(item);
@@ -1074,7 +1078,7 @@ const MasterManagement = () => {
                           )}
                         </div>
 
-                        {parseFloat(fees.total) > 0 && (
+                        {(parseFloat(fees.total) > 0 || txn) && (
                           <div className="bg-black/30 p-3 rounded-xl border border-white/5 flex justify-between items-center">
                             <div className="flex flex-col">
                               <span className="text-[8px] text-slate-500 uppercase font-black tracking-widest">Transaction ID</span>
@@ -1109,7 +1113,6 @@ const MasterManagement = () => {
                     )})}
                   </div>
 
-                  {/* --- PAGINATION CONTROLS --- */}
                   {totalPages > 1 && (
                     <div className="px-6 py-4 border-t border-white/5 bg-[#1f2937]/30 flex flex-col sm:flex-row justify-between items-center gap-4 shrink-0">
                       <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
@@ -1140,12 +1143,10 @@ const MasterManagement = () => {
               )}
             </div>
           </div>
-          /* ================================== */
         )}
 
       </div>
 
-      {/* --- ATTENDEE DETAILS MODAL --- */}
       {selectedAttendee && (
         <div className="fixed inset-0 z-100 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
           <div className="bg-[#0a0f1d] border border-white/10 rounded-[2.5rem] w-full max-w-lg shadow-[0_0_50px_rgba(0,0,0,0.8)] overflow-hidden animate-in slide-in-from-bottom-10 sm:zoom-in-95 duration-300 relative flex flex-col max-h-[90vh]">
@@ -1262,7 +1263,7 @@ const MasterManagement = () => {
                   </span>
                 </div>
 
-                {parseFloat(getFeeBreakdown(selectedAttendee).total) > 0 ? (
+                {parseFloat(getFeeBreakdown(selectedAttendee).total) > 0 || getTxnId(selectedAttendee) ? (
                   <div className="space-y-2">
                     <div className="flex justify-between items-center text-sm">
                       <span className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">Base Ticket Fee</span>

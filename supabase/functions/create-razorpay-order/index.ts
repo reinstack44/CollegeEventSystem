@@ -3,8 +3,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const PLATFORM_FEE = 20;
-
 Deno.serve(async (req) => {
   // 1. Instantly respond to the Browser's CORS preflight check
   if (req.method === 'OPTIONS') {
@@ -19,12 +17,14 @@ Deno.serve(async (req) => {
     const keySecret = Deno.env.get('RAZORPAY_KEY_SECRET');
 
     if (!keyId || !keySecret) {
-      throw new Error("Razorpay keys are missing in Supabase Vault.");
+      throw new Error("Payment service is temporarily unavailable.");
     }
 
     const auth = btoa(`${keyId}:${keySecret}`);
     const baseAmount = Number(amount) || 0;
-    const finalTotalAmount = baseAmount + PLATFORM_FEE;
+    
+    // DYNAMIC 5% PLATFORM FEE CALCULATION
+    const finalTotalAmount = baseAmount * 1.05;
     
     // 2. Call Razorpay
     const response = await fetch('https://api.razorpay.com/v1/orders', {
@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
     const data = await response.json();
 
     if (!response.ok) {
-       throw new Error(data.error?.description || "Razorpay API rejected the request");
+       throw new Error("Unable to initialize payment session. Please try again.");
     }
 
     // 4. Send success back to React
@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error("Crash:", error);
     // 5. Send clean error back to React so we can read it on screen
-    return new Response(JSON.stringify({ error: error.message || String(error) }), {
+    return new Response(JSON.stringify({ error: error.message || "An unexpected error occurred. Please try again." }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });

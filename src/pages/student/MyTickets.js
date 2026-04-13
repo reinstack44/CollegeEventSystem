@@ -1,5 +1,4 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../sbclient/supabaseClient';
 import { QRCodeCanvas } from 'qrcode.react'; 
 import { 
@@ -10,18 +9,34 @@ import toast from 'react-hot-toast';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 
-const PLATFORM_FEE = 20; // UPDATED to 20 Rs
+// IMPORT SMART BACK HOOK FOR NATIVE iOS ROUTING
+import { useSmartBack } from '../../App';
 
+// ==========================================
+// DYNAMIC 5% FEE CALCULATOR
+// ==========================================
 const getTicketPrice = (ticket) => {
   if (!ticket || !ticket.events) return 0;
+  
+  let basePrice = 0;
+
   if (ticket.events.category === 'E-Sports' && ticket.selected_game) {
      const gameObj = ticket.events.games_list?.find(g => g.gameName === ticket.selected_game);
-     if (gameObj && gameObj.ticket_type === 'paid') return Number(gameObj.ticket_price || 0) + PLATFORM_FEE;
-     return 0;
+     if (gameObj && gameObj.ticket_type === 'paid') {
+         basePrice = Number(gameObj.ticket_price || 0);
+     }
+  } else if (ticket.events.event_type === 'paid') {
+     basePrice = Number(ticket.events.price || 0);
   }
-  if (ticket.events.event_type === 'paid') return Number(ticket.events.price || 0) + PLATFORM_FEE;
+
+  // Calculate base + 5% platform fee dynamically
+  if (basePrice > 0) {
+      return Number((basePrice * 1.05).toFixed(2));
+  }
+  
   return 0;
 };
+// ==========================================
 
 const formatEventTime = (timeStr) => {
   if (!timeStr) return '';
@@ -41,7 +56,7 @@ const formatTimeRange = (start, end) => {
 };
 
 const MyTickets = () => {
-  const navigate = useNavigate();
+  const smartBack = useSmartBack(); // Initialize the smart back hook
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [studentName, setStudentName] = useState("");
@@ -133,7 +148,7 @@ const MyTickets = () => {
       setTickets(validTickets);
     } catch (error) {
       console.error("Discovery Error:", error);
-      toast.error("Failed to load tickets.");
+      toast.error("Unable to load tickets at this time. Please refresh the page.");
     } finally {
       setLoading(false);
     }
@@ -186,7 +201,8 @@ const MyTickets = () => {
       if (selectedTicket?.id === ticketId) setSelectedTicket(null);
       setConfirmModal({ isOpen: false, ticketId: null, eventTitle: '' });
     } catch (err) {
-      toast.error("Failed to cancel ticket.");
+      console.error("Cancellation Error:", err);
+      toast.error("Unable to cancel ticket right now. Please try again.");
     }
   };
 
@@ -227,7 +243,8 @@ const MyTickets = () => {
       pdf.save(`Ticket_${selectedTicket.events?.title.replace(/\s+/g, '_')}.pdf`);
       toast.success("Download complete!", { id: toastId });
     } catch (error) {
-      toast.error("Failed to generate PDF.", { id: toastId });
+      console.error("PDF Error:", error);
+      toast.error("Unable to generate PDF right now. Please try again.", { id: toastId });
     } finally { setIsDownloading(false); }
   };
 
@@ -315,9 +332,9 @@ const MyTickets = () => {
     <div className="min-h-screen bg-[#0a0f1d] text-white p-6 pb-24 selection:bg-blue-500/30 overflow-hidden">
       <div className="max-w-6xl mx-auto">
 
-        {/* --- BACK BUTTON --- */}
+        {/* USE SMART BACK HOOK HERE */}
         <button 
-          onClick={() => navigate(-1)} 
+          onClick={() => smartBack('/events')} 
           className="flex items-center gap-2 text-slate-500 hover:text-blue-500 transition-colors font-black text-[10px] uppercase tracking-widest mb-8 w-fit"
         >
           <ArrowLeft size={14} /> Back

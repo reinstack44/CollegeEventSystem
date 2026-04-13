@@ -7,8 +7,12 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+// IMPORT SMART BACK HOOK FOR NATIVE iOS ROUTING
+import { useSmartBack } from '../../App';
+
 const ManageEvents = () => {
   const navigate = useNavigate();
+  const smartBack = useSmartBack(); // Initialize the smart back hook
   const [loading, setLoading] = useState(true);
   const [events, setEvents] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -78,6 +82,7 @@ const ManageEvents = () => {
         }
       } catch (err) {
         console.error("Init Error:", err);
+        toast.error("Session verification failed. Please log in again.");
       }
     };
     initializeManagement();
@@ -127,7 +132,7 @@ const ManageEvents = () => {
         setEvents(data || []);
       } catch (error) {
         console.error("Event Fetch Error:", error);
-        toast.error("Failed to load events database.");
+        toast.error("Unable to load event database. Please refresh.");
       } finally {
         setLoading(false);
       }
@@ -150,7 +155,7 @@ const ManageEvents = () => {
       setEvents(events.filter(event => event.id !== eventId));
     } catch (error) {
       console.error("Delete Error:", error);
-      toast.error("Failed to delete event.", { id: loadToast });
+      toast.error("Unable to delete event right now.", { id: loadToast });
     } finally {
       setConfirmModal({ isOpen: false, eventId: null, eventTitle: '' });
     }
@@ -204,7 +209,8 @@ const ManageEvents = () => {
 
       <div className="max-w-6xl mx-auto space-y-8 sm:space-y-10">
         
-        <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-slate-500 hover:text-blue-500 transition-all font-black text-[10px] uppercase tracking-widest">
+        {/* USE SMART BACK HOOK FOR iOS COMPATIBILITY */}
+        <button onClick={() => smartBack('/admin')} className="flex items-center gap-2 text-slate-500 hover:text-blue-500 transition-all font-black text-[10px] uppercase tracking-widest">
           <ArrowLeft size={14} /> Back to Dashboard
         </button>
 
@@ -304,7 +310,7 @@ const ManageEvents = () => {
             <div className="space-y-4">
               {filteredEvents.map((event) => (
                 <div key={event.id} className="flex flex-col sm:flex-row sm:items-center justify-between bg-slate-900/50 p-5 sm:p-6 rounded-2xl sm:rounded-3xl border border-white/5 hover:border-blue-500/30 transition-all gap-4 group">
-                  <div className="w-full">
+                  <div className="w-full text-left">
                     <div className="flex flex-wrap items-center gap-2 mb-2">
                       <span className="text-[9px] sm:text-[10px] font-black text-blue-500 uppercase tracking-widest bg-blue-500/10 px-2.5 py-1 rounded-md border border-blue-500/20">{event.school}</span>
                       

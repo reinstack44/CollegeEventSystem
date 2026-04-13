@@ -8,8 +8,12 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+// IMPORT SMART BACK HOOK FOR NATIVE iOS ROUTING
+import { useSmartBack } from '../../App';
+
 const Dashboard = () => {
   const navigate = useNavigate();
+  const smartBack = useSmartBack(); // Initialize the smart back hook
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState(null);
   
@@ -33,9 +37,9 @@ const Dashboard = () => {
     const verifyAdmin = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return navigate('/adminlogin');
+        if (!user) return navigate('/adminlogin', { replace: true });
 
-        // 1. Secure Role Fetch (No hardcoded emails)
+        // 1. Secure Role Fetch
         const { data: profile } = await supabase.from('students').select('role').eq('email', user.email).single();
         const { data: roles } = await supabase.from('user_roles').select('*').eq('email', user.email);
         
@@ -50,8 +54,8 @@ const Dashboard = () => {
         else if (isClubHead) role = 'club_head';
 
         if (role === 'student') {
-          toast.error("UNAUTHORIZED: Admin Access Only");
-          return navigate('/events');
+          toast.error("Access Denied: Admin privileges required.");
+          return navigate('/events', { replace: true });
         }
 
         setUserRole(role);
@@ -73,6 +77,7 @@ const Dashboard = () => {
         
       } catch (error) {
         console.error("Dashboard verification error:", error);
+        toast.error("Unable to verify administrative session.");
       } finally {
         setLoading(false);
       }
@@ -87,7 +92,7 @@ const Dashboard = () => {
       localStorage.setItem('active_club_name', selectedClub.name);
       setActiveClubId(selectedClub.id);
       setIsClubDropdownOpen(false);
-      toast.success(`Active club set to ${selectedClub.name}`);
+      toast.success(`Active workspace: ${selectedClub.name}`);
     }
   };
 
@@ -96,7 +101,8 @@ const Dashboard = () => {
   return (
     <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 max-w-7xl text-left">
       <div className="w-full mb-4 sm:mb-6 flex justify-start">
-        <button onClick={() => navigate('/')} className="flex items-center gap-2 text-slate-500 hover:text-blue-500 transition-all font-black text-[10px] uppercase tracking-widest">
+        {/* UPDATED: useSmartBack handles the iOS history stack properly */}
+        <button onClick={() => smartBack('/')} className="flex items-center gap-2 text-slate-500 hover:text-blue-500 transition-all font-black text-[10px] uppercase tracking-widest">
           <ArrowLeft size={14} /> Back to Home
         </button>
       </div>
@@ -169,6 +175,11 @@ const Dashboard = () => {
           <AdminCard to="/admin/applications" icon={<Building className="text-emerald-500 w-5 h-5 sm:w-7 sm:h-7" />} title="Applications" desc="Org Approvals." color="border-emerald-500" /> 
         )}
       </div>
+
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #db2777; border-radius: 10px; }
+      `}</style>
     </div>
   );
 };

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { supabase } from './sbclient/supabaseClient';
 import Navbar from './components/Navbar';
@@ -42,6 +42,33 @@ import Refunds from './pages/legal/Refunds';
 import RegisterOrg from './pages/auth/RegisterOrg';
 import PendingApproval from './pages/auth/PendingApproval';
 
+// ==========================================
+// iOS ROUTING SAFETIES
+// ==========================================
+// 1. Auto-scroll to top on route change (Native App Feel)
+const ScrollToTop = () => {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+  return null;
+};
+
+// 2. Global Smart Back Hook (Prevents iOS Swipe-Back Crashes)
+export const useSmartBack = () => {
+  const navigate = useNavigate();
+  return (fallbackPath = '/events') => {
+    // Check if there is actual history to go back to
+    if (window.history.state && window.history.state.idx > 0) {
+      navigate(-1);
+    } else {
+      // If opened via direct link, safely route home instead of crashing
+      navigate(fallbackPath, { replace: true });
+    }
+  };
+};
+// ==========================================
+
 function App() {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -62,7 +89,8 @@ function App() {
 
   if (authLoading) {
     return (
-      <div className="h-screen bg-[#0a0f1d] flex items-center justify-center">
+      // UPDATED: Using native Tailwind min-h-dvh
+      <div className="min-h-dvh bg-[#0a0f1d] flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
       </div>
     );
@@ -70,11 +98,13 @@ function App() {
 
   return (
     <Router>
+      <ScrollToTop />
       <Toaster position="top-center" />
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col">
+      {/* UPDATED: Using native Tailwind min-h-dvh */}
+      <div className="min-h-dvh bg-slate-50 dark:bg-[#0a0f1d] flex flex-col w-full overflow-x-hidden touch-pan-y">
         <Navbar session={session} />
         
-        <main className="grow">
+        <main className="grow flex flex-col w-full">
           <Routes>
             <Route 
               path="/" 

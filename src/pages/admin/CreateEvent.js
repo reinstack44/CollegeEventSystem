@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../sbclient/supabaseClient';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import CustomTimePicker from '../../components/CustomTimePicker';
 import CustomDatePicker from '../../components/CustomDatePicker';
 import toast from 'react-hot-toast';
@@ -11,6 +11,9 @@ import {
   Building, ChevronDown, UploadCloud, X, 
   Image as ImageIcon, ChevronLeft, ChevronRight, Timer, Globe, Lock, FileText, Repeat, Layers, Users, Gamepad2, Plus, Settings, Underline, List, Maximize2
 } from 'lucide-react';
+
+// IMPORT SMART BACK HOOK FOR NATIVE iOS ROUTING
+import { useSmartBack } from '../../App';
 
 const DEFAULT_PREVIEW_IMAGES = [
   "https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&q=80&w=800",
@@ -24,11 +27,8 @@ const CATEGORIES = [
 
 const POPULAR_GAMES = ["BGMI", "Valorant", "Fall Guys", "FIFA", "CS:GO 2", "Free Fire", "Call of Duty"];
 
-// UPDATED: Centralized Platform Fee set strictly to 20 Rs
-const PLATFORM_FEE = 20;
-
 const CreateEvent = () => {
-  const navigate = useNavigate();
+  const smartBack = useSmartBack(); // Initialize the smart back hook
   const [searchParams] = useSearchParams();
   const editId = searchParams.get('edit');
   const [loading, setLoading] = useState(false);
@@ -286,7 +286,7 @@ const CreateEvent = () => {
           const fileExt = img.file.name.split('.').pop();
           const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
           const { error: uploadError } = await supabase.storage.from('event-images').upload(fileName, img.file);
-          if (uploadError) throw uploadError;
+          if (uploadError) throw new Error("Unable to upload images. Please check your connection or use smaller files.");
           const { data } = supabase.storage.from('event-images').getPublicUrl(fileName);
           finalImageUrls.push(data.publicUrl);
         } else {
@@ -320,13 +320,16 @@ const CreateEvent = () => {
         ? await supabase.from('events').update(submissionData).eq('id', editId)
         : await supabase.from('events').insert([submissionData]);
       
-      if (error) throw error; 
+      if (error) throw new Error("Unable to save the event. Please check your connection and try again.");
 
       toast.success(editId ? "Event Updated Successfully!" : "Event Published Successfully!", { id: loadToast });
-      navigate(-1);
+      
+      // Use the new smart back hook here so users don't get trapped if they direct-linked
+      smartBack('/admin');
+
     } catch (error) {
       console.error("Event Creation Error:", error);
-      toast.error(error.message || "Operation Failed. Please verify inputs.", { id: loadToast, duration: 6000 });
+      toast.error(error.message || "Operation Failed. Please verify your inputs and try again.", { id: loadToast, duration: 6000 });
     } finally {
       setLoading(false);
     }
@@ -334,18 +337,19 @@ const CreateEvent = () => {
 
   const previewImages = selectedImages.length > 0 ? selectedImages.map(img => img.url) : DEFAULT_PREVIEW_IMAGES;
 
-  // Calculate Display Price for UI Preview (+20 Platform Fee)
+  // Calculate Display Price for UI Preview (+5% Platform Fee)
   const getPreviewPrice = () => {
       if(formData.category === 'E-Sports') return "Varies per Game";
       if(formData.event_type === 'free') return "FREE";
       const base = Number(formData.price) || 0;
-      return `₹${base + PLATFORM_FEE}`;
+      return `₹${Number((base * 1.05).toFixed(2))}`;
   };
 
   return (
     <div className="min-h-screen bg-[#0a0f1d] flex flex-col items-center p-4">
       <div className="w-full max-w-7xl mb-4 flex justify-start">
-        <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-slate-500 hover:text-blue-500 transition-all font-black text-[10px] uppercase tracking-widest">
+        {/* USE SMART BACK HOOK HERE */}
+        <button onClick={() => smartBack('/admin')} className="flex items-center gap-2 text-slate-500 hover:text-blue-500 transition-all font-black text-[10px] uppercase tracking-widest">
           <ArrowLeft size={14} /> Back to Dashboard
         </button>
       </div>
@@ -705,7 +709,7 @@ const CreateEvent = () => {
                                       </div>
                                     </div>
                                     <span className="text-[8px] text-emerald-400/80 font-bold px-1 pt-1.5 text-right block">
-                                      * Users pay ₹{(Number(gameObj.ticket_price) || 0) + PLATFORM_FEE} (Base + ₹{PLATFORM_FEE} Fee)
+                                      * Users pay ₹{Number(((Number(gameObj.ticket_price) || 0) * 1.05).toFixed(2))} (Base + 5% Fee)
                                     </span>
                                  </div>
                                )}
@@ -828,7 +832,7 @@ const CreateEvent = () => {
                           className="w-full p-4 bg-[#111827] border border-slate-700 rounded-2xl outline-none focus:border-emerald-500 text-white text-sm" 
                         />
                         <p className="text-[9px] text-emerald-400/80 font-bold ml-2 pt-1 leading-snug">
-                          * A hidden ₹{PLATFORM_FEE} platform fee is added at checkout. Users will pay a total of ₹{(Number(formData.price) || 0) + PLATFORM_FEE}.
+                          * A 5% platform fee is added at checkout. Users will pay a total of ₹{Number(((Number(formData.price) || 0) * 1.05).toFixed(2))}.
                         </p>
                       </div>
                       <div className="space-y-2">
