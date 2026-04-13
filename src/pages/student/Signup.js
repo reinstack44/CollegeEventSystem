@@ -12,24 +12,25 @@ const Signup = () => {
     const loadToast = toast.loading('Connecting to University Portal...');
 
     try {
+      // Initiate OAuth flow. 
+      // Supabase handles the redirect to Google and back.
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          // THIS IS THE MAGIC LINE: It strictly locks the Google login window to this domain!
           queryParams: {
             hd: 'adypu.edu.in', 
             prompt: 'select_account' // Forces them to pick the right account if they have multiple
           },
+          // Redirects to CompleteRegistration where we will check if they already exist
           redirectTo: window.location.origin + '/complete-registration'
         }
       });
 
       if (error) throw error;
-      // Note: We don't need toast.success here because the browser will instantly redirect to Google
 
     } catch (error) {
       console.error("Auth Error:", error);
-      toast.error("Failed to connect to Google. Please try again.", { id: loadToast });
+      toast.error("Unable to connect to Google workspace. Please try again.", { id: loadToast });
       setLoading(false);
     }
   };

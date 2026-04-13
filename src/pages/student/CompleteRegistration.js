@@ -6,6 +6,7 @@ import { ShieldCheck, Lock, ArrowRight, User, Phone, GraduationCap, Zap, Fingerp
 const CompleteRegistration = () => {
   const [formData, setFormData] = useState({ name: '', surname: '', phone: '', urn: '', school: '', password: '' });
   const [loading, setLoading] = useState(false);
+  const [isChecking, setIsChecking] = useState(true); // Added to prevent form flicker during security check
   
   const schools = [
     "School of Engineering", 
@@ -18,14 +19,46 @@ const CompleteRegistration = () => {
   ];
 
   useEffect(() => {
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        toast.error("Session expired. Please start over.");
+    const verifyAccessAndRegistration = async () => {
+      try {
+        // 1. Check if they have an active Google OAuth session
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          toast.error("Session expired. Please start over.");
+          window.location.href = "/";
+          return;
+        }
+
+        // 2. Fetch their Google email
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        if (user?.email) {
+          // 3. Check if this email is already registered in the students table
+          const { data: existingStudent } = await supabase
+            .from('students')
+            .select('email')
+            .eq('email', user.email)
+            .maybeSingle();
+          
+          // 4. If they already exist, block them from the sign-up page
+          if (existingStudent) {
+            toast.error("This email account is already registered with us.");
+            await supabase.auth.signOut(); // Securely remove the accidental session
+            window.location.href = "/login"; // Send them to login
+            return;
+          }
+        }
+      } catch (error) {
+        console.error("Verification Error:", error);
+        toast.error("Unable to verify secure session. Please try again.");
         window.location.href = "/";
+      } finally {
+        // Only show the form if they passed the security checks
+        setIsChecking(false);
       }
     };
-    checkSession();
+    
+    verifyAccessAndRegistration();
   }, []);
 
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -38,7 +71,7 @@ const CompleteRegistration = () => {
     try {
       // Step 1: Set the user's password for future logins
       const { error: authError } = await supabase.auth.updateUser({ password: formData.password });
-      if (authError) throw authError;
+      if (authError) throw new Error("Unable to set secure password. Please try a different one.");
 
       const { data: { user } } = await supabase.auth.getUser();
 
@@ -52,16 +85,25 @@ const CompleteRegistration = () => {
         email: user.email
       }]);
 
-      if (dbError) throw dbError;
+      if (dbError) throw new Error("Unable to create profile. Ensure your URN is correct and not already registered.");
 
       toast.success("Profile verified! Welcome aboard.", { id: loadToast });
       window.location.href = "/events";
     } catch (error) {
-      toast.error(error.message, { id: loadToast });
+      // Clean, non-technical error handling
+      toast.error(error.message || "An unexpected error occurred. Please try again.", { id: loadToast });
     } finally {
       setLoading(false);
     }
   };
+
+  if (isChecking) {
+    return (
+      <div className="min-h-[calc(100vh-64px)] bg-[#0a0f1d] flex items-center justify-center">
+        <Zap className="animate-pulse text-blue-500" size={48} />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[calc(100vh-64px)] flex items-center justify-center p-4 sm:p-6 lg:p-8 bg-[#0a0f1d] relative z-0 overflow-hidden">
