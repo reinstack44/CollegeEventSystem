@@ -448,14 +448,15 @@ const MasterManagement = () => {
                 const cleanEmail = bm.student_email?.trim().toLowerCase();
                 const prof = studentProfiles?.find(p => p.email?.toLowerCase() === cleanEmail) || {};
                 const finalName = prof.name || cleanEmail?.split('@')[0] || "Unknown";
-                return { email: bm.student_email, name: finalName, surname: prof.surname || '' };
+                return { email: bm.student_email, name: finalName, surname: prof.surname || '', phone: prof.phone || 'N/A' };
             });
 
             if (!fullMembers.some(m => m.email?.toLowerCase() === booking.student_email?.toLowerCase())) {
                 fullMembers.unshift({
                     email: booking.student_email,
                     name: booking.students?.name || booking.student_email?.split('@')[0] || "Unknown",
-                    surname: booking.students?.surname || ''
+                    surname: booking.students?.surname || '',
+                    phone: booking.students?.phone || 'N/A'
                 });
             }
 
@@ -482,7 +483,7 @@ const MasterManagement = () => {
         const teamName = item.team_name ? item.team_name.replace(/,/g, '') : 'N/A';
         
         const membersStr = item.fullMembers && item.fullMembers.length > 0 
-          ? `"${item.fullMembers.map(m => `${m.name} ${m.surname || ''} (${m.email})`).join(', ')}"` 
+          ? `"${item.fullMembers.map(m => `${m.name} ${m.surname || ''} (${m.email} - Ph: ${m.phone || 'N/A'})`).join(', ')}"` 
           : 'N/A';
         
         return `${eventName},${gameName},${entryType},${teamName},${item.students?.name || 'Unknown'},${item.students?.surname || ''},${item.student_email},${item.students?.phone || 'N/A'},${item.students?.urn || 'N/A'},${membersStr},${item.status},${txn},₹${fees.base},₹${fees.platform},₹${fees.total}`;
@@ -997,6 +998,7 @@ const MasterManagement = () => {
                               </td>
                             </tr>
 
+                            {/* DESKTOP TABLE EXPANDED ROW WITH PHONE NUMBERS */}
                             {item.team_name && expandedRows.has(item.id) && (
                               <tr className="bg-black/40 border-b border-white/5 shadow-inner">
                                 <td colSpan="5" className="p-0">
@@ -1011,7 +1013,10 @@ const MasterManagement = () => {
                                                         {m.name} {m.surname} 
                                                         {m.email === item.student_email && <span className="bg-yellow-500/20 text-yellow-500 px-1.5 py-0.5 rounded text-[8px] uppercase tracking-widest shrink-0">Leader</span>}
                                                     </p>
-                                                    <p className="text-[9px] text-slate-500 truncate">{m.email} {m.urn ? `• ${m.urn}` : ''}</p>
+                                                    <div className="flex flex-col mt-0.5">
+                                                      <p className="text-[9px] text-slate-500 truncate">{m.email}</p>
+                                                      {m.phone && <p className="text-[9px] text-slate-400 font-bold flex items-center gap-1 mt-0.5"><Phone size={8}/> {m.phone} {m.urn && `• ${m.urn}`}</p>}
+                                                    </div>
                                                 </div>
                                             </div>
                                         ))}
@@ -1147,6 +1152,7 @@ const MasterManagement = () => {
 
       </div>
 
+      {/* DETAILS MODAL WITH PHONE NUMBERS */}
       {selectedAttendee && (
         <div className="fixed inset-0 z-100 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
           <div className="bg-[#0a0f1d] border border-white/10 rounded-[2.5rem] w-full max-w-lg shadow-[0_0_50px_rgba(0,0,0,0.8)] overflow-hidden animate-in slide-in-from-bottom-10 sm:zoom-in-95 duration-300 relative flex flex-col max-h-[90vh]">
@@ -1230,6 +1236,7 @@ const MasterManagement = () => {
                 </div>
               </div>
 
+              {/* DETAILS MODAL TEAM MEMBERS WITH PHONE NUMBERS */}
               {selectedAttendee.team_name && selectedAttendee.fullMembers && selectedAttendee.fullMembers.length > 0 && (
                 <div className="bg-indigo-900/10 rounded-3xl p-4 border border-indigo-500/20 shadow-[0_0_20px_rgba(99,102,241,0.05)]">
                   <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-3 flex items-center gap-2"><Users size={14}/> Team Members ({selectedAttendee.fullMembers.length})</p>
@@ -1243,7 +1250,10 @@ const MasterManagement = () => {
                               {m.name} {m.surname} 
                               {m.email === selectedAttendee.student_email && <span className="bg-yellow-500/20 text-yellow-500 px-1.5 py-0.5 rounded text-[8px] uppercase tracking-widest shrink-0">Leader</span>}
                             </p>
-                            <p className="text-[9px] text-slate-500 truncate">{m.email} {m.urn ? `• ${m.urn}` : ''}</p>
+                            <div className="flex flex-col mt-0.5">
+                              <p className="text-[9px] text-slate-500 truncate">{m.email}</p>
+                              {m.phone && <p className="text-[9px] text-slate-400 font-bold flex items-center gap-1 mt-0.5"><Phone size={8}/> {m.phone} {m.urn && `• ${m.urn}`}</p>}
+                            </div>
                           </div>
                         </div>
                       </div>
