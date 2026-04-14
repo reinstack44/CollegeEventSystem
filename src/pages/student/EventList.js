@@ -26,9 +26,6 @@ const CATEGORIES = [
   "Social & Welfare", "Entrepreneurship", "Literature", "Arts & Media", "Other"
 ];
 
-// ==========================================
-// DYNAMIC 5% FEE CALCULATORS
-// ==========================================
 const getBaseAmount = (eventObj, selectedGameObj) => {
   if (String(eventObj?.category).toLowerCase() === 'e-sports' && selectedGameObj) {
      return String(selectedGameObj.ticket_type).toLowerCase() === 'paid' ? Number(selectedGameObj.ticket_price || 0) : 0;
@@ -57,7 +54,6 @@ const getTicketViewerPrice = (ticket) => {
   }
   return 0;
 };
-// ==========================================
 
 const formatEventTime = (timeStr) => {
   if (!timeStr) return '';
@@ -112,6 +108,26 @@ const EventList = () => {
     searchTerm: '', searchResults: [], isSearching: false, processing: false
   });
 
+  // THE HARD GATEKEEPER: Defeats Race Conditions
+  useEffect(() => {
+    const enforceRegistration = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const { data: studentProfile } = await supabase
+          .from('students')
+          .select('email')
+          .eq('email', session.user.email)
+          .maybeSingle();
+
+        if (!studentProfile) {
+          // Hard Redirect directly overrides React Router loops
+          window.location.href = '/complete-registration';
+        }
+      }
+    };
+    enforceRegistration();
+  }, []);
+
   useEffect(() => {
     const ticker = setInterval(() => setNow(new Date()), 60000);
     return () => clearInterval(ticker);
@@ -129,32 +145,45 @@ const EventList = () => {
 
   const fetchEvents = useCallback(async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const currentIso = now.toISOString();
-
-      const [eventsRes, orgsRes, bookingsRes, membershipsRes] = await Promise.all([
-        supabase.from('events').select('*').gte('reg_end_timestamp', currentIso).order('date', { ascending: true }),
-        supabase.from('organizations').select('id, name, domain'),
-        supabase.from('bookings').select('id, event_id, student_email, status, team_name, selected_game'),
-        user ? supabase.from('booking_members').select('*').eq('student_email', user.email) : { data: [] }
-      ]);
-
-      if (eventsRes.error) throw eventsRes.error;
-
-      let domain = '';
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
+      
+      let emailDomain = '';
       let isSuper = false;
       const userEmail = user ? user.email : null;
-      
+
       if (user) {
-        const { data: profile } = await supabase.from('students').select('name, surname').eq('email', userEmail).single();
-        if (profile) setStudentName(`${profile.name || 'Student'} ${profile.surname || ''}`.trim());
+        const { data: studentProfile } = await supabase
+          .from('students')
+          .select('name, surname, email')
+          .eq('email', userEmail)
+          .maybeSingle();
+
+        // SECOND HARD GATEKEEPER CHECK (Ensures data integrity)
+        if (!studentProfile) {
+          window.location.href = '/complete-registration';
+          return; 
+        }
+
+        setStudentName(`${studentProfile.name || 'Student'} ${studentProfile.surname || ''}`.trim());
         setCurrentUserEmail(userEmail);
-        domain = '@' + userEmail.split('@')[1]; 
-        setUserDomain(domain);
+        emailDomain = userEmail.split('@')[1]; 
+        setUserDomain(emailDomain);
+        
         const adminEmails = ['admin@nexuscircle.in', 'staff@adypu.edu.in', 'prathamesh@adypu.edu.in'];
         isSuper = adminEmails.includes(userEmail);
         setIsAdminUser(isSuper);
       }
+
+      const currentIso = now.toISOString();
+      const [eventsRes, orgsRes, bookingsRes, membershipsRes] = await Promise.all([
+        supabase.from('events').select('*').gte('reg_end_timestamp', currentIso).order('date', { ascending: true }),
+        supabase.from('organizations').select('id, name, domain'),
+        supabase.from('bookings').select('id, event_id, student_email, status, team_name, selected_game'),
+        user ? supabase.from('booking_members').select('*').eq('student_email', userEmail) : { data: [] }
+      ]);
+
+      if (eventsRes.error) throw eventsRes.error;
 
       const orgMap = {};
       const orgNameMap = {};
@@ -163,7 +192,9 @@ const EventList = () => {
         orgsRes.data.forEach(org => { 
           orgMap[org.id] = org.domain;
           orgNameMap[org.id] = org.name;
-          if (org.domain === domain) myOrgId = org.id;
+          if (org.domain && emailDomain && org.domain.toLowerCase() === emailDomain.toLowerCase()) {
+             myOrgId = org.id;
+          }
         });
       }
       setUserOrgId(myOrgId);
@@ -179,7 +210,8 @@ const EventList = () => {
 
       const visibleEvents = (eventsRes.data || []).filter(event => {
         if (isSuper || event.is_open_to_all) return true; 
-        return orgMap[event.org_id] === domain;
+        const eventOrgDomain = orgMap[event.org_id];
+        return eventOrgDomain && emailDomain && eventOrgDomain.toLowerCase() === emailDomain.toLowerCase();
       });
 
       const myBookingIds = membershipsRes.data ? membershipsRes.data.map(m => m.booking_id) : [];
@@ -211,10 +243,10 @@ const EventList = () => {
       });
 
       setEvents(eventsWithMeta);
+      setLoading(false); 
     } catch (error) {
       console.error("Discovery Error:", error);
-      toast.error("Failed to load events.");
-    } finally {
+      toast.error("Failed to load events dashboard. Please try refreshing.");
       setLoading(false);
     }
   }, [now]);
@@ -225,7 +257,7 @@ const EventList = () => {
 
   const startBookingWizard = (e, event) => {
     e.stopPropagation();
-    if (!currentUserEmail) return toast.error("Login Required");
+    if (!currentUserEmail) return toast.error("Please login to book a ticket.");
     if (!event.isOpen) return toast.error("Registration not yet open!");
     if (event.isFullyBooked) return toast.error("You have already secured maximum tickets for this event.");
     if (event.isSoldOut) return toast.error("Event is Sold Out!");
@@ -272,7 +304,7 @@ const EventList = () => {
     if (query.length < 3) return setWizard(p => ({ ...p, searchResults: [] }));
     setWizard(p => ({ ...p, isSearching: true }));
     let q = supabase.from('students').select('email, name, surname').or(`name.ilike.%${query}%,surname.ilike.%${query}%,email.ilike.%${query}%`).limit(6);
-    if (!wizard.event.is_open_to_all) q = q.ilike('email', `%${userDomain}`); 
+    if (!wizard.event.is_open_to_all) q = q.ilike('email', `%@${userDomain}`); 
     const { data } = await q;
     setWizard(p => ({ ...p, searchResults: data || [], isSearching: false }));
   };
@@ -303,7 +335,7 @@ const EventList = () => {
         toast.success("Friend added to team!", { id: loadToast });
       }
     } catch (err) {
-      toast.error("Unable to add team member at this time.", { id: loadToast });
+      toast.error("Unable to add team member at this time. Please try again.", { id: loadToast });
     }
   };
 
@@ -373,7 +405,7 @@ const EventList = () => {
         }
       }
     } catch (err) {
-       toast.error(err.message);
+       toast.error(err.message || "Unable to process team registration. Please verify member details.");
        setWizard(p => ({ ...p, processing: false }));
        return; 
     }
@@ -406,7 +438,6 @@ const EventList = () => {
         const res = await loadRazorpayScript();
         if (!res) throw new Error("Payment gateway failed to load. Please check your internet connection.");
 
-        // NOTE: Passes the baseAmount to Edge Function. Ensure the Edge Function adds the 5% correctly.
         const { data: orderData, error: orderError } = await supabase.functions.invoke('create-razorpay-order', { 
            body: { 
              event_id: event.id, 
@@ -827,81 +858,6 @@ const EventList = () => {
         </div>
       )}
 
-      {/* HIDDEN PRINTABLE PDF LAYER */}
-      {selectedTicket && (
-        <div style={{ position: 'absolute', top: '-20000px', left: '-20000px', zIndex: -9999 }}>
-          <div ref={printRef} style={{ width: '400px', backgroundColor: '#0a0f1d', padding: '20px' }}>
-            <div style={{ backgroundColor: '#0f172a', borderRadius: '40px', border: '1px solid #1e293b', display: 'flex', flexDirection: 'column', width: '100%', textAlign: 'left', position: 'relative', overflow: 'hidden' }}>
-                <div style={{ padding: '32px' }}>
-                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #1e293b', paddingBottom: '16px', marginBottom: '24px' }}>
-                      <p style={{ fontSize: '12px', fontWeight: '900', color: '#3b82f6', textTransform: 'uppercase', letterSpacing: '2px', lineHeight: '1.5', maxWidth: '60%' }}>
-                         {selectedTicket.orgName} <br/> EVENT PASS
-                      </p>
-                      <div style={{ backgroundColor: 'rgba(37, 99, 235, 0.1)', color: '#60a5fa', border: '1px solid rgba(37, 99, 235, 0.2)', padding: '6px 12px', borderRadius: '8px', fontSize: '10px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '2px' }}>
-                         {selectedTicket.bookingStatus?.replace('_', ' ') || 'VERIFIED'}
-                      </div>
-                   </div>
-
-                   <h2 style={{ fontSize: '32px', fontWeight: '900', color: '#ffffff', fontStyle: 'italic', textTransform: 'uppercase', letterSpacing: '-1px', marginBottom: '24px' }}>{selectedTicket.title}</h2>
-
-                   {selectedTicket.selectedGame && (
-                      <div style={{ marginBottom: '16px' }}>
-                         <p style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Tournament</p>
-                         <p style={{ fontSize: '16px', fontWeight: '900', color: '#22d3ee', textTransform: 'uppercase' }}>{selectedTicket.selectedGame}</p>
-                      </div>
-                   )}
-
-                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '24px', marginBottom: '24px' }}>
-                      <div style={{ width: '40%' }}>
-                        <p style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Date</p>
-                        <p style={{ fontSize: '14px', fontWeight: 'bold', color: '#ffffff' }}>{selectedTicket.date}</p>
-                      </div>
-                      <div style={{ width: '40%' }}>
-                        <p style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Time</p>
-                        <p style={{ fontSize: '14px', fontWeight: 'bold', color: '#ffffff' }}>{formatTimeRange(selectedTicket.start_time, selectedTicket.end_time)}</p>
-                      </div>
-                      <div style={{ width: '40%' }}>
-                        <p style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Venue Location</p>
-                        <p style={{ fontSize: '14px', fontWeight: 'bold', color: '#ffffff' }}>{selectedTicket.venue}</p>
-                      </div>
-                      <div style={{ width: '40%' }}>
-                        <p style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Payment Status</p>
-                        <p style={{ fontSize: '14px', fontWeight: '900', color: '#34d399', textTransform: 'uppercase' }}>
-                           {getTicketViewerPrice(selectedTicket) > 0 ? `PAID: ₹${getTicketViewerPrice(selectedTicket)}` : 'FREE ENTRY'}
-                        </p>
-                      </div>
-                   </div>
-
-                   <div style={{ marginBottom: '24px' }}>
-                      <p style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>{selectedTicket.teamName ? 'Team Name' : 'Authorized Attendee'}</p>
-                      <p style={{ fontSize: '20px', fontWeight: '900', color: '#ffffff', textTransform: 'uppercase' }}>{selectedTicket.teamName || studentName}</p>
-                   </div>
-
-                   {selectedTicket.teamName && selectedTicket.fullMembers && selectedTicket.fullMembers.length > 0 && (
-                      <div style={{ padding: '16px', backgroundColor: 'rgba(30, 41, 59, 0.4)', borderRadius: '16px', border: '1px solid rgba(51, 65, 85, 0.5)', marginBottom: '24px' }}>
-                         <p style={{ fontSize: '10px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '8px' }}>Official Roster</p>
-                         {selectedTicket.fullMembers.map((m, idx) => (
-                            <p key={idx} style={{ fontSize: '14px', fontWeight: 'bold', color: '#cbd5e1', margin: '4px 0' }}>
-                              • {m.name} {m.surname}
-                              {m.email === selectedTicket.student_email && <span style={{ marginLeft: '8px', backgroundColor: 'rgba(234, 179, 8, 0.2)', color: '#eab308', padding: '2px 6px', borderRadius: '4px', fontSize: '8px', textTransform: 'uppercase' }}>Lead</span>}
-                            </p>
-                         ))}
-                      </div>
-                   )}
-                </div>
-
-                <div style={{ backgroundColor: '#ffffff', padding: '32px', display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
-                   <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '0', borderTop: '2px dashed #94a3b8' }}></div>
-                   <p style={{ fontSize: '14px', fontWeight: '900', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '6px', marginBottom: '16px' }}>A D M I T   O N E</p>
-                   <QRCodeCanvas value={selectedTicket.bookingId || "error"} size={140} level="H" style={{ marginBottom: '16px' }} />
-                   <p style={{ fontSize: '9px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Ticket ID</p>
-                   <p style={{ fontSize: '10px', fontFamily: 'monospace', fontWeight: 'bold', color: '#0f172a' }}>{selectedTicket.bookingId}</p>
-                </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* --- MODAL FLIP CARD --- */}
       {expandedEvent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8 bg-black/90 backdrop-blur-md" onClick={() => { setExpandedEvent(null); setIsCardFlipped(false); }}>
@@ -1106,7 +1062,6 @@ const EventList = () => {
   );
 };
 
-// STATIC, NON-FLIPPING GRID CARD
 const EventCard = ({ event, onBook, onViewTicket, availableClubs, onExpand }) => {
   const handleShare = async (e) => {
     e.stopPropagation();
@@ -1116,7 +1071,7 @@ const EventCard = ({ event, onBook, onViewTicket, availableClubs, onExpand }) =>
   };
 
   const displayPrice = React.useMemo(() => {
-     if (event.category === 'E-Sports') return null; // NO PRICE FOR E-SPORTS
+     if (event.category === 'E-Sports') return null; 
      if (event.event_type === 'free') return "FREE ENTRY";
      const base = Number(event.price || 0);
      return `₹${Number((base * 1.05).toFixed(2))}`;
@@ -1143,7 +1098,6 @@ const EventCard = ({ event, onBook, onViewTicket, availableClubs, onExpand }) =>
       <div className="p-5 flex flex-col grow text-left">
         <h4 className="text-xl font-black uppercase italic text-white mb-3 line-clamp-2">{event.title}</h4>
         
-        {/* BEAUTIFUL CLUB PILL BADGE */}
         {clubName && (
           <div className="inline-flex items-center gap-1.5 bg-slate-800/50 border border-white/5 py-1.5 px-3 rounded-lg mb-5 w-fit">
             <ShieldCheck size={14} className="text-blue-400"/>
@@ -1154,8 +1108,6 @@ const EventCard = ({ event, onBook, onViewTicket, availableClubs, onExpand }) =>
         <div className="flex flex-col gap-3 mb-5 text-left">
            <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5 text-slate-300 text-xs font-bold uppercase"><Calendar size={14} className="text-blue-500 shrink-0"/> {event.date}</div>
-              
-              {/* CLEAN PRICE BADGE (HIDDEN IF E-SPORTS) */}
               {displayPrice && (
                 <span className={`${displayPrice === 'FREE ENTRY' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'} px-2 py-0.5 rounded border text-[10px] font-black tracking-widest uppercase`}>
                   {displayPrice}
