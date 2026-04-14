@@ -756,7 +756,7 @@ const EventList = () => {
 
                     <div className="pt-4 border-t border-slate-800 shrink-0 mt-auto">
                        {wizard.members.length < parseInt(wizard.selectedGame.team_size) && (
-                         <p className="text-[10px] text-yellow-500 font-black uppercase tracking-widest text-center mb-3 animate-pulse">Add {parseInt(wizard.selectedGame.team_size) - wizard.members.length} more friend(s) to unlock</p>
+                         <p className="text-[10px] text-yellow-500 font-black uppercase tracking-widest text-center mb-3 animate-pulse">Add {parseInt(wizard.selectedGame.team_size) - wizard.members.length} more friend(s) to unlock. All members must be registered account on nexuscircle, before the lead can add them to the team.</p>
                        )}
                        <button onClick={() => setWizard(p => ({...p, step: 4}))} disabled={wizard.members.length !== parseInt(wizard.selectedGame.team_size) || !wizard.teamName.trim() || !!wizard.teamNameError} className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white rounded-xl font-black uppercase text-[11px] tracking-widest transition-all shadow-lg active:scale-95">Next Step <ArrowRight size={16} className="inline"/></button>
                     </div>
