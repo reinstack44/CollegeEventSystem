@@ -1,13 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { supabase } from '../../sbclient/supabaseClient';
 import { Mail, Hash, Phone, Building2, BadgeCheck, Flag, ShieldAlert, Zap, ChevronRight, ArrowLeft } from 'lucide-react';
+// IMPORT SMART BACK HOOK
+import { useSmartBack } from '../../App';
+
 
 const Profile = () => {
-  const navigate = useNavigate();
+  const smartBack = useSmartBack(); // Use smart routing
   const [student, setStudent] = useState(null);
   const [highestRole, setHighestRole] = useState('Loading...');
   const [rawRole, setRawRole] = useState('student');
+  const [isGuestUser, setIsGuestUser] = useState(false);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -15,32 +19,41 @@ const Profile = () => {
       if (user) {
         // Fetch Student Details
         const { data, error } = await supabase.from('students').select('*').eq('email', user.email).single();
-        if (!error) setStudent(data);
+        if (!error) {
+          setStudent(data);
+          // Check if user is a guest based on URN naming convention
+          if (data.urn && data.urn.startsWith('GUEST-')) {
+            setIsGuestUser(true);
+            setHighestRole('Public Guest');
+          }
+        }
 
-        // Securely Fetch and Determine Role from Database ONLY
-        const { data: roleData, error: roleError } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('email', user.email);
+        // Securely Fetch and Determine Role from Database ONLY (skip for guests)
+        if (!data?.urn?.startsWith('GUEST-')) {
+          const { data: roleData, error: roleError } = await supabase
+            .from('user_roles')
+            .select('role')
+            .eq('email', user.email);
 
-        if (!roleError && roleData && roleData.length > 0) {
-           if (roleData.some(r => r.role === 'super_admin')) {
-               setHighestRole('Super Admin');
-               setRawRole('super_admin');
-           } else if (roleData.some(r => r.role === 'org_head')) {
-               setHighestRole('Organization Head');
-               setRawRole('org_head');
-           } else if (roleData.some(r => r.role === 'club_head')) {
-               setHighestRole('Club Lead');
-               setRawRole('club_head');
-           } else {
-               setHighestRole('Verified Student');
-               setRawRole('student');
-           }
-        } else {
-           // Fallback if no roles exist in the database for this user
-           setHighestRole('Verified Student');
-           setRawRole('student');
+          if (!roleError && roleData && roleData.length > 0) {
+             if (roleData.some(r => r.role === 'super_admin')) {
+                 setHighestRole('Super Admin');
+                 setRawRole('super_admin');
+             } else if (roleData.some(r => r.role === 'org_head')) {
+                 setHighestRole('Organization Head');
+                 setRawRole('org_head');
+             } else if (roleData.some(r => r.role === 'club_head')) {
+                 setHighestRole('Club Lead');
+                 setRawRole('club_head');
+             } else {
+                 setHighestRole('Verified Student');
+                 setRawRole('student');
+             }
+          } else {
+             // Fallback if no roles exist in the database for this user
+             setHighestRole('Verified Student');
+             setRawRole('student');
+          }
         }
       }
     };
@@ -65,7 +78,7 @@ const Profile = () => {
         
         {/* --- BACK BUTTON --- */}
         <button 
-          onClick={() => navigate(-1)} 
+          onClick={() => smartBack('/events')} 
           className="flex items-center gap-2 text-slate-500 hover:text-blue-500 transition-colors font-black text-[10px] uppercase tracking-widest mb-6 w-fit"
         >
           <ArrowLeft size={14} /> Back
@@ -78,16 +91,16 @@ const Profile = () => {
           <div className="h-32 sm:h-40 w-full bg-linear-to-r from-blue-900/60 to-indigo-900/40 relative border-b border-white/5">
             <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1557683316-973673baf926?auto=format&fit=crop&q=80&w=1000')] bg-cover bg-center mix-blend-overlay opacity-20 pointer-events-none"></div>
             <div className="absolute top-4 right-4 bg-black/40 backdrop-blur-md border border-white/10 px-3 py-1.5 rounded-lg flex items-center gap-2 shadow-sm">
-               <BadgeCheck size={14} className="text-blue-400" />
-               <span className="text-[9px] font-black text-white uppercase tracking-widest">Verified Account</span>
+               <BadgeCheck size={14} className={isGuestUser ? "text-orange-400" : "text-blue-400"} />
+               <span className="text-[9px] font-black text-white uppercase tracking-widest">{isGuestUser ? 'Guest Account' : 'Verified Account'}</span>
             </div>
           </div>
 
           <div className="px-6 sm:px-10 pb-10 relative">
             {/* Overlapping Avatar */}
             <div className="flex flex-col items-center sm:items-start sm:flex-row sm:gap-6 -mt-14 sm:-mt-16 mb-8 relative z-10">
-              <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-2xl bg-[#0f172a] border-4 border-[#111827] shadow-xl flex items-center justify-center text-4xl sm:text-5xl font-black text-blue-500 shrink-0 relative overflow-hidden">
-                <div className="absolute inset-0 bg-linear-to-b from-blue-500/10 to-transparent"></div>
+              <div className={`w-24 h-24 sm:w-32 sm:h-32 rounded-2xl bg-[#0f172a] border-4 border-[#111827] shadow-xl flex items-center justify-center text-4xl sm:text-5xl font-black shrink-0 relative overflow-hidden ${isGuestUser ? 'text-orange-500' : 'text-blue-500'}`}>
+                <div className={`absolute inset-0 bg-linear-to-b to-transparent ${isGuestUser ? 'from-orange-500/10' : 'from-blue-500/10'}`}></div>
                 {student.name ? student.name[0] : 'S'}
               </div>
               
@@ -106,34 +119,38 @@ const Profile = () => {
 
             {/* Profile Details Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-8">
-              <ProfileCard 
-                icon={<Hash size={16} />} 
-                iconColor="text-blue-400" 
-                label="URN Number" 
-                value={student.urn} 
-              />
+              {!isGuestUser && (
+                <ProfileCard 
+                  icon={<Hash size={16} />} 
+                  iconColor="text-blue-400" 
+                  label="URN Number" 
+                  value={student.urn} 
+                />
+              )}
               <ProfileCard 
                 icon={<Phone size={16} />} 
                 iconColor="text-emerald-400" 
                 label="Contact Number" 
                 value={student.phone} 
               />
-              <ProfileCard 
-                icon={<Building2 size={16} />} 
-                iconColor="text-orange-400" 
-                label="University School" 
-                value={student.school} 
-              />
+              {!isGuestUser && (
+                <ProfileCard 
+                  icon={<Building2 size={16} />} 
+                  iconColor="text-orange-400" 
+                  label="University School" 
+                  value={student.school} 
+                />
+              )}
               <ProfileCard 
                 icon={<BadgeCheck size={16} />} 
                 iconColor="text-purple-400" 
-                label="Clearance Level" 
+                label={isGuestUser ? "Account Type" : "Clearance Level"} 
                 value={highestRole} 
               />
             </div>
 
             {/* Management Shortcuts (Dynamic) */}
-            {rawRole !== 'student' && (
+            {rawRole !== 'student' && !isGuestUser && (
               <div className="pt-6 border-t border-white/5">
                 <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
                   <ShieldAlert size={12} /> Management Portals

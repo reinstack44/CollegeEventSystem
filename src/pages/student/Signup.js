@@ -9,16 +9,16 @@ const Signup = () => {
 
   const handleGoogleLogin = async () => {
     setLoading(true);
-    const loadToast = toast.loading('Connecting to University Portal...');
+    const loadToast = toast.loading('Connecting to Portal...');
 
     try {
       // Initiate OAuth flow. 
-      // Supabase handles the redirect to Google and back.
+      // REMOVED 'hd' restriction: Anyone can now log in. 
+      // Role checking (Guest vs Student) is handled during CompleteRegistration.
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           queryParams: {
-            hd: 'adypu.edu.in', 
             prompt: 'select_account' // Forces them to pick the right account if they have multiple
           },
           // Redirects to CompleteRegistration where we will check if they already exist
@@ -30,7 +30,7 @@ const Signup = () => {
 
     } catch (error) {
       console.error("Auth Error:", error);
-      toast.error("Unable to connect to Google workspace. Please try again.", { id: loadToast });
+      toast.error("Unable to connect to authentication provider. Please try again.", { id: loadToast });
       setLoading(false);
     }
   };
@@ -59,12 +59,12 @@ const Signup = () => {
               <ScanFace size={32} className="text-blue-400" />
             </div>
             <h1 className="text-4xl lg:text-5xl font-black text-white uppercase italic tracking-tighter leading-tight drop-shadow-2xl">
-              Verify <br/>
-              Student <br/>
-              <span className="text-blue-500">Identity</span>
+              Access <br/>
+              Event <br/>
+              <span className="text-blue-500">Platform</span>
             </h1>
             <p className="mt-4 text-xs font-bold text-slate-400 uppercase tracking-widest leading-relaxed max-w-xs">
-              Secure your account using your official university Google account.
+              Secure your account using Google to browse and book upcoming events.
             </p>
           </div>
 
@@ -86,12 +86,12 @@ const Signup = () => {
               <ScanFace size={24} />
             </div>
             <h2 className="text-2xl font-black text-white italic uppercase tracking-tight mb-1">Get Started</h2>
-            <p className="text-slate-500 font-bold text-[9px] uppercase tracking-[0.3em]">Verify Credentials</p>
+            <p className="text-slate-500 font-bold text-[9px] uppercase tracking-[0.3em]">Access Platform</p>
           </div>
 
           <div className="flex bg-[#0f172a] p-1.5 rounded-2xl border border-white/5 w-full mb-10 shadow-inner">
              <Link to="/login" className="flex-1 py-3 text-center rounded-xl font-black text-[10px] uppercase tracking-widest transition-all text-slate-500 hover:text-white cursor-pointer">
-               Student Login
+               Existing Login
              </Link>
              <div className="flex-1 py-3 text-center rounded-xl font-black text-[10px] uppercase tracking-widest transition-all bg-blue-600 text-white shadow-md cursor-default">
                Register (New Acc)
@@ -101,7 +101,8 @@ const Signup = () => {
           <div className="space-y-6">
             <div className="bg-[#0f172a] border border-white/5 rounded-2xl p-6 text-center shadow-inner">
               <p className="text-xs font-bold text-slate-400 leading-relaxed mb-6">
-                To maintain event security, access is strictly restricted to active students. You must authenticate using your official <span className="text-white">@adypu.edu.in</span> workspace account.
+                <strong>University Students:</strong> Use your official university workspace account to unlock private events. <br className="hidden sm:block mt-2"/>
+                <strong>Guests:</strong> Use any Google account to browse public events.
               </p>
 
               <button 
@@ -110,13 +111,13 @@ const Signup = () => {
                 className="w-full bg-white hover:bg-slate-100 text-slate-900 py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest flex items-center justify-center gap-3 shadow-[0_10px_30px_-10px_rgba(255,255,255,0.3)] active:scale-95 transition-all duration-300 disabled:opacity-70 disabled:cursor-not-allowed"
               >
                 {loading ? <div className="w-5 h-5 border-2 border-slate-900 border-t-transparent rounded-full animate-spin" /> : <Chrome size={18} className="text-blue-600" />} 
-                {loading ? "Authenticating..." : "Sign in with University Google"}
+                {loading ? "Authenticating..." : "Sign in with Google"}
               </button>
             </div>
             
             <div className="text-center pt-4">
               <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-relaxed">
-                By authenticating, you accept the university <br className="hidden sm:block"/> portal access terms & conditions.
+                By authenticating, you accept the platform's <br className="hidden sm:block"/> access terms & conditions.
               </p>
             </div>
           </div>
