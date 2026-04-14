@@ -555,22 +555,29 @@ const EventList = () => {
   };
 
   const downloadPDF = async () => {
-    if (!printRef.current || !selectedTicket) return;
-    setIsDownloading(true);
-    const toastId = toast.loading("Generating PDF...");
-    try {
-      const canvas = await html2canvas(printRef.current, { scale: 3, useCORS: true, backgroundColor: '#0a0f1d' });
-      const imgWidth = 400; 
-      const imgHeight = (canvas.height * imgWidth) / canvas.width; 
-      const pdf = new jsPDF('p', 'px', [imgWidth, imgHeight]); 
-      pdf.addImage(canvas.toDataURL('image/png', 1.0), 'PNG', 0, 0, imgWidth, imgHeight);
-      pdf.save(`Ticket_${selectedTicket.title.replace(/\s+/g, '_')}.pdf`);
-      toast.success("Complete!", { id: toastId });
-    } catch (error) {
-      toast.error("Failed to generate PDF.", { id: toastId });
-    } finally { setIsDownloading(false); }
-  };
-
+  if (!printRef.current || !selectedTicket) return;
+  setIsDownloading(true);
+  const toastId = toast.loading("Generating PDF...");
+  try {
+    // Scale 2 is much safer for mobile device memory limits
+    const canvas = await html2canvas(printRef.current, { scale: 2, useCORS: true, backgroundColor: '#0a0f1d' });
+    const imgWidth = 400; 
+    const imgHeight = (canvas.height * imgWidth) / canvas.width; 
+    const pdf = new jsPDF('p', 'px', [imgWidth, imgHeight]); 
+    pdf.addImage(canvas.toDataURL('image/png', 1.0), 'PNG', 0, 0, imgWidth, imgHeight);
+    
+    // Failsafe: If title is somehow missing in MyTickets, it defaults to 'Event' instead of crashing
+    const fileName = selectedTicket.title ? selectedTicket.title.replace(/\s+/g, '_') : 'Event';
+    pdf.save(`Ticket_${fileName}.pdf`);
+    
+    toast.success("Complete!", { id: toastId });
+  } catch (error) {
+    console.error("PDF Error: ", error);
+    toast.error("Failed to generate PDF. Please try again.", { id: toastId });
+  } finally { 
+    setIsDownloading(false); 
+  }
+};
   const filteredEvents = events.filter(e => {
     const matchesSearch = e.title.toLowerCase().includes(searchQuery.toLowerCase()) || (e.orgName && e.orgName.toLowerCase().includes(searchQuery.toLowerCase()));
     const matchesStatus = statusFilter === 'all' || (statusFilter === 'available' ? !e.hasAnyBooking : e.hasAnyBooking);

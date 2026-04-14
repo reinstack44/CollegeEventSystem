@@ -56,7 +56,7 @@ const formatTimeRange = (start, end) => {
 };
 
 const MyTickets = () => {
-  const smartBack = useSmartBack(); // Initialize the smart back hook
+  const smartBack = useSmartBack(); 
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [studentName, setStudentName] = useState("");
@@ -234,18 +234,23 @@ const MyTickets = () => {
     setIsDownloading(true);
     const toastId = toast.loading("Generating PDF...");
     try {
-      const canvas = await html2canvas(printRef.current, { scale: 3, useCORS: true, backgroundColor: '#0a0f1d' });
+      const canvas = await html2canvas(printRef.current, { scale: 2, useCORS: true, backgroundColor: '#0a0f1d' });
       const imgWidth = 400; 
       const imgHeight = (canvas.height * imgWidth) / canvas.width; 
-      
       const pdf = new jsPDF('p', 'px', [imgWidth, imgHeight]); 
       pdf.addImage(canvas.toDataURL('image/png', 1.0), 'PNG', 0, 0, imgWidth, imgHeight);
-      pdf.save(`Ticket_${selectedTicket.events?.title.replace(/\s+/g, '_')}.pdf`);
-      toast.success("Download complete!", { id: toastId });
+      
+      // FIX: Proper extraction of the nested event title to prevent string replace crashes
+      const fileName = selectedTicket.events?.title ? selectedTicket.events.title.replace(/\s+/g, '_') : 'Event';
+      pdf.save(`Ticket_${fileName}.pdf`);
+      
+      toast.success("Complete!", { id: toastId });
     } catch (error) {
-      console.error("PDF Error:", error);
-      toast.error("Unable to generate PDF right now. Please try again.", { id: toastId });
-    } finally { setIsDownloading(false); }
+      console.error("PDF Error: ", error);
+      toast.error("Failed to generate PDF. Please try again.", { id: toastId });
+    } finally { 
+      setIsDownloading(false); 
+    }
   };
 
   const TicketCard = ({ ticket }) => {
@@ -332,7 +337,6 @@ const MyTickets = () => {
     <div className="min-h-screen bg-[#0a0f1d] text-white p-6 pb-24 selection:bg-blue-500/30 overflow-hidden">
       <div className="max-w-6xl mx-auto">
 
-        {/* USE SMART BACK HOOK HERE */}
         <button 
           onClick={() => smartBack('/events')} 
           className="flex items-center gap-2 text-slate-500 hover:text-blue-500 transition-colors font-black text-[10px] uppercase tracking-widest mb-8 w-fit"
@@ -512,7 +516,7 @@ const MyTickets = () => {
 
       {/* HIDDEN PRINTABLE PDF LAYER */}
       {selectedTicket && (
-        <div style={{ position: 'absolute', top: '-20000px', left: '-20000px', zIndex: -9999 }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, zIndex: -9999, opacity: 0, pointerEvents: 'none' }}>
           <div ref={printRef} style={{ width: '400px', backgroundColor: '#0a0f1d', padding: '20px' }}>
             <div style={{ backgroundColor: '#0f172a', borderRadius: '40px', border: '1px solid #1e293b', display: 'flex', flexDirection: 'column', width: '100%', textAlign: 'left', position: 'relative', overflow: 'hidden' }}>
                 <div style={{ padding: '32px' }}>
@@ -575,7 +579,7 @@ const MyTickets = () => {
 
                 <div style={{ backgroundColor: '#ffffff', padding: '32px', display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
                    <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '0', borderTop: '2px dashed #94a3b8' }}></div>
-                   <p style={{ fontSize: '14px', fontWeight: '900', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '6px', marginBottom: '16px' }}>A D M I T &nbsp; O N E</p>
+                   <p style={{ fontSize: '14px', fontWeight: '900', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '6px', marginBottom: '16px' }}>A D M I T   O N E</p>
                    <QRCodeCanvas value={selectedTicket.id || "error"} size={140} level="H" style={{ marginBottom: '16px' }} />
                    <p style={{ fontSize: '9px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Ticket ID</p>
                    <p style={{ fontSize: '10px', fontFamily: 'monospace', fontWeight: 'bold', color: '#0f172a' }}>{selectedTicket.id}</p>
