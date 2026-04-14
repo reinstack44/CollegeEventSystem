@@ -490,7 +490,7 @@ const MyTickets = () => {
                    <div className="absolute top-0 left-0 w-4 h-4 bg-[#0a0f1d] rounded-full -translate-x-1/2 -translate-y-1/2"></div>
                    <div className="absolute top-0 right-0 w-4 h-4 bg-[#0a0f1d] rounded-full translate-x-1/2 -translate-y-1/2"></div>
 
-                   <p className="text-[12px] font-black text-slate-900 uppercase tracking-[0.4em] mb-4">A D M I T &nbsp; O N E</p>
+                   <p className="text-[12px] font-black text-slate-900 uppercase tracking-[0.4em] mb-4">S C A N &nbsp; Q R</p>
                    <QRCodeCanvas value={selectedTicket.id || "error"} size={140} level="H" className="mb-4" />
                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Ticket ID</p>
                    <p className="text-[9px] font-mono font-bold text-slate-900">{selectedTicket.id}</p>
@@ -579,7 +579,7 @@ const MyTickets = () => {
 
                 <div style={{ backgroundColor: '#ffffff', padding: '32px', display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
                    <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '0', borderTop: '2px dashed #94a3b8' }}></div>
-                   <p style={{ fontSize: '14px', fontWeight: '900', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '6px', marginBottom: '16px' }}>A D M I T   O N E</p>
+                   <p style={{ fontSize: '14px', fontWeight: '900', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '6px', marginBottom: '16px' }}>S C A N   Q R</p>
                    <QRCodeCanvas value={selectedTicket.id || "error"} size={140} level="H" style={{ marginBottom: '16px' }} />
                    <p style={{ fontSize: '9px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Ticket ID</p>
                    <p style={{ fontSize: '10px', fontFamily: 'monospace', fontWeight: 'bold', color: '#0f172a' }}>{selectedTicket.id}</p>

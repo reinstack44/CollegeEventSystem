@@ -554,30 +554,47 @@ const EventList = () => {
     });
   };
 
+  // FULLY REWRITTEN MOBILE-SAFE PDF GENERATOR
   const downloadPDF = async () => {
-  if (!printRef.current || !selectedTicket) return;
-  setIsDownloading(true);
-  const toastId = toast.loading("Generating PDF...");
-  try {
-    // Scale 2 is much safer for mobile device memory limits
-    const canvas = await html2canvas(printRef.current, { scale: 2, useCORS: true, backgroundColor: '#0a0f1d' });
-    const imgWidth = 400; 
-    const imgHeight = (canvas.height * imgWidth) / canvas.width; 
-    const pdf = new jsPDF('p', 'px', [imgWidth, imgHeight]); 
-    pdf.addImage(canvas.toDataURL('image/png', 1.0), 'PNG', 0, 0, imgWidth, imgHeight);
+    if (!printRef.current || !selectedTicket) return;
+    setIsDownloading(true);
+    const toastId = toast.loading("Generating PDF...");
     
-    // Failsafe: If title is somehow missing in MyTickets, it defaults to 'Event' instead of crashing
-    const fileName = selectedTicket.title ? selectedTicket.title.replace(/\s+/g, '_') : 'Event';
-    pdf.save(`Ticket_${fileName}.pdf`);
-    
-    toast.success("Complete!", { id: toastId });
-  } catch (error) {
-    console.error("PDF Error: ", error);
-    toast.error("Failed to generate PDF. Please try again.", { id: toastId });
-  } finally { 
-    setIsDownloading(false); 
-  }
-};
+    try {
+      // Slight delay to ensure React fully renders the hidden team roster
+      await new Promise(resolve => setTimeout(resolve, 150));
+
+      const canvas = await html2canvas(printRef.current, { 
+         scale: 2, // Safe scale for mobile RAM
+         useCORS: true, 
+         allowTaint: true,
+         backgroundColor: '#0a0f1d' 
+      });
+      
+      const imgWidth = 400; 
+      const imgHeight = (canvas.height * imgWidth) / canvas.width; 
+      
+      const pdf = new jsPDF({
+         orientation: 'portrait',
+         unit: 'px',
+         format: [imgWidth, imgHeight]
+      }); 
+      
+      // Use JPEG instead of PNG to prevent mobile memory crashes
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.8), 'JPEG', 0, 0, imgWidth, imgHeight);
+      
+      const fileName = selectedTicket.title ? selectedTicket.title.replace(/[^a-zA-Z0-9]/g, '_') : 'Event_Ticket';
+      pdf.save(`Ticket_${fileName}.pdf`);
+      
+      toast.success("Complete!", { id: toastId });
+    } catch (error) {
+      console.error("PDF Error: ", error);
+      toast.error("Failed to generate PDF. Please try again.", { id: toastId });
+    } finally { 
+      setIsDownloading(false); 
+    }
+  };
+
   const filteredEvents = events.filter(e => {
     const matchesSearch = e.title.toLowerCase().includes(searchQuery.toLowerCase()) || (e.orgName && e.orgName.toLowerCase().includes(searchQuery.toLowerCase()));
     const matchesStatus = statusFilter === 'all' || (statusFilter === 'available' ? !e.hasAnyBooking : e.hasAnyBooking);
@@ -850,7 +867,7 @@ const EventList = () => {
                    <div className="absolute top-0 left-0 w-4 h-4 bg-[#0a0f1d] rounded-full -translate-x-1/2 -translate-y-1/2"></div>
                    <div className="absolute top-0 right-0 w-4 h-4 bg-[#0a0f1d] rounded-full translate-x-1/2 -translate-y-1/2"></div>
 
-                   <p className="text-[12px] font-black text-slate-900 uppercase tracking-[0.4em] mb-4">A D M I T &nbsp; O N E</p>
+                   <p className="text-[12px] font-black text-slate-900 uppercase tracking-[0.4em] mb-4">S C A N &nbsp; Q R</p>
                    <QRCodeCanvas value={selectedTicket.bookingId || "error"} size={140} level="H" className="mb-4" />
                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Ticket ID</p>
                    <p className="text-[9px] font-mono font-bold text-slate-900">{selectedTicket.bookingId}</p>
@@ -861,6 +878,81 @@ const EventList = () => {
                    </button>
                 </div>
              </div>
+          </div>
+        </div>
+      )}
+
+      {/* HIDDEN PRINTABLE PDF LAYER */}
+      {selectedTicket && (
+        <div style={{ position: 'absolute', top: '-9999px', left: '-9999px', zIndex: -9999 }}>
+          <div ref={printRef} style={{ width: '400px', backgroundColor: '#0a0f1d', padding: '20px' }}>
+            <div style={{ backgroundColor: '#0f172a', borderRadius: '40px', border: '1px solid #1e293b', display: 'flex', flexDirection: 'column', width: '100%', textAlign: 'left', position: 'relative', overflow: 'hidden' }}>
+                <div style={{ padding: '32px' }}>
+                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #1e293b', paddingBottom: '16px', marginBottom: '24px' }}>
+                      <p style={{ fontSize: '12px', fontWeight: '900', color: '#3b82f6', textTransform: 'uppercase', letterSpacing: '2px', lineHeight: '1.5', maxWidth: '60%' }}>
+                         {selectedTicket.orgName} <br/> EVENT PASS
+                      </p>
+                      <div style={{ backgroundColor: 'rgba(37, 99, 235, 0.1)', color: '#60a5fa', border: '1px solid rgba(37, 99, 235, 0.2)', padding: '6px 12px', borderRadius: '8px', fontSize: '10px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '2px' }}>
+                         {selectedTicket.bookingStatus?.replace('_', ' ') || 'VERIFIED'}
+                      </div>
+                   </div>
+
+                   <h2 style={{ fontSize: '32px', fontWeight: '900', color: '#ffffff', fontStyle: 'italic', textTransform: 'uppercase', letterSpacing: '-1px', marginBottom: '24px' }}>{selectedTicket.title}</h2>
+
+                   {selectedTicket.selectedGame && (
+                      <div style={{ marginBottom: '16px' }}>
+                         <p style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Tournament</p>
+                         <p style={{ fontSize: '16px', fontWeight: '900', color: '#22d3ee', textTransform: 'uppercase' }}>{selectedTicket.selectedGame}</p>
+                      </div>
+                   )}
+
+                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '24px', marginBottom: '24px' }}>
+                      <div style={{ width: '40%' }}>
+                        <p style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Date</p>
+                        <p style={{ fontSize: '14px', fontWeight: 'bold', color: '#ffffff' }}>{selectedTicket.date}</p>
+                      </div>
+                      <div style={{ width: '40%' }}>
+                        <p style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Time</p>
+                        <p style={{ fontSize: '14px', fontWeight: 'bold', color: '#ffffff' }}>{formatTimeRange(selectedTicket.start_time, selectedTicket.end_time)}</p>
+                      </div>
+                      <div style={{ width: '40%' }}>
+                        <p style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Venue Location</p>
+                        <p style={{ fontSize: '14px', fontWeight: 'bold', color: '#ffffff' }}>{selectedTicket.venue}</p>
+                      </div>
+                      <div style={{ width: '40%' }}>
+                        <p style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Payment Status</p>
+                        <p style={{ fontSize: '14px', fontWeight: '900', color: '#34d399', textTransform: 'uppercase' }}>
+                           {getTicketViewerPrice(selectedTicket) > 0 ? `PAID: ₹${getTicketViewerPrice(selectedTicket)}` : 'FREE ENTRY'}
+                        </p>
+                      </div>
+                   </div>
+
+                   <div style={{ marginBottom: '24px' }}>
+                      <p style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>{selectedTicket.teamName ? 'Team Name' : 'Authorized Attendee'}</p>
+                      <p style={{ fontSize: '20px', fontWeight: '900', color: '#ffffff', textTransform: 'uppercase' }}>{selectedTicket.teamName || studentName}</p>
+                   </div>
+
+                   {selectedTicket.teamName && selectedTicket.fullMembers && selectedTicket.fullMembers.length > 0 && (
+                      <div style={{ padding: '16px', backgroundColor: 'rgba(30, 41, 59, 0.4)', borderRadius: '16px', border: '1px solid rgba(51, 65, 85, 0.5)', marginBottom: '24px' }}>
+                         <p style={{ fontSize: '10px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '8px' }}>Official Roster</p>
+                         {selectedTicket.fullMembers.map((m, idx) => (
+                            <p key={idx} style={{ fontSize: '14px', fontWeight: 'bold', color: '#cbd5e1', margin: '4px 0' }}>
+                              • {m.name} {m.surname}
+                              {m.email === selectedTicket.student_email && <span style={{ marginLeft: '8px', backgroundColor: 'rgba(234, 179, 8, 0.2)', color: '#eab308', padding: '2px 6px', borderRadius: '4px', fontSize: '8px', textTransform: 'uppercase' }}>Lead</span>}
+                            </p>
+                         ))}
+                      </div>
+                   )}
+                </div>
+
+                <div style={{ backgroundColor: '#ffffff', padding: '32px', display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+                   <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '0', borderTop: '2px dashed #94a3b8' }}></div>
+                   <p style={{ fontSize: '14px', fontWeight: '900', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '6px', marginBottom: '16px' }}>S C A N  Q R</p>
+                   <QRCodeCanvas value={selectedTicket.bookingId || "error"} size={140} level="H" style={{ marginBottom: '16px' }} />
+                   <p style={{ fontSize: '9px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Ticket ID</p>
+                   <p style={{ fontSize: '10px', fontFamily: 'monospace', fontWeight: 'bold', color: '#0f172a' }}>{selectedTicket.bookingId}</p>
+                </div>
+            </div>
           </div>
         </div>
       )}
