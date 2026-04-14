@@ -5,7 +5,7 @@ import {
   Calendar, Search, Zap, Clock, RefreshCw,
   CheckCircle, MapPin, X, Loader2, ShieldCheck,
   Download, ChevronDown, Layers, Share2, 
-  Users, Gamepad2, ArrowRight, UserPlus, UserMinus, Filter, FileText, ArrowLeft
+  Users, Gamepad2, ArrowRight, UserPlus, UserMinus, Filter, FileText, ArrowLeft, Info
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import html2canvas from 'html2canvas';
@@ -108,7 +108,6 @@ const EventList = () => {
     searchTerm: '', searchResults: [], isSearching: false, processing: false
   });
 
-  // THE HARD GATEKEEPER: Defeats Race Conditions
   useEffect(() => {
     const enforceRegistration = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -120,7 +119,6 @@ const EventList = () => {
           .maybeSingle();
 
         if (!studentProfile) {
-          // Hard Redirect directly overrides React Router loops
           window.location.href = '/complete-registration';
         }
       }
@@ -159,7 +157,6 @@ const EventList = () => {
           .eq('email', userEmail)
           .maybeSingle();
 
-        // SECOND HARD GATEKEEPER CHECK (Ensures data integrity)
         if (!studentProfile) {
           window.location.href = '/complete-registration';
           return; 
@@ -554,7 +551,6 @@ const EventList = () => {
     });
   };
 
-  // FULLY REWRITTEN MOBILE-SAFE PDF GENERATOR
   const downloadPDF = async () => {
     if (!printRef.current || !selectedTicket) return;
     setIsDownloading(true);
@@ -565,7 +561,7 @@ const EventList = () => {
       await new Promise(resolve => setTimeout(resolve, 150));
 
       const canvas = await html2canvas(printRef.current, { 
-         scale: 2, // Safe scale for mobile RAM
+         scale: 2, 
          useCORS: true, 
          allowTaint: true,
          backgroundColor: '#0a0f1d' 
@@ -580,7 +576,6 @@ const EventList = () => {
          format: [imgWidth, imgHeight]
       }); 
       
-      // Use JPEG instead of PNG to prevent mobile memory crashes
       pdf.addImage(canvas.toDataURL('image/jpeg', 0.8), 'JPEG', 0, 0, imgWidth, imgHeight);
       
       const fileName = selectedTicket.title ? selectedTicket.title.replace(/[^a-zA-Z0-9]/g, '_') : 'Event_Ticket';
@@ -867,7 +862,7 @@ const EventList = () => {
                    <div className="absolute top-0 left-0 w-4 h-4 bg-[#0a0f1d] rounded-full -translate-x-1/2 -translate-y-1/2"></div>
                    <div className="absolute top-0 right-0 w-4 h-4 bg-[#0a0f1d] rounded-full translate-x-1/2 -translate-y-1/2"></div>
 
-                   <p className="text-[12px] font-black text-slate-900 uppercase tracking-[0.4em] mb-4">S C A N &nbsp; Q R</p>
+                   <p className="text-[12px] font-black text-slate-900 uppercase tracking-[0.4em] mb-4">A D M I T &nbsp; O N E</p>
                    <QRCodeCanvas value={selectedTicket.bookingId || "error"} size={140} level="H" className="mb-4" />
                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Ticket ID</p>
                    <p className="text-[9px] font-mono font-bold text-slate-900">{selectedTicket.bookingId}</p>
@@ -884,7 +879,7 @@ const EventList = () => {
 
       {/* HIDDEN PRINTABLE PDF LAYER */}
       {selectedTicket && (
-        <div style={{ position: 'absolute', top: '-9999px', left: '-9999px', zIndex: -9999 }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, zIndex: -9999, opacity: 0, pointerEvents: 'none' }}>
           <div ref={printRef} style={{ width: '400px', backgroundColor: '#0a0f1d', padding: '20px' }}>
             <div style={{ backgroundColor: '#0f172a', borderRadius: '40px', border: '1px solid #1e293b', display: 'flex', flexDirection: 'column', width: '100%', textAlign: 'left', position: 'relative', overflow: 'hidden' }}>
                 <div style={{ padding: '32px' }}>
@@ -947,7 +942,7 @@ const EventList = () => {
 
                 <div style={{ backgroundColor: '#ffffff', padding: '32px', display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
                    <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '0', borderTop: '2px dashed #94a3b8' }}></div>
-                   <p style={{ fontSize: '14px', fontWeight: '900', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '6px', marginBottom: '16px' }}>S C A N  Q R</p>
+                   <p style={{ fontSize: '14px', fontWeight: '900', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '6px', marginBottom: '16px' }}>A D M I T  O N E</p>
                    <QRCodeCanvas value={selectedTicket.bookingId || "error"} size={140} level="H" style={{ marginBottom: '16px' }} />
                    <p style={{ fontSize: '9px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>Ticket ID</p>
                    <p style={{ fontSize: '10px', fontFamily: 'monospace', fontWeight: 'bold', color: '#0f172a' }}>{selectedTicket.bookingId}</p>
@@ -957,27 +952,28 @@ const EventList = () => {
         </div>
       )}
 
-      {/* --- MODAL FLIP CARD --- */}
+      {/* --- RESPONSIVE MODAL FLIP CARD --- */}
       {expandedEvent && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8 bg-black/90 backdrop-blur-md" onClick={() => { setExpandedEvent(null); setIsCardFlipped(false); }}>
-          <button onClick={() => { setExpandedEvent(null); setIsCardFlipped(false); }} className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all z-100">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/90 backdrop-blur-md" onClick={() => { setExpandedEvent(null); setIsCardFlipped(false); }}>
+          <button onClick={(e) => { e.stopPropagation(); setExpandedEvent(null); setIsCardFlipped(false); }} className="absolute top-4 right-4 sm:top-6 sm:right-6 p-3 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all z-100">
             <X size={24} />
           </button>
           
-          <div className="w-full max-w-96 h-[80vh] min-h-125 perspective-2000 cursor-pointer" onClick={(e) => { e.stopPropagation(); setIsCardFlipped(!isCardFlipped); }}>
+          {/* Main Modal Wrapper - Responsive Sizing */}
+          <div className="w-full max-w-95 sm:max-w-105 h-[85vh] max-h-187.5 min-h-125 perspective-2000 cursor-pointer" onClick={(e) => { e.stopPropagation(); setIsCardFlipped(!isCardFlipped); }}>
             <div className={`relative w-full h-full transition-transform duration-700 transform-style-3d ${isCardFlipped ? 'rotate-y-180' : ''}`}>
               
               {/* FRONT OF MODAL CARD */}
-              <div className="absolute inset-0 backface-hidden bg-[#111827] rounded-[40px] border border-white/10 shadow-2xl flex flex-col overflow-hidden">
-                <div className="relative h-56 shrink-0 bg-slate-900 border-b border-white/5">
+              <div className="absolute inset-0 backface-hidden bg-[#111827] rounded-4xl sm:rounded-4xl border border-white/10 shadow-2xl flex flex-col overflow-hidden">
+                <div className="relative h-48 sm:h-56 shrink-0 bg-slate-900 border-b border-white/5">
                   <img src={Array.isArray(expandedEvent.images) && expandedEvent.images.length > 0 ? expandedEvent.images[0] : "https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&q=80&w=800"} alt="Cover" className="w-full h-full object-cover" />
                   <div className="absolute inset-0 bg-linear-to-t from-[#111827] via-transparent opacity-90"></div>
                   <div className="absolute top-4 left-4"><span className="backdrop-blur-md bg-black/60 text-white px-3 py-1.5 rounded-full text-[10px] font-bold border border-white/10">{expandedEvent.orgName}</span></div>
                   <div className="absolute bottom-3 left-4 flex items-center gap-1.5 bg-blue-600/90 text-white px-3 py-1.5 rounded-lg border border-blue-500/30 text-[9px] font-black shadow-lg"><Layers size={12}/> {expandedEvent.category || 'OTHER'}</div>
                 </div>
                 
-                <div className="p-6 flex flex-col grow text-left">
-                  <h3 className="text-2xl font-black uppercase italic text-white mb-4 line-clamp-2">{expandedEvent.title}</h3>
+                <div className="p-6 flex flex-col grow overflow-y-auto custom-scrollbar text-left">
+                  <h3 className="text-xl sm:text-2xl font-black uppercase italic text-white mb-4 line-clamp-2">{expandedEvent.title}</h3>
                   
                   {expandedClubName && (
                     <div className="inline-flex items-center gap-1.5 bg-slate-800/40 border border-white/5 py-1.5 px-3 rounded-lg mb-5 w-fit">
@@ -986,35 +982,109 @@ const EventList = () => {
                     </div>
                   )}
 
-                  <div className="space-y-3.5">
+                  <div className="space-y-3.5 mb-5 mt-auto">
                     <div className="flex items-center justify-between gap-3">
-                       <div className="flex items-center gap-3 text-slate-300 text-sm font-bold uppercase"><Calendar size={16} className="text-blue-500 shrink-0"/> {expandedEvent.date}</div>
+                       <div className="flex items-center gap-3 text-slate-300 text-xs sm:text-sm font-bold uppercase"><Calendar size={16} className="text-blue-500 shrink-0"/> {expandedEvent.date}</div>
                        {expandedDisplayPrice && (
                          <div className={`px-2.5 py-1 rounded-md border text-[10px] font-black tracking-widest uppercase ${expandedDisplayPrice === 'FREE ENTRY' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'}`}>
                            {expandedDisplayPrice}
                          </div>
                        )}
                     </div>
-                    <div className="flex items-center gap-3 text-slate-300 text-sm font-bold uppercase"><Clock size={16} className="text-blue-500 shrink-0"/> {formatTimeRange(expandedEvent.start_time, expandedEvent.end_time)}</div>
-                    <div className="flex items-center gap-3 text-slate-300 text-sm font-bold uppercase"><MapPin size={16} className="text-blue-500 shrink-0"/> <span className="truncate">{expandedEvent.venue}</span></div>
+                    <div className="flex items-center gap-3 text-slate-300 text-xs sm:text-sm font-bold uppercase"><Clock size={16} className="text-blue-500 shrink-0"/> {formatTimeRange(expandedEvent.start_time, expandedEvent.end_time)}</div>
+                    <div className="flex items-center gap-3 text-slate-300 text-xs sm:text-sm font-bold uppercase"><MapPin size={16} className="text-blue-500 shrink-0"/> <span className="truncate">{expandedEvent.venue}</span></div>
                   </div>
-                  
-                  <div className="mt-auto pt-6 border-t border-white/5 text-center shrink-0">
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center justify-center gap-2 animate-pulse"><RefreshCw size={14}/> Tap anywhere to read description</p>
-                  </div>
+                </div>
+
+                {/* Footer Action Area - Fixed Padding for Responsiveness */}
+                <div className="p-6 pt-0 shrink-0">
+                    {(() => {
+                        const isFullyBooked = expandedEvent.isFullyBooked;
+                        const hasAnyBooking = expandedEvent.hasAnyBooking;
+                        const category = expandedEvent.category;
+                        const isOpen = expandedEvent.isOpen;
+                        const isSoldOut = expandedEvent.isSoldOut;
+                        const isPending = expandedEvent.isPending;
+
+                        const disabledState = (isSoldOut && !hasAnyBooking) || (!isOpen && !hasAnyBooking) || isPending;
+                        
+                        let dynamicBtnText = "Get Ticket";
+                        if (isFullyBooked) dynamicBtnText = "View Pass";
+                        else if (hasAnyBooking && category === 'E-Sports') dynamicBtnText = "Book Your Passes";
+                        else if (!isOpen) dynamicBtnText = "Closed";
+
+                        let dynamicBtnStyle = "";
+                        if (disabledState) dynamicBtnStyle = "bg-slate-800 text-slate-500 cursor-not-allowed border border-white/5 shadow-none";
+                        else if (isFullyBooked) dynamicBtnStyle = "bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 shadow-emerald-500/10";
+                        else dynamicBtnStyle = "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/30 active:scale-95";
+
+                        return (
+                            <button 
+                                disabled={disabledState}
+                                onClick={(e) => { 
+                                    e.stopPropagation(); 
+                                    if (isFullyBooked) handleViewTicket(expandedEvent); 
+                                    else startBookingWizard(e, expandedEvent); 
+                                }} 
+                                className={`w-full py-4 rounded-xl font-black uppercase text-xs transition-all tracking-widest shadow-lg ${dynamicBtnStyle}`}
+                            >
+                                {dynamicBtnText}
+                            </button>
+                        );
+                    })()}
+                    
+                    <div className="mt-4 text-center">
+                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center justify-center gap-2 animate-pulse"><RefreshCw size={14}/> Tap anywhere to read description</p>
+                    </div>
                 </div>
               </div>
 
               {/* BACK OF MODAL CARD */}
-              <div className="absolute inset-0 backface-hidden rotate-y-180 bg-[#111827] rounded-[40px] border border-white/10 shadow-2xl flex flex-col overflow-hidden" onClick={(e) => { e.stopPropagation(); setIsCardFlipped(false); }}>
-                <div className="p-6 md:p-8 flex flex-col h-full text-left">
-                  <div className="flex items-center gap-2 border-b border-white/10 pb-4 mb-4 shrink-0 text-blue-400 font-black uppercase tracking-widest text-sm">
-                    <FileText size={18}/> Event Description
-                  </div>
-                  <div className="grow overflow-y-auto custom-scrollbar pr-2 event-description text-slate-300 text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: expandedEvent.description || "No description provided." }} />
-                  <div className="mt-4 pt-4 border-t border-white/5 text-center shrink-0">
-                    <button className="text-[10px] w-full py-3.5 font-black text-white uppercase tracking-widest flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 rounded-xl transition-colors"><RefreshCw size={14}/> Tap here to flip back</button>
-                  </div>
+              <div className="absolute inset-0 backface-hidden rotate-y-180 bg-[#111827] rounded-4xl sm:rounded-4xl border border-white/10 shadow-2xl flex flex-col overflow-hidden" onClick={(e) => { e.stopPropagation(); setIsCardFlipped(false); }}>
+                <div className="px-6 py-5 border-b border-white/10 flex items-center gap-2 shrink-0 text-blue-400 font-black uppercase tracking-widest text-sm">
+                  <FileText size={18}/> Event Description
+                </div>
+                
+                <div className="p-6 grow overflow-y-auto custom-scrollbar event-description text-slate-300 text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: expandedEvent.description || "No description provided." }} />
+                
+                {/* Footer Action Area - Fixed Padding for Responsiveness */}
+                <div className="p-6 pt-4 border-t border-white/5 shrink-0 flex flex-col gap-3">
+                    {(() => {
+                        const isFullyBooked = expandedEvent.isFullyBooked;
+                        const hasAnyBooking = expandedEvent.hasAnyBooking;
+                        const category = expandedEvent.category;
+                        const isOpen = expandedEvent.isOpen;
+                        const isSoldOut = expandedEvent.isSoldOut;
+                        const isPending = expandedEvent.isPending;
+
+                        const disabledState = (isSoldOut && !hasAnyBooking) || (!isOpen && !hasAnyBooking) || isPending;
+                        
+                        let dynamicBtnText = "Get Ticket";
+                        if (isFullyBooked) dynamicBtnText = "View Pass";
+                        else if (hasAnyBooking && category === 'E-Sports') dynamicBtnText = "Book Your Passes";
+                        else if (!isOpen) dynamicBtnText = "Closed";
+
+                        let dynamicBtnStyle = "";
+                        if (disabledState) dynamicBtnStyle = "bg-slate-800 text-slate-500 cursor-not-allowed border border-white/5 shadow-none";
+                        else if (isFullyBooked) dynamicBtnStyle = "bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 shadow-emerald-500/10";
+                        else dynamicBtnStyle = "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/30 active:scale-95";
+
+                        return (
+                            <button 
+                                disabled={disabledState}
+                                onClick={(e) => { 
+                                    e.stopPropagation(); 
+                                    if (isFullyBooked) handleViewTicket(expandedEvent); 
+                                    else startBookingWizard(e, expandedEvent); 
+                                }} 
+                                className={`w-full py-4 rounded-xl font-black uppercase text-xs transition-all tracking-widest shadow-lg ${dynamicBtnStyle}`}
+                            >
+                                {dynamicBtnText}
+                            </button>
+                        );
+                    })()}
+
+                    <button className="w-full py-3.5 font-black text-[10px] text-white uppercase tracking-widest flex items-center justify-center gap-2 bg-slate-800/80 hover:bg-slate-700 rounded-xl transition-colors border border-white/5"><RefreshCw size={14}/> Tap to flip the card</button>
                 </div>
               </div>
 
@@ -1129,7 +1199,22 @@ const EventList = () => {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8 animate-in fade-in duration-500 items-stretch">
               {filteredEvents.map(event => (
-                <EventCard key={event.id} event={event} onBook={startBookingWizard} onViewTicket={handleViewTicket} availableClubs={availableClubs} onExpand={setExpandedEvent} />
+                <EventCard 
+                  key={event.id} 
+                  event={event} 
+                  onBook={startBookingWizard} 
+                  onViewTicket={handleViewTicket} 
+                  availableClubs={availableClubs} 
+                  onExpand={(selectedEvent, action) => { 
+                    setExpandedEvent(selectedEvent); 
+                    if (action === 'flip') {
+                       setIsCardFlipped(false);
+                       setTimeout(() => setIsCardFlipped(true), 50); // Small delay triggers animation
+                    } else {
+                       setIsCardFlipped(false);
+                    }
+                  }} 
+                />
               ))}
             </div>
           )}
@@ -1185,7 +1270,7 @@ const EventCard = ({ event, onBook, onViewTicket, availableClubs, onExpand }) =>
   else if (!event.isOpen) btnText = "Closed";
 
   return (
-    <div onClick={() => onExpand(event)} className={`group flex flex-col h-full bg-[#111827]/90 backdrop-blur-md rounded-[40px] overflow-hidden border ${glowClass} hover:-translate-y-1 transition-all cursor-pointer shadow-xl relative`}>
+    <div onClick={() => onExpand(event, 'front')} className={`group flex flex-col h-full bg-[#111827]/90 backdrop-blur-md rounded-[40px] overflow-hidden border ${glowClass} hover:-translate-y-1 transition-all cursor-pointer shadow-xl relative`}>
       <div className="relative h-48 shrink-0 bg-slate-900 border-b border-white/5">
         <img src={Array.isArray(event.images) && event.images.length > 0 ? event.images[0] : "https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&q=80&w=800"} alt="Cover" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"/>
         <div className="absolute inset-0 bg-linear-to-t from-[#111827] via-transparent opacity-90"></div>
@@ -1217,7 +1302,18 @@ const EventCard = ({ event, onBook, onViewTicket, availableClubs, onExpand }) =>
            <div className="flex items-center gap-2.5 text-slate-300 text-xs font-bold uppercase"><MapPin size={14} className="text-blue-500 shrink-0"/> <span className="truncate">{event.venue}</span></div>
         </div>
 
-        <div className="mt-auto pt-4 border-t border-white/5 w-full shrink-0">
+        {/* Clean Theme-Matched "Know More" Button positioned just above the Ticket button */}
+        <button 
+            onClick={(e) => { 
+                e.stopPropagation(); 
+                onExpand(event, 'flip'); 
+            }} 
+            className="mt-auto mb-4 w-full py-3 rounded-xl font-bold uppercase text-[10px] tracking-widest bg-slate-800/50 hover:bg-slate-700/80 border border-white/5 text-slate-400 hover:text-white transition-all flex items-center justify-center gap-2"
+        >
+            <Info size={14} /> Know More About This Event
+        </button>
+
+        <div className="pt-4 border-t border-white/5 w-full shrink-0">
           <button disabled={(event.isSoldOut && !event.hasAnyBooking) || (!event.isOpen && !event.hasAnyBooking) || event.isPending} onClick={(e) => { e.stopPropagation(); if (event.isFullyBooked || (event.hasAnyBooking && event.category !== 'E-Sports')) onViewTicket(event); else onBook(e, event); }} className={`w-full py-3.5 sm:py-4 rounded-xl font-black uppercase text-[10px] sm:text-xs transition-all tracking-widest shadow-lg ${event.isCheckedIn ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30' : event.isFullyBooked ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 shadow-emerald-500/10' : event.hasAnyBooking && event.category === 'E-Sports' ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/30' : event.isPending ? 'bg-yellow-600/20 text-yellow-500 border border-yellow-500/30' : !event.isOpen ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-white/5 shadow-none' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/30 active:scale-95'}`}>{btnText}</button>
         </div>
       </div>
